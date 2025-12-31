@@ -1,0 +1,61 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.eggs
+*.egg-info
+.installed.cfg
+*.egg
+.mypy_cache
+.pytest_cache
+.coverage
+htmlcov
+
+# Virtual environments
+venv
+.venv
+env
+ENV
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+data/logs/*
+data/database/*.db
+data/historical/*
+*.log
+
+# Keep directory structure
+!data/logs/.gitkeep
+!data/database/.gitkeep
+!data/historical/.gitkeep
+
+# Secrets (should use .env)
+.env.local
+*.pem
+*.key
+schwab_token.json
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.docker
+
+# Documentation
+*.md
+!README.md
+!CLAUDE.md

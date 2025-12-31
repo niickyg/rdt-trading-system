@@ -1,0 +1,173 @@
+services:
+  # Scanner Service - Semi-automated signal scanning
+  scanner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rdt-scanner
+    command: ["scanner"]
+    volumes:
+      - ./data:/app/data:z
+      - ./.env:/app/.env:ro
+    environment:
+      - TZ=America/New_York
+    restart: unless-stopped
+    networks:
+      - rdt-network
+    profiles:
+      - scanner
+
+  # Trading Bot - Autonomous trading
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rdt-bot
+    command: ["bot"]
+    volumes:
+      - ./data:/app/data:z
+      - ./.env:/app/.env:ro
+      - schwab-tokens:/home/trader/.rdt-trading
+    environment:
+      - TZ=America/New_York
+    restart: unless-stopped
+    networks:
+      - rdt-network
+    profiles:
+      - bot
+
+  # Auto-Trading Bot (CAUTION!)
+  bot-auto:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rdt-bot-auto
+    command: ["bot", "--auto"]
+    volumes:
+      - ./data:/app/data:z
+      - ./.env:/app/.env:ro
+      - schwab-tokens:/home/trader/.rdt-trading
+    environment:
+      - TZ=America/New_York
+    restart: unless-stopped
+    networks:
+      - rdt-network
+    profiles:
+      - bot-auto
+
+  # Dashboard - Monitoring
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rdt-dashboard
+    command: ["dashboard"]
+    volumes:
+      - ./data:/app/data:ro,z
+    environment:
+      - TZ=America/New_York
+    tty: true
+    stdin_open: true
+    networks:
+      - rdt-network
+    profiles:
+      - dashboard
+
+  # Backtesting Service
+  backtest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rdt-backtest
+    command: ["backtest", "--days", "365"]
+    volumes:
+      - ./data:/app/data:z
+    environment:
+      - TZ=America/New_York
+    networks:
+      - rdt-network
+    profiles:
+      - backtest
+
+  # Enhanced Backtesting Service
+  backtest-enhanced:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rdt-backtest-enhanced
+    command: ["backtest", "--enhanced", "--days", "365", "--watchlist", "full"]
+    volumes:
+      - ./data:/app/data:z
+    environment:
+      - TZ=America/New_York
+    networks:
+      - rdt-network
+    profiles:
+      - backtest-enhanced
+
+  # Parameter Optimization Service
+  optimize:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rdt-optimize
+    command: ["optimize", "--days", "365", "--watchlist", "core"]
+    volumes:
+      - ./data:/app/data:z
+    environment:
+      - TZ=America/New_York
+    networks:
+      - rdt-network
+    profiles:
+      - optimize
+
+  # PostgreSQL Database (optional, for production)
+  db:
+    image: postgres:15-alpine
+    container_name: rdt-postgres
+    environment:
+      POSTGRES_USER: rdt
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rdt_secure_password}
+      POSTGRES_DB: rdt_trading
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - rdt-network
+    profiles:
+      - production
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rdt -d rdt_trading"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (optional, for caching/queues)
+  redis:
+    image: redis:7-alpine
+    container_name: rdt-redis
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - rdt-network
+    profiles:
+      - production
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  rdt-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  schwab-tokens:

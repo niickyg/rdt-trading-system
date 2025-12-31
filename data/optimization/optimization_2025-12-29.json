@@ -1,0 +1,4189 @@
+{
+  "timestamp": "2025-12-29",
+  "initial_capital": 25000.0,
+  "total_combinations_tested": 180,
+  "top_10_results": [
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 6.797128558349606,
+        "win_rate": 0.3813953488372093,
+        "profit_factor": 1.2920695441911954,
+        "max_drawdown_pct": 2.379776427573749,
+        "sharpe_ratio": 0.11234961737528715,
+        "total_trades": 215,
+        "avg_holding_days": 4.423255813953489
+      },
+      "score": 28.85,
+      "rank": 1
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 6.836742126769881,
+        "win_rate": 0.3684210526315789,
+        "profit_factor": 1.228125346434267,
+        "max_drawdown_pct": 3.097010163275034,
+        "sharpe_ratio": 0.09418122008956031,
+        "total_trades": 285,
+        "avg_holding_days": 4.389473684210526
+      },
+      "score": 26.92,
+      "rank": 2
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 5.009016935424807,
+        "win_rate": 0.3672316384180791,
+        "profit_factor": 1.2417403118791477,
+        "max_drawdown_pct": 2.307356200348773,
+        "sharpe_ratio": 0.09534758673412527,
+        "total_trades": 177,
+        "avg_holding_days": 4.333333333333333
+      },
+      "score": 26.52,
+      "rank": 3
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 5.009016935424807,
+        "win_rate": 0.3672316384180791,
+        "profit_factor": 1.2417403118791477,
+        "max_drawdown_pct": 2.307356200348773,
+        "sharpe_ratio": 0.09534758673412527,
+        "total_trades": 177,
+        "avg_holding_days": 4.333333333333333
+      },
+      "score": 26.52,
+      "rank": 4
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 5.009016935424807,
+        "win_rate": 0.3672316384180791,
+        "profit_factor": 1.2417403118791477,
+        "max_drawdown_pct": 2.307356200348773,
+        "sharpe_ratio": 0.09534758673412527,
+        "total_trades": 177,
+        "avg_holding_days": 4.333333333333333
+      },
+      "score": 26.52,
+      "rank": 5
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 6.563000527343654,
+        "win_rate": 0.36585365853658536,
+        "profit_factor": 1.217273018283359,
+        "max_drawdown_pct": 3.3572071865581568,
+        "sharpe_ratio": 0.08858351236219347,
+        "total_trades": 287,
+        "avg_holding_days": 4.365853658536586
+      },
+      "score": 26.26,
+      "rank": 6
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 5.016981942748884,
+        "win_rate": 0.4117647058823529,
+        "profit_factor": 1.1719863526848147,
+        "max_drawdown_pct": 3.677607058864616,
+        "sharpe_ratio": 0.06902235492659062,
+        "total_trades": 238,
+        "avg_holding_days": 5.705882352941177
+      },
+      "score": 25.47,
+      "rank": 7
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 4.723849858093134,
+        "win_rate": 0.42379182156133827,
+        "profit_factor": 1.1460018399223972,
+        "max_drawdown_pct": 3.7431007880907115,
+        "sharpe_ratio": 0.0688502658749854,
+        "total_trades": 269,
+        "avg_holding_days": 5.5092936802973975
+      },
+      "score": 25.2,
+      "rank": 8
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 3.811614733886687,
+        "win_rate": 0.37662337662337664,
+        "profit_factor": 1.193614851564012,
+        "max_drawdown_pct": 2.456358115546807,
+        "sharpe_ratio": 0.09146846218124037,
+        "total_trades": 154,
+        "avg_holding_days": 3.7662337662337664
+      },
+      "score": 25.18,
+      "rank": 9
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 3.811614733886687,
+        "win_rate": 0.37662337662337664,
+        "profit_factor": 1.193614851564012,
+        "max_drawdown_pct": 2.456358115546807,
+        "sharpe_ratio": 0.09146846218124037,
+        "total_trades": 154,
+        "avg_holding_days": 3.7662337662337664
+      },
+      "score": 25.18,
+      "rank": 10
+    }
+  ],
+  "all_results": [
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 6.797128558349606,
+        "win_rate": 0.3813953488372093,
+        "profit_factor": 1.2920695441911954,
+        "max_drawdown_pct": 2.379776427573749,
+        "sharpe_ratio": 0.11234961737528715,
+        "total_trades": 215,
+        "avg_holding_days": 4.423255813953489
+      },
+      "score": 28.85,
+      "rank": 1
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 6.836742126769881,
+        "win_rate": 0.3684210526315789,
+        "profit_factor": 1.228125346434267,
+        "max_drawdown_pct": 3.097010163275034,
+        "sharpe_ratio": 0.09418122008956031,
+        "total_trades": 285,
+        "avg_holding_days": 4.389473684210526
+      },
+      "score": 26.92,
+      "rank": 2
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 5.009016935424807,
+        "win_rate": 0.3672316384180791,
+        "profit_factor": 1.2417403118791477,
+        "max_drawdown_pct": 2.307356200348773,
+        "sharpe_ratio": 0.09534758673412527,
+        "total_trades": 177,
+        "avg_holding_days": 4.333333333333333
+      },
+      "score": 26.52,
+      "rank": 3
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 5.009016935424807,
+        "win_rate": 0.3672316384180791,
+        "profit_factor": 1.2417403118791477,
+        "max_drawdown_pct": 2.307356200348773,
+        "sharpe_ratio": 0.09534758673412527,
+        "total_trades": 177,
+        "avg_holding_days": 4.333333333333333
+      },
+      "score": 26.52,
+      "rank": 4
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 5.009016935424807,
+        "win_rate": 0.3672316384180791,
+        "profit_factor": 1.2417403118791477,
+        "max_drawdown_pct": 2.307356200348773,
+        "sharpe_ratio": 0.09534758673412527,
+        "total_trades": 177,
+        "avg_holding_days": 4.333333333333333
+      },
+      "score": 26.52,
+      "rank": 5
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 6.563000527343654,
+        "win_rate": 0.36585365853658536,
+        "profit_factor": 1.217273018283359,
+        "max_drawdown_pct": 3.3572071865581568,
+        "sharpe_ratio": 0.08858351236219347,
+        "total_trades": 287,
+        "avg_holding_days": 4.365853658536586
+      },
+      "score": 26.26,
+      "rank": 6
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 5.016981942748884,
+        "win_rate": 0.4117647058823529,
+        "profit_factor": 1.1719863526848147,
+        "max_drawdown_pct": 3.677607058864616,
+        "sharpe_ratio": 0.06902235492659062,
+        "total_trades": 238,
+        "avg_holding_days": 5.705882352941177
+      },
+      "score": 25.47,
+      "rank": 7
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 4.723849858093134,
+        "win_rate": 0.42379182156133827,
+        "profit_factor": 1.1460018399223972,
+        "max_drawdown_pct": 3.7431007880907115,
+        "sharpe_ratio": 0.0688502658749854,
+        "total_trades": 269,
+        "avg_holding_days": 5.5092936802973975
+      },
+      "score": 25.2,
+      "rank": 8
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 3.811614733886687,
+        "win_rate": 0.37662337662337664,
+        "profit_factor": 1.193614851564012,
+        "max_drawdown_pct": 2.456358115546807,
+        "sharpe_ratio": 0.09146846218124037,
+        "total_trades": 154,
+        "avg_holding_days": 3.7662337662337664
+      },
+      "score": 25.18,
+      "rank": 9
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 3.811614733886687,
+        "win_rate": 0.37662337662337664,
+        "profit_factor": 1.193614851564012,
+        "max_drawdown_pct": 2.456358115546807,
+        "sharpe_ratio": 0.09146846218124037,
+        "total_trades": 154,
+        "avg_holding_days": 3.7662337662337664
+      },
+      "score": 25.18,
+      "rank": 10
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 3.811614733886687,
+        "win_rate": 0.37662337662337664,
+        "profit_factor": 1.193614851564012,
+        "max_drawdown_pct": 2.456358115546807,
+        "sharpe_ratio": 0.09146846218124037,
+        "total_trades": 154,
+        "avg_holding_days": 3.7662337662337664
+      },
+      "score": 25.18,
+      "rank": 11
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 5.141413702087288,
+        "win_rate": 0.3744493392070485,
+        "profit_factor": 1.2026239377181387,
+        "max_drawdown_pct": 3.614721133477055,
+        "sharpe_ratio": 0.08614322063420474,
+        "total_trades": 227,
+        "avg_holding_days": 4.211453744493392
+      },
+      "score": 25.13,
+      "rank": 12
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 5.141413702087288,
+        "win_rate": 0.3744493392070485,
+        "profit_factor": 1.2026239377181387,
+        "max_drawdown_pct": 3.614721133477055,
+        "sharpe_ratio": 0.08614322063420474,
+        "total_trades": 227,
+        "avg_holding_days": 4.211453744493392
+      },
+      "score": 25.13,
+      "rank": 13
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 4.514164200744504,
+        "win_rate": 0.42105263157894735,
+        "profit_factor": 1.1397885369143548,
+        "max_drawdown_pct": 3.750723884739843,
+        "sharpe_ratio": 0.06516352308236038,
+        "total_trades": 266,
+        "avg_holding_days": 5.496240601503759
+      },
+      "score": 24.86,
+      "rank": 14
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 3.7789434439087053,
+        "win_rate": 0.41089108910891087,
+        "profit_factor": 1.144756771585711,
+        "max_drawdown_pct": 3.8058711046783427,
+        "sharpe_ratio": 0.0537352198285306,
+        "total_trades": 202,
+        "avg_holding_days": 5.584158415841584
+      },
+      "score": 24.04,
+      "rank": 15
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 5.102625323486282,
+        "win_rate": 0.3458646616541353,
+        "profit_factor": 1.1799618625776718,
+        "max_drawdown_pct": 3.89179605242607,
+        "sharpe_ratio": 0.06723148420880207,
+        "total_trades": 266,
+        "avg_holding_days": 4.515037593984962
+      },
+      "score": 23.64,
+      "rank": 16
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 4.980270763854918,
+        "win_rate": 0.28753993610223644,
+        "profit_factor": 1.18830350415091,
+        "max_drawdown_pct": 2.681075402546927,
+        "sharpe_ratio": 0.07796755151170573,
+        "total_trades": 313,
+        "avg_holding_days": 3.1022364217252396
+      },
+      "score": 23.14,
+      "rank": 17
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 4.980270763854918,
+        "win_rate": 0.28753993610223644,
+        "profit_factor": 1.18830350415091,
+        "max_drawdown_pct": 2.681075402546927,
+        "sharpe_ratio": 0.07796755151170573,
+        "total_trades": 313,
+        "avg_holding_days": 3.1022364217252396
+      },
+      "score": 23.14,
+      "rank": 18
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 4.835564347228924,
+        "win_rate": 0.2870967741935484,
+        "profit_factor": 1.1840655850717434,
+        "max_drawdown_pct": 2.9488237094201804,
+        "sharpe_ratio": 0.0769273064651353,
+        "total_trades": 310,
+        "avg_holding_days": 3.1225806451612903
+      },
+      "score": 22.75,
+      "rank": 19
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 3.216934930419942,
+        "win_rate": 0.2874251497005988,
+        "profit_factor": 1.193363389199436,
+        "max_drawdown_pct": 2.346870882752637,
+        "sharpe_ratio": 0.08209645705873377,
+        "total_trades": 167,
+        "avg_holding_days": 2.9760479041916166
+      },
+      "score": 22.35,
+      "rank": 20
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 3.216934930419942,
+        "win_rate": 0.2874251497005988,
+        "profit_factor": 1.193363389199436,
+        "max_drawdown_pct": 2.346870882752637,
+        "sharpe_ratio": 0.08209645705873377,
+        "total_trades": 167,
+        "avg_holding_days": 2.9760479041916166
+      },
+      "score": 22.35,
+      "rank": 21
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 3.216934930419942,
+        "win_rate": 0.2874251497005988,
+        "profit_factor": 1.193363389199436,
+        "max_drawdown_pct": 2.346870882752637,
+        "sharpe_ratio": 0.08209645705873377,
+        "total_trades": 167,
+        "avg_holding_days": 2.9760479041916166
+      },
+      "score": 22.35,
+      "rank": 22
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 3.5113505023193285,
+        "win_rate": 0.2897959183673469,
+        "profit_factor": 1.1581727100701542,
+        "max_drawdown_pct": 2.4590005506938457,
+        "sharpe_ratio": 0.07045614812670184,
+        "total_trades": 245,
+        "avg_holding_days": 3.0
+      },
+      "score": 21.95,
+      "rank": 23
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 3.5113505023193285,
+        "win_rate": 0.2897959183673469,
+        "profit_factor": 1.1581727100701542,
+        "max_drawdown_pct": 2.4590005506938457,
+        "sharpe_ratio": 0.07045614812670184,
+        "total_trades": 245,
+        "avg_holding_days": 3.0
+      },
+      "score": 21.95,
+      "rank": 24
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 3.5113505023193285,
+        "win_rate": 0.2897959183673469,
+        "profit_factor": 1.1581727100701542,
+        "max_drawdown_pct": 2.4590005506938457,
+        "sharpe_ratio": 0.07045614812670184,
+        "total_trades": 245,
+        "avg_holding_days": 3.0
+      },
+      "score": 21.95,
+      "rank": 25
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 2.1058296551514215,
+        "win_rate": 0.39766081871345027,
+        "profit_factor": 1.0876097014906998,
+        "max_drawdown_pct": 3.543906415983431,
+        "sharpe_ratio": 0.030653551070026586,
+        "total_trades": 171,
+        "avg_holding_days": 5.415204678362573
+      },
+      "score": 21.83,
+      "rank": 26
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 2.1058296551514215,
+        "win_rate": 0.39766081871345027,
+        "profit_factor": 1.0876097014906998,
+        "max_drawdown_pct": 3.543906415983431,
+        "sharpe_ratio": 0.030653551070026586,
+        "total_trades": 171,
+        "avg_holding_days": 5.415204678362573
+      },
+      "score": 21.83,
+      "rank": 27
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 2.1058296551514215,
+        "win_rate": 0.39766081871345027,
+        "profit_factor": 1.0876097014906998,
+        "max_drawdown_pct": 3.543906415983431,
+        "sharpe_ratio": 0.030653551070026586,
+        "total_trades": 171,
+        "avg_holding_days": 5.415204678362573
+      },
+      "score": 21.83,
+      "rank": 28
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 2.8892981985475052,
+        "win_rate": 0.2814070351758794,
+        "profit_factor": 1.1519858373268732,
+        "max_drawdown_pct": 1.914000908823127,
+        "sharpe_ratio": 0.07277176180883985,
+        "total_trades": 199,
+        "avg_holding_days": 2.9949748743718594
+      },
+      "score": 21.69,
+      "rank": 29
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 2.8892981985475052,
+        "win_rate": 0.2814070351758794,
+        "profit_factor": 1.1519858373268732,
+        "max_drawdown_pct": 1.914000908823127,
+        "sharpe_ratio": 0.07277176180883985,
+        "total_trades": 199,
+        "avg_holding_days": 2.9949748743718594
+      },
+      "score": 21.69,
+      "rank": 30
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 2.8892981985475052,
+        "win_rate": 0.2814070351758794,
+        "profit_factor": 1.1519858373268732,
+        "max_drawdown_pct": 1.914000908823127,
+        "sharpe_ratio": 0.07277176180883985,
+        "total_trades": 199,
+        "avg_holding_days": 2.9949748743718594
+      },
+      "score": 21.69,
+      "rank": 31
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.4042785900878954,
+        "win_rate": 0.359375,
+        "profit_factor": 1.0820956130090333,
+        "max_drawdown_pct": 2.2411199059588345,
+        "sharpe_ratio": 0.04428260909828429,
+        "total_trades": 128,
+        "avg_holding_days": 3.8203125
+      },
+      "score": 21.41,
+      "rank": 32
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.4042785900878954,
+        "win_rate": 0.359375,
+        "profit_factor": 1.0820956130090333,
+        "max_drawdown_pct": 2.2411199059588345,
+        "sharpe_ratio": 0.04428260909828429,
+        "total_trades": 128,
+        "avg_holding_days": 3.8203125
+      },
+      "score": 21.41,
+      "rank": 33
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.4042785900878954,
+        "win_rate": 0.359375,
+        "profit_factor": 1.0820956130090333,
+        "max_drawdown_pct": 2.2411199059588345,
+        "sharpe_ratio": 0.04428260909828429,
+        "total_trades": 128,
+        "avg_holding_days": 3.8203125
+      },
+      "score": 21.41,
+      "rank": 34
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.5472995391844888,
+        "win_rate": 0.4046511627906977,
+        "profit_factor": 1.0542979086525825,
+        "max_drawdown_pct": 3.816202681731616,
+        "sharpe_ratio": 0.019806226611465274,
+        "total_trades": 215,
+        "avg_holding_days": 5.52093023255814
+      },
+      "score": 20.89,
+      "rank": 35
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.5472995391844888,
+        "win_rate": 0.4046511627906977,
+        "profit_factor": 1.0542979086525825,
+        "max_drawdown_pct": 3.816202681731616,
+        "sharpe_ratio": 0.019806226611465274,
+        "total_trades": 215,
+        "avg_holding_days": 5.52093023255814
+      },
+      "score": 20.89,
+      "rank": 36
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.7878241998290905,
+        "win_rate": 0.2826086956521739,
+        "profit_factor": 1.1267933110976553,
+        "max_drawdown_pct": 2.1011788088788768,
+        "sharpe_ratio": 0.05252410529919536,
+        "total_trades": 138,
+        "avg_holding_days": 2.963768115942029
+      },
+      "score": 20.35,
+      "rank": 37
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.7878241998290905,
+        "win_rate": 0.2826086956521739,
+        "profit_factor": 1.1267933110976553,
+        "max_drawdown_pct": 2.1011788088788768,
+        "sharpe_ratio": 0.05252410529919536,
+        "total_trades": 138,
+        "avg_holding_days": 2.963768115942029
+      },
+      "score": 20.35,
+      "rank": 38
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.7878241998290905,
+        "win_rate": 0.2826086956521739,
+        "profit_factor": 1.1267933110976553,
+        "max_drawdown_pct": 2.1011788088788768,
+        "sharpe_ratio": 0.05252410529919536,
+        "total_trades": 138,
+        "avg_holding_days": 2.963768115942029
+      },
+      "score": 20.35,
+      "rank": 39
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 4.366387151489107,
+        "win_rate": 0.244,
+        "profit_factor": 1.151029456752083,
+        "max_drawdown_pct": 4.208443947243667,
+        "sharpe_ratio": 0.05308772357891815,
+        "total_trades": 250,
+        "avg_holding_days": 6.32
+      },
+      "score": 19.59,
+      "rank": 40
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.1754915960693761,
+        "win_rate": 0.38926174496644295,
+        "profit_factor": 1.0075559448516744,
+        "max_drawdown_pct": 3.310929199250786,
+        "sharpe_ratio": 0.005806964607552558,
+        "total_trades": 149,
+        "avg_holding_days": 4.751677852348993
+      },
+      "score": 19.24,
+      "rank": 41
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.1754915960693761,
+        "win_rate": 0.38926174496644295,
+        "profit_factor": 1.0075559448516744,
+        "max_drawdown_pct": 3.310929199250786,
+        "sharpe_ratio": 0.005806964607552558,
+        "total_trades": 149,
+        "avg_holding_days": 4.751677852348993
+      },
+      "score": 19.24,
+      "rank": 42
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.1754915960693761,
+        "win_rate": 0.38926174496644295,
+        "profit_factor": 1.0075559448516744,
+        "max_drawdown_pct": 3.310929199250786,
+        "sharpe_ratio": 0.005806964607552558,
+        "total_trades": 149,
+        "avg_holding_days": 4.751677852348993
+      },
+      "score": 19.24,
+      "rank": 43
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.13520396179202362,
+        "win_rate": 0.38524590163934425,
+        "profit_factor": 0.9930492110184818,
+        "max_drawdown_pct": 2.90295932580963,
+        "sharpe_ratio": -0.006400790517348169,
+        "total_trades": 122,
+        "avg_holding_days": 4.877049180327869
+      },
+      "score": 19.11,
+      "rank": 44
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.13520396179202362,
+        "win_rate": 0.38524590163934425,
+        "profit_factor": 0.9930492110184818,
+        "max_drawdown_pct": 2.90295932580963,
+        "sharpe_ratio": -0.006400790517348169,
+        "total_trades": 122,
+        "avg_holding_days": 4.877049180327869
+      },
+      "score": 19.11,
+      "rank": 45
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 1.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.13520396179202362,
+        "win_rate": 0.38524590163934425,
+        "profit_factor": 0.9930492110184818,
+        "max_drawdown_pct": 2.90295932580963,
+        "sharpe_ratio": -0.006400790517348169,
+        "total_trades": 122,
+        "avg_holding_days": 4.877049180327869
+      },
+      "score": 19.11,
+      "rank": 46
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 2.6377712133788154,
+        "win_rate": 0.2798507462686567,
+        "profit_factor": 1.0887473640854333,
+        "max_drawdown_pct": 3.725768003983538,
+        "sharpe_ratio": 0.03302440871246766,
+        "total_trades": 268,
+        "avg_holding_days": 5.42910447761194
+      },
+      "score": 18.83,
+      "rank": 47
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 2.847730390930199,
+        "win_rate": 0.27976190476190477,
+        "profit_factor": 1.1177360294655376,
+        "max_drawdown_pct": 4.547496978983767,
+        "sharpe_ratio": 0.045115313470909385,
+        "total_trades": 168,
+        "avg_holding_days": 9.613095238095237
+      },
+      "score": 18.77,
+      "rank": 48
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 3.88147555145256,
+        "win_rate": 0.23949579831932774,
+        "profit_factor": 1.143235893481063,
+        "max_drawdown_pct": 4.6655810325366875,
+        "sharpe_ratio": 0.04626765072038455,
+        "total_trades": 238,
+        "avg_holding_days": 6.5210084033613445
+      },
+      "score": 18.61,
+      "rank": 49
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 3.3115762063598666,
+        "win_rate": 0.2361111111111111,
+        "profit_factor": 1.1310229945917298,
+        "max_drawdown_pct": 4.176196844710118,
+        "sharpe_ratio": 0.044954185324753676,
+        "total_trades": 216,
+        "avg_holding_days": 6.541666666666667
+      },
+      "score": 18.36,
+      "rank": 50
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.634693502502443,
+        "win_rate": 0.32642487046632124,
+        "profit_factor": 1.0623691580456485,
+        "max_drawdown_pct": 4.809988058906862,
+        "sharpe_ratio": 0.02526272602851401,
+        "total_trades": 193,
+        "avg_holding_days": 7.891191709844559
+      },
+      "score": 18.13,
+      "rank": 51
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.8298138461303897,
+        "win_rate": 0.23357664233576642,
+        "profit_factor": 1.094186647248956,
+        "max_drawdown_pct": 2.9282387651979285,
+        "sharpe_ratio": 0.031228839151619055,
+        "total_trades": 137,
+        "avg_holding_days": 5.875912408759124
+      },
+      "score": 17.74,
+      "rank": 52
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 3.3715876290893503,
+        "win_rate": 0.21739130434782608,
+        "profit_factor": 1.1262456195560513,
+        "max_drawdown_pct": 4.408831576493212,
+        "sharpe_ratio": 0.055713862859992205,
+        "total_trades": 230,
+        "avg_holding_days": 7.613043478260869
+      },
+      "score": 17.71,
+      "rank": 53
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.7278474642944637,
+        "win_rate": 0.2318840579710145,
+        "profit_factor": 1.0884737371220994,
+        "max_drawdown_pct": 2.9310885496872117,
+        "sharpe_ratio": 0.0284858063245586,
+        "total_trades": 138,
+        "avg_holding_days": 5.840579710144928
+      },
+      "score": 17.52,
+      "rank": 54
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.7278474642944637,
+        "win_rate": 0.2318840579710145,
+        "profit_factor": 1.0884737371220994,
+        "max_drawdown_pct": 2.9310885496872117,
+        "sharpe_ratio": 0.0284858063245586,
+        "total_trades": 138,
+        "avg_holding_days": 5.840579710144928
+      },
+      "score": 17.52,
+      "rank": 55
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.6992285733031895,
+        "win_rate": 0.28078817733990147,
+        "profit_factor": 1.0620640694987031,
+        "max_drawdown_pct": 4.292726900090073,
+        "sharpe_ratio": 0.024577531402194402,
+        "total_trades": 203,
+        "avg_holding_days": 9.113300492610838
+      },
+      "score": 17.34,
+      "rank": 56
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.531785136718725,
+        "win_rate": 0.2857142857142857,
+        "profit_factor": 1.0523575282901454,
+        "max_drawdown_pct": 4.519088578048193,
+        "sharpe_ratio": 0.024666772830044082,
+        "total_trades": 217,
+        "avg_holding_days": 9.036866359447005
+      },
+      "score": 17.04,
+      "rank": 57
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.824451587219286,
+        "win_rate": 0.3271889400921659,
+        "profit_factor": 1.0292684235528269,
+        "max_drawdown_pct": 4.979998487586433,
+        "sharpe_ratio": 0.014218425815931753,
+        "total_trades": 217,
+        "avg_holding_days": 7.7695852534562215
+      },
+      "score": 16.94,
+      "rank": 58
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.7514553210449231,
+        "win_rate": 0.2777777777777778,
+        "profit_factor": 1.0379046567629673,
+        "max_drawdown_pct": 4.013491265643818,
+        "sharpe_ratio": 0.015860916719698633,
+        "total_trades": 144,
+        "avg_holding_days": 4.8125
+      },
+      "score": 16.46,
+      "rank": 59
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.7514553210449231,
+        "win_rate": 0.2777777777777778,
+        "profit_factor": 1.0379046567629673,
+        "max_drawdown_pct": 4.013491265643818,
+        "sharpe_ratio": 0.015860916719698633,
+        "total_trades": 144,
+        "avg_holding_days": 4.8125
+      },
+      "score": 16.46,
+      "rank": 60
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.7514553210449231,
+        "win_rate": 0.2777777777777778,
+        "profit_factor": 1.0379046567629673,
+        "max_drawdown_pct": 4.013491265643818,
+        "sharpe_ratio": 0.015860916719698633,
+        "total_trades": 144,
+        "avg_holding_days": 4.8125
+      },
+      "score": 16.46,
+      "rank": 61
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 2.2600626916504116,
+        "win_rate": 0.2109375,
+        "profit_factor": 1.120713754251824,
+        "max_drawdown_pct": 4.715445010774563,
+        "sharpe_ratio": 0.037185582999440685,
+        "total_trades": 128,
+        "avg_holding_days": 6.8828125
+      },
+      "score": 16.33,
+      "rank": 62
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.16766533843993967,
+        "win_rate": 0.33472803347280333,
+        "profit_factor": 1.0053924551592204,
+        "max_drawdown_pct": 4.9914185861709575,
+        "sharpe_ratio": 0.004681927678987429,
+        "total_trades": 239,
+        "avg_holding_days": 7.347280334728033
+      },
+      "score": 16.31,
+      "rank": 63
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.6975639959717663,
+        "win_rate": 0.17647058823529413,
+        "profit_factor": 1.1016618087418542,
+        "max_drawdown_pct": 3.624491144284978,
+        "sharpe_ratio": 0.03779907807204736,
+        "total_trades": 153,
+        "avg_holding_days": 4.294117647058823
+      },
+      "score": 16.31,
+      "rank": 64
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.6975639959717663,
+        "win_rate": 0.17647058823529413,
+        "profit_factor": 1.1016618087418542,
+        "max_drawdown_pct": 3.624491144284978,
+        "sharpe_ratio": 0.03779907807204736,
+        "total_trades": 153,
+        "avg_holding_days": 4.294117647058823
+      },
+      "score": 16.31,
+      "rank": 65
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.6975639959717663,
+        "win_rate": 0.17647058823529413,
+        "profit_factor": 1.1016618087418542,
+        "max_drawdown_pct": 3.624491144284978,
+        "sharpe_ratio": 0.03779907807204736,
+        "total_trades": 153,
+        "avg_holding_days": 4.294117647058823
+      },
+      "score": 16.31,
+      "rank": 66
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.282068095092749,
+        "win_rate": 0.27165354330708663,
+        "profit_factor": 1.0459649665305861,
+        "max_drawdown_pct": 4.624470718642554,
+        "sharpe_ratio": 0.013890048235479926,
+        "total_trades": 254,
+        "avg_holding_days": 5.661417322834645
+      },
+      "score": 16.24,
+      "rank": 67
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 2.160877421264653,
+        "win_rate": 0.20930232558139536,
+        "profit_factor": 1.1148078896523166,
+        "max_drawdown_pct": 4.720185738600054,
+        "sharpe_ratio": 0.034492168045876945,
+        "total_trades": 129,
+        "avg_holding_days": 6.837209302325581
+      },
+      "score": 16.12,
+      "rank": 68
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 2.160877421264653,
+        "win_rate": 0.20930232558139536,
+        "profit_factor": 1.1148078896523166,
+        "max_drawdown_pct": 4.720185738600054,
+        "sharpe_ratio": 0.034492168045876945,
+        "total_trades": 129,
+        "avg_holding_days": 6.837209302325581
+      },
+      "score": 16.12,
+      "rank": 69
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.1825073822021805,
+        "win_rate": 0.2138364779874214,
+        "profit_factor": 1.0697704017097618,
+        "max_drawdown_pct": 3.3843596797609066,
+        "sharpe_ratio": 0.036328610105608485,
+        "total_trades": 159,
+        "avg_holding_days": 3.729559748427673
+      },
+      "score": 16.09,
+      "rank": 70
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.1825073822021805,
+        "win_rate": 0.2138364779874214,
+        "profit_factor": 1.0697704017097618,
+        "max_drawdown_pct": 3.3843596797609066,
+        "sharpe_ratio": 0.036328610105608485,
+        "total_trades": 159,
+        "avg_holding_days": 3.729559748427673
+      },
+      "score": 16.09,
+      "rank": 71
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.1825073822021805,
+        "win_rate": 0.2138364779874214,
+        "profit_factor": 1.0697704017097618,
+        "max_drawdown_pct": 3.3843596797609066,
+        "sharpe_ratio": 0.036328610105608485,
+        "total_trades": 159,
+        "avg_holding_days": 3.729559748427673
+      },
+      "score": 16.09,
+      "rank": 72
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.865495210876441,
+        "win_rate": 0.2662337662337662,
+        "profit_factor": 1.0378810840644574,
+        "max_drawdown_pct": 4.345548189559296,
+        "sharpe_ratio": 0.015531235603389986,
+        "total_trades": 154,
+        "avg_holding_days": 9.5
+      },
+      "score": 15.94,
+      "rank": 73
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.5439483438110038,
+        "win_rate": 0.2595419847328244,
+        "profit_factor": 1.0241939216677198,
+        "max_drawdown_pct": 3.764957384066011,
+        "sharpe_ratio": -0.00032417961153751856,
+        "total_trades": 131,
+        "avg_holding_days": 7.2748091603053435
+      },
+      "score": 15.72,
+      "rank": 74
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.0680841012573363,
+        "win_rate": 0.23026315789473684,
+        "profit_factor": 1.0529717352877659,
+        "max_drawdown_pct": 4.037115519897686,
+        "sharpe_ratio": 0.019721669955751316,
+        "total_trades": 152,
+        "avg_holding_days": 6.644736842105263
+      },
+      "score": 15.58,
+      "rank": 75
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.026140783386246768,
+        "win_rate": 0.27102803738317754,
+        "profit_factor": 1.0010222932498543,
+        "max_drawdown_pct": 4.121039890791919,
+        "sharpe_ratio": 0.002700606772465195,
+        "total_trades": 214,
+        "avg_holding_days": 5.457943925233645
+      },
+      "score": 15.1,
+      "rank": 76
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.7413557415771648,
+        "win_rate": 0.21768707482993196,
+        "profit_factor": 1.0282442246273398,
+        "max_drawdown_pct": 3.7988303837622666,
+        "sharpe_ratio": 0.025134168481806034,
+        "total_trades": 294,
+        "avg_holding_days": 3.901360544217687
+      },
+      "score": 14.91,
+      "rank": 77
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.591374111633253,
+        "win_rate": 0.2,
+        "profit_factor": 1.037049811964004,
+        "max_drawdown_pct": 3.175231660408847,
+        "sharpe_ratio": 0.004453527920755629,
+        "total_trades": 105,
+        "avg_holding_days": 7.152380952380953
+      },
+      "score": 14.81,
+      "rank": 78
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.660715504455613,
+        "win_rate": 0.21694915254237288,
+        "profit_factor": 1.025098356981814,
+        "max_drawdown_pct": 3.8005325641083,
+        "sharpe_ratio": 0.02338412550046154,
+        "total_trades": 295,
+        "avg_holding_days": 3.8915254237288135
+      },
+      "score": 14.78,
+      "rank": 79
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.2567686770630389,
+        "win_rate": 0.26666666666666666,
+        "profit_factor": 0.9269320110027214,
+        "max_drawdown_pct": 3.3432690287901004,
+        "sharpe_ratio": -0.026567802314488596,
+        "total_trades": 120,
+        "avg_holding_days": 4.725
+      },
+      "score": 14.75,
+      "rank": 80
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.2567686770630389,
+        "win_rate": 0.26666666666666666,
+        "profit_factor": 0.9269320110027214,
+        "max_drawdown_pct": 3.3432690287901004,
+        "sharpe_ratio": -0.026567802314488596,
+        "total_trades": 120,
+        "avg_holding_days": 4.725
+      },
+      "score": 14.75,
+      "rank": 81
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.2567686770630389,
+        "win_rate": 0.26666666666666666,
+        "profit_factor": 0.9269320110027214,
+        "max_drawdown_pct": 3.3432690287901004,
+        "sharpe_ratio": -0.026567802314488596,
+        "total_trades": 120,
+        "avg_holding_days": 4.725
+      },
+      "score": 14.75,
+      "rank": 82
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.8842174313354335,
+        "win_rate": 0.23469387755102042,
+        "profit_factor": 1.0373383280875026,
+        "max_drawdown_pct": 4.9926894484434134,
+        "sharpe_ratio": 0.02666159455645804,
+        "total_trades": 196,
+        "avg_holding_days": 6.688775510204081
+      },
+      "score": 14.63,
+      "rank": 83
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.4928066091918445,
+        "win_rate": 0.19811320754716982,
+        "profit_factor": 1.0306850316123712,
+        "max_drawdown_pct": 3.1782965317593135,
+        "sharpe_ratio": 0.001234554977878294,
+        "total_trades": 106,
+        "avg_holding_days": 7.09433962264151
+      },
+      "score": 14.63,
+      "rank": 84
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.4928066091918445,
+        "win_rate": 0.19811320754716982,
+        "profit_factor": 1.0306850316123712,
+        "max_drawdown_pct": 3.1782965317593135,
+        "sharpe_ratio": 0.001234554977878294,
+        "total_trades": 106,
+        "avg_holding_days": 7.09433962264151
+      },
+      "score": 14.63,
+      "rank": 85
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.1408622817993455,
+        "win_rate": 0.2537313432835821,
+        "profit_factor": 0.9938970196771192,
+        "max_drawdown_pct": 3.96922197148005,
+        "sharpe_ratio": -0.016952026095843474,
+        "total_trades": 134,
+        "avg_holding_days": 7.1940298507462686
+      },
+      "score": 14.61,
+      "rank": 86
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.1408622817993455,
+        "win_rate": 0.2537313432835821,
+        "profit_factor": 0.9938970196771192,
+        "max_drawdown_pct": 3.96922197148005,
+        "sharpe_ratio": -0.016952026095843474,
+        "total_trades": 134,
+        "avg_holding_days": 7.1940298507462686
+      },
+      "score": 14.61,
+      "rank": 87
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.4880356933595321,
+        "win_rate": 0.16847826086956522,
+        "profit_factor": 1.0252439397930424,
+        "max_drawdown_pct": 3.2246222950754766,
+        "sharpe_ratio": 0.013060761276456275,
+        "total_trades": 184,
+        "avg_holding_days": 4.190217391304348
+      },
+      "score": 14.6,
+      "rank": 88
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.4847009716797911,
+        "win_rate": 0.16756756756756758,
+        "profit_factor": 1.0250671254676993,
+        "max_drawdown_pct": 3.2310464803398324,
+        "sharpe_ratio": 0.011018414201611273,
+        "total_trades": 185,
+        "avg_holding_days": 4.34054054054054
+      },
+      "score": 14.58,
+      "rank": 89
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.4847009716797911,
+        "win_rate": 0.16756756756756758,
+        "profit_factor": 1.0250671254676993,
+        "max_drawdown_pct": 3.2310464803398324,
+        "sharpe_ratio": 0.011018414201611273,
+        "total_trades": 185,
+        "avg_holding_days": 4.34054054054054
+      },
+      "score": 14.58,
+      "rank": 90
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.47699645355221587,
+        "win_rate": 0.21908127208480566,
+        "profit_factor": 1.0185857670672034,
+        "max_drawdown_pct": 3.944931789715432,
+        "sharpe_ratio": 0.02353949606917745,
+        "total_trades": 283,
+        "avg_holding_days": 3.833922261484099
+      },
+      "score": 14.51,
+      "rank": 91
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.8408324761962868,
+        "win_rate": 0.25517241379310346,
+        "profit_factor": 0.9638886215531736,
+        "max_drawdown_pct": 3.6721089596908936,
+        "sharpe_ratio": -0.021831760743779748,
+        "total_trades": 145,
+        "avg_holding_days": 8.303448275862069
+      },
+      "score": 14.43,
+      "rank": 92
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.8820743426513945,
+        "win_rate": 0.25925925925925924,
+        "profit_factor": 0.9573432911974216,
+        "max_drawdown_pct": 3.7862509412950476,
+        "sharpe_ratio": -0.02422295653288241,
+        "total_trades": 162,
+        "avg_holding_days": 5.617283950617284
+      },
+      "score": 14.42,
+      "rank": 93
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.4626374755859579,
+        "win_rate": 0.22522522522522523,
+        "profit_factor": 0.9718412785084769,
+        "max_drawdown_pct": 3.0266989307924765,
+        "sharpe_ratio": -0.015430531418888598,
+        "total_trades": 111,
+        "avg_holding_days": 6.117117117117117
+      },
+      "score": 14.39,
+      "rank": 94
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.9221885696411481,
+        "win_rate": 0.23300970873786409,
+        "profit_factor": 1.0364518217654832,
+        "max_drawdown_pct": 5.192636522266714,
+        "sharpe_ratio": 0.02037088401688243,
+        "total_trades": 206,
+        "avg_holding_days": 6.315533980582524
+      },
+      "score": 14.38,
+      "rank": 95
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 1.140537500305174,
+        "win_rate": 0.20093457943925233,
+        "profit_factor": 1.045787390462688,
+        "max_drawdown_pct": 4.468597465053113,
+        "sharpe_ratio": 0.019961858990991784,
+        "total_trades": 214,
+        "avg_holding_days": 7.808411214953271
+      },
+      "score": 14.37,
+      "rank": 96
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.073781148681679,
+        "win_rate": 0.2956521739130435,
+        "profit_factor": 0.895942922906136,
+        "max_drawdown_pct": 4.115640895586056,
+        "sharpe_ratio": -0.05451778542944749,
+        "total_trades": 115,
+        "avg_holding_days": 5.765217391304348
+      },
+      "score": 14.37,
+      "rank": 97
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.073781148681679,
+        "win_rate": 0.2956521739130435,
+        "profit_factor": 0.895942922906136,
+        "max_drawdown_pct": 4.115640895586056,
+        "sharpe_ratio": -0.05451778542944749,
+        "total_trades": 115,
+        "avg_holding_days": 5.765217391304348
+      },
+      "score": 14.37,
+      "rank": 98
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.073781148681679,
+        "win_rate": 0.2956521739130435,
+        "profit_factor": 0.895942922906136,
+        "max_drawdown_pct": 4.115640895586056,
+        "sharpe_ratio": -0.05451778542944749,
+        "total_trades": 115,
+        "avg_holding_days": 5.765217391304348
+      },
+      "score": 14.37,
+      "rank": 99
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.8522335656737705,
+        "win_rate": 0.2571428571428571,
+        "profit_factor": 0.9547867030816669,
+        "max_drawdown_pct": 3.866884313919611,
+        "sharpe_ratio": -0.02756389880384788,
+        "total_trades": 105,
+        "avg_holding_days": 7.780952380952381
+      },
+      "score": 14.32,
+      "rank": 100
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.8754037280272896,
+        "win_rate": 0.1827956989247312,
+        "profit_factor": 1.034266954287999,
+        "max_drawdown_pct": 4.124662371044924,
+        "sharpe_ratio": 0.02151566032762138,
+        "total_trades": 279,
+        "avg_holding_days": 4.587813620071684
+      },
+      "score": 14.3,
+      "rank": 101
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.5544860778808798,
+        "win_rate": 0.22321428571428573,
+        "profit_factor": 0.9664384785530049,
+        "max_drawdown_pct": 3.0284583273820442,
+        "sharpe_ratio": -0.018781979918620496,
+        "total_trades": 112,
+        "avg_holding_days": 6.071428571428571
+      },
+      "score": 14.27,
+      "rank": 102
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.5544860778808798,
+        "win_rate": 0.22321428571428573,
+        "profit_factor": 0.9664384785530049,
+        "max_drawdown_pct": 3.0284583273820442,
+        "sharpe_ratio": -0.018781979918620496,
+        "total_trades": 112,
+        "avg_holding_days": 6.071428571428571
+      },
+      "score": 14.27,
+      "rank": 103
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.8929618902588846,
+        "win_rate": 0.2639593908629442,
+        "profit_factor": 0.9616450664239998,
+        "max_drawdown_pct": 4.154724776476034,
+        "sharpe_ratio": -0.008468416792508393,
+        "total_trades": 197,
+        "avg_holding_days": 5.761421319796955
+      },
+      "score": 14.24,
+      "rank": 104
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.4338811489867803,
+        "win_rate": 0.26609442060085836,
+        "profit_factor": 1.0160845571233872,
+        "max_drawdown_pct": 5.635035770232022,
+        "sharpe_ratio": 0.0070300565535507155,
+        "total_trades": 233,
+        "avg_holding_days": 5.652360515021459
+      },
+      "score": 14.23,
+      "rank": 105
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.5450980087281205,
+        "win_rate": 0.2682926829268293,
+        "profit_factor": 0.9773530542209079,
+        "max_drawdown_pct": 4.650455090378992,
+        "sharpe_ratio": -0.004758944083364423,
+        "total_trades": 205,
+        "avg_holding_days": 5.780487804878049
+      },
+      "score": 14.18,
+      "rank": 106
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.8119951513671404,
+        "win_rate": 0.18214285714285713,
+        "profit_factor": 1.0317061808848882,
+        "max_drawdown_pct": 4.197526558170407,
+        "sharpe_ratio": 0.01988042239223113,
+        "total_trades": 280,
+        "avg_holding_days": 4.575
+      },
+      "score": 14.15,
+      "rank": 107
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.3130145880126802,
+        "win_rate": 0.22151898734177214,
+        "profit_factor": 1.0150143703528351,
+        "max_drawdown_pct": 4.108601702630464,
+        "sharpe_ratio": 0.0009241298243764357,
+        "total_trades": 158,
+        "avg_holding_days": 6.550632911392405
+      },
+      "score": 14.12,
+      "rank": 108
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.3130145880126802,
+        "win_rate": 0.22151898734177214,
+        "profit_factor": 1.0150143703528351,
+        "max_drawdown_pct": 4.108601702630464,
+        "sharpe_ratio": 0.0009241298243764357,
+        "total_trades": 158,
+        "avg_holding_days": 6.550632911392405
+      },
+      "score": 14.12,
+      "rank": 109
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.7337561221314245,
+        "win_rate": 0.2702702702702703,
+        "profit_factor": 0.972742211161302,
+        "max_drawdown_pct": 4.680126114195522,
+        "sharpe_ratio": -0.009882357760393536,
+        "total_trades": 185,
+        "avg_holding_days": 8.967567567567567
+      },
+      "score": 14.09,
+      "rank": 110
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.173715472106982,
+        "win_rate": 0.25766871165644173,
+        "profit_factor": 0.9439230434407235,
+        "max_drawdown_pct": 3.9157490650057185,
+        "sharpe_ratio": -0.03111190197758916,
+        "total_trades": 163,
+        "avg_holding_days": 5.6503067484662575
+      },
+      "score": 14.08,
+      "rank": 111
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.173715472106982,
+        "win_rate": 0.25766871165644173,
+        "profit_factor": 0.9439230434407235,
+        "max_drawdown_pct": 3.9157490650057185,
+        "sharpe_ratio": -0.03111190197758916,
+        "total_trades": 163,
+        "avg_holding_days": 5.6503067484662575
+      },
+      "score": 14.08,
+      "rank": 112
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.20798735473628038,
+        "win_rate": 0.20105820105820105,
+        "profit_factor": 0.9892776259464883,
+        "max_drawdown_pct": 2.9094005346213367,
+        "sharpe_ratio": 0.00580414482678241,
+        "total_trades": 189,
+        "avg_holding_days": 3.7037037037037037
+      },
+      "score": 14.03,
+      "rank": 113
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.2599435479735985,
+        "win_rate": 0.2,
+        "profit_factor": 0.986599646264181,
+        "max_drawdown_pct": 2.922601177299198,
+        "sharpe_ratio": 0.003565936889767334,
+        "total_trades": 190,
+        "avg_holding_days": 3.8526315789473684
+      },
+      "score": 13.94,
+      "rank": 114
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.2599435479735985,
+        "win_rate": 0.2,
+        "profit_factor": 0.986599646264181,
+        "max_drawdown_pct": 2.922601177299198,
+        "sharpe_ratio": 0.003565936889767334,
+        "total_trades": 190,
+        "avg_holding_days": 3.8526315789473684
+      },
+      "score": 13.94,
+      "rank": 115
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.8882437792968122,
+        "win_rate": 0.25165562913907286,
+        "profit_factor": 0.9627736125056956,
+        "max_drawdown_pct": 4.149862465472794,
+        "sharpe_ratio": -0.02624485963062272,
+        "total_trades": 151,
+        "avg_holding_days": 8.410596026490067
+      },
+      "score": 13.91,
+      "rank": 116
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.8882437792968122,
+        "win_rate": 0.25165562913907286,
+        "profit_factor": 0.9627736125056956,
+        "max_drawdown_pct": 4.149862465472794,
+        "sharpe_ratio": -0.02624485963062272,
+        "total_trades": 151,
+        "avg_holding_days": 8.410596026490067
+      },
+      "score": 13.91,
+      "rank": 117
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.1104586560058378,
+        "win_rate": 0.2523364485981308,
+        "profit_factor": 0.9417765345739086,
+        "max_drawdown_pct": 4.006494185368319,
+        "sharpe_ratio": -0.0354403930963539,
+        "total_trades": 107,
+        "avg_holding_days": 7.682242990654205
+      },
+      "score": 13.9,
+      "rank": 118
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.1104586560058378,
+        "win_rate": 0.2523364485981308,
+        "profit_factor": 0.9417765345739086,
+        "max_drawdown_pct": 4.006494185368319,
+        "sharpe_ratio": -0.0354403930963539,
+        "total_trades": 107,
+        "avg_holding_days": 7.682242990654205
+      },
+      "score": 13.9,
+      "rank": 119
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.4150242022705788,
+        "win_rate": 0.14583333333333334,
+        "profit_factor": 1.0259311334560652,
+        "max_drawdown_pct": 4.197055740686985,
+        "sharpe_ratio": 0.014327496764090262,
+        "total_trades": 144,
+        "avg_holding_days": 4.979166666666667
+      },
+      "score": 13.77,
+      "rank": 120
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.4150242022705788,
+        "win_rate": 0.14583333333333334,
+        "profit_factor": 1.0259311334560652,
+        "max_drawdown_pct": 4.197055740686985,
+        "sharpe_ratio": 0.014327496764090262,
+        "total_trades": 144,
+        "avg_holding_days": 4.979166666666667
+      },
+      "score": 13.77,
+      "rank": 121
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.4150242022705788,
+        "win_rate": 0.14583333333333334,
+        "profit_factor": 1.0259311334560652,
+        "max_drawdown_pct": 4.197055740686985,
+        "sharpe_ratio": 0.014327496764090262,
+        "total_trades": 144,
+        "avg_holding_days": 4.979166666666667
+      },
+      "score": 13.77,
+      "rank": 122
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.4197371255492617,
+        "win_rate": 0.2077922077922078,
+        "profit_factor": 0.9810340722240082,
+        "max_drawdown_pct": 3.4699716940331387,
+        "sharpe_ratio": 0.010094825414430072,
+        "total_trades": 231,
+        "avg_holding_days": 3.844155844155844
+      },
+      "score": 13.65,
+      "rank": 123
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.3200504772948625,
+        "win_rate": 0.2922077922077922,
+        "profit_factor": 0.9014498490316106,
+        "max_drawdown_pct": 4.73817689993202,
+        "sharpe_ratio": -0.05607286962638696,
+        "total_trades": 154,
+        "avg_holding_days": 7.103896103896104
+      },
+      "score": 13.6,
+      "rank": 124
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.1882387844848707,
+        "win_rate": 0.25862068965517243,
+        "profit_factor": 0.9528797667531884,
+        "max_drawdown_pct": 4.60450188195471,
+        "sharpe_ratio": -0.021842944995938654,
+        "total_trades": 174,
+        "avg_holding_days": 9.32183908045977
+      },
+      "score": 13.53,
+      "rank": 125
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.4191619467162091,
+        "win_rate": 0.17333333333333334,
+        "profit_factor": 0.9809832882338787,
+        "max_drawdown_pct": 3.63167655123346,
+        "sharpe_ratio": 0.01201039530493203,
+        "total_trades": 225,
+        "avg_holding_days": 4.3244444444444445
+      },
+      "score": 13.32,
+      "rank": 126
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.6246154376220363,
+        "win_rate": 0.28846153846153844,
+        "profit_factor": 0.8894722984181022,
+        "max_drawdown_pct": 4.7487023631258936,
+        "sharpe_ratio": -0.061836010013913444,
+        "total_trades": 156,
+        "avg_holding_days": 7.128205128205129
+      },
+      "score": 13.28,
+      "rank": 127
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.6246154376220363,
+        "win_rate": 0.28846153846153844,
+        "profit_factor": 0.8894722984181022,
+        "max_drawdown_pct": 4.7487023631258936,
+        "sharpe_ratio": -0.061836010013913444,
+        "total_trades": 156,
+        "avg_holding_days": 7.128205128205129
+      },
+      "score": 13.28,
+      "rank": 128
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.7821151968382765,
+        "win_rate": 0.20512820512820512,
+        "profit_factor": 0.9651182408370509,
+        "max_drawdown_pct": 3.481577127560213,
+        "sharpe_ratio": 4.487779996369978e-05,
+        "total_trades": 234,
+        "avg_holding_days": 3.952991452991453
+      },
+      "score": 13.25,
+      "rank": 129
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.7821151968382765,
+        "win_rate": 0.20512820512820512,
+        "profit_factor": 0.9651182408370509,
+        "max_drawdown_pct": 3.481577127560213,
+        "sharpe_ratio": 4.487779996369978e-05,
+        "total_trades": 234,
+        "avg_holding_days": 3.952991452991453
+      },
+      "score": 13.25,
+      "rank": 130
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.38777377319333,
+        "win_rate": 0.29285714285714287,
+        "profit_factor": 0.8996147412538151,
+        "max_drawdown_pct": 5.120543535249159,
+        "sharpe_ratio": -0.054542707369837365,
+        "total_trades": 140,
+        "avg_holding_days": 5.757142857142857
+      },
+      "score": 13.25,
+      "rank": 131
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.6093712924194115,
+        "win_rate": 0.20422535211267606,
+        "profit_factor": 1.0310507376279312,
+        "max_drawdown_pct": 5.286552292777102,
+        "sharpe_ratio": 0.012696441760953265,
+        "total_trades": 142,
+        "avg_holding_days": 7.746478873239437
+      },
+      "score": 13.18,
+      "rank": 132
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.5180915249633546,
+        "win_rate": 0.2907801418439716,
+        "profit_factor": 0.894574417118969,
+        "max_drawdown_pct": 5.119393189886328,
+        "sharpe_ratio": -0.05782361693877988,
+        "total_trades": 141,
+        "avg_holding_days": 5.74468085106383
+      },
+      "score": 13.11,
+      "rank": 133
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.5180915249633546,
+        "win_rate": 0.2907801418439716,
+        "profit_factor": 0.894574417118969,
+        "max_drawdown_pct": 5.119393189886328,
+        "sharpe_ratio": -0.05782361693877988,
+        "total_trades": 141,
+        "avg_holding_days": 5.74468085106383
+      },
+      "score": 13.11,
+      "rank": 134
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.49652487701407516,
+        "win_rate": 0.17180616740088106,
+        "profit_factor": 0.9776103437998612,
+        "max_drawdown_pct": 3.859875285142025,
+        "sharpe_ratio": 0.00375887463858732,
+        "total_trades": 227,
+        "avg_holding_days": 4.533039647577093
+      },
+      "score": 13.02,
+      "rank": 135
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.49652487701407516,
+        "win_rate": 0.17180616740088106,
+        "profit_factor": 0.9776103437998612,
+        "max_drawdown_pct": 3.859875285142025,
+        "sharpe_ratio": 0.00375887463858732,
+        "total_trades": 227,
+        "avg_holding_days": 4.533039647577093
+      },
+      "score": 13.02,
+      "rank": 136
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.49551756134031166,
+        "win_rate": 0.203125,
+        "profit_factor": 1.0208274426263817,
+        "max_drawdown_pct": 5.231668727821185,
+        "sharpe_ratio": 0.016002799779648264,
+        "total_trades": 192,
+        "avg_holding_days": 7.359375
+      },
+      "score": 13.0,
+      "rank": 137
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.30223924713132144,
+        "win_rate": 0.25120772946859904,
+        "profit_factor": 0.989574121331592,
+        "max_drawdown_pct": 5.919244908640826,
+        "sharpe_ratio": 0.01947161090530973,
+        "total_trades": 207,
+        "avg_holding_days": 9.96135265700483
+      },
+      "score": 12.97,
+      "rank": 138
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.1158575338744994,
+        "win_rate": 0.21875,
+        "profit_factor": 0.9383031674026576,
+        "max_drawdown_pct": 4.241874463612643,
+        "sharpe_ratio": -0.03752448659175875,
+        "total_trades": 96,
+        "avg_holding_days": 9.239583333333334
+      },
+      "score": 12.78,
+      "rank": 139
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.27861550201404317,
+        "win_rate": 0.2032967032967033,
+        "profit_factor": 1.012592597642164,
+        "max_drawdown_pct": 5.243057034417131,
+        "sharpe_ratio": 0.01800711819402035,
+        "total_trades": 182,
+        "avg_holding_days": 7.818681318681318
+      },
+      "score": 12.75,
+      "rank": 140
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.4393303738403045,
+        "win_rate": 0.2962962962962963,
+        "profit_factor": 0.9069233621677469,
+        "max_drawdown_pct": 5.842706800956163,
+        "sharpe_ratio": -0.03981204391291444,
+        "total_trades": 189,
+        "avg_holding_days": 7.841269841269841
+      },
+      "score": 12.72,
+      "rank": 141
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.500326503295917,
+        "win_rate": 0.19696969696969696,
+        "profit_factor": 0.8975522052840172,
+        "max_drawdown_pct": 3.4360102882390526,
+        "sharpe_ratio": -0.0325256760276515,
+        "total_trades": 132,
+        "avg_holding_days": 3.6515151515151514
+      },
+      "score": 12.68,
+      "rank": 142
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.500326503295917,
+        "win_rate": 0.19696969696969696,
+        "profit_factor": 0.8975522052840172,
+        "max_drawdown_pct": 3.4360102882390526,
+        "sharpe_ratio": -0.0325256760276515,
+        "total_trades": 132,
+        "avg_holding_days": 3.6515151515151514
+      },
+      "score": 12.68,
+      "rank": 143
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.500326503295917,
+        "win_rate": 0.19696969696969696,
+        "profit_factor": 0.8975522052840172,
+        "max_drawdown_pct": 3.4360102882390526,
+        "sharpe_ratio": -0.0325256760276515,
+        "total_trades": 132,
+        "avg_holding_days": 3.6515151515151514
+      },
+      "score": 12.68,
+      "rank": 144
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.2442475970458181,
+        "win_rate": 0.14367816091954022,
+        "profit_factor": 0.9867309584374748,
+        "max_drawdown_pct": 4.692989328657695,
+        "sharpe_ratio": 0.004942720951118135,
+        "total_trades": 174,
+        "avg_holding_days": 4.810344827586207
+      },
+      "score": 12.5,
+      "rank": 145
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.31160705749510087,
+        "win_rate": 0.18848167539267016,
+        "profit_factor": 0.9867579705008106,
+        "max_drawdown_pct": 4.625820628711165,
+        "sharpe_ratio": 0.0015332789305571959,
+        "total_trades": 191,
+        "avg_holding_days": 7.816753926701571
+      },
+      "score": 12.49,
+      "rank": 146
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.16987487457273528,
+        "win_rate": 0.19594594594594594,
+        "profit_factor": 1.0084771646578257,
+        "max_drawdown_pct": 5.309655285656446,
+        "sharpe_ratio": -5.72725625183009e-05,
+        "total_trades": 148,
+        "avg_holding_days": 7.587837837837838
+      },
+      "score": 12.35,
+      "rank": 147
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": 0.16987487457273528,
+        "win_rate": 0.19594594594594594,
+        "profit_factor": 1.0084771646578257,
+        "max_drawdown_pct": 5.309655285656446,
+        "sharpe_ratio": -5.72725625183009e-05,
+        "total_trades": 148,
+        "avg_holding_days": 7.587837837837838
+      },
+      "score": 12.35,
+      "rank": 148
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.4222384793090314,
+        "win_rate": 0.14204545454545456,
+        "profit_factor": 0.9772601649483705,
+        "max_drawdown_pct": 4.701893973666134,
+        "sharpe_ratio": -0.0017660875372112641,
+        "total_trades": 176,
+        "avg_holding_days": 4.954545454545454
+      },
+      "score": 12.34,
+      "rank": 149
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.4222384793090314,
+        "win_rate": 0.14204545454545456,
+        "profit_factor": 0.9772601649483705,
+        "max_drawdown_pct": 4.701893973666134,
+        "sharpe_ratio": -0.0017660875372112641,
+        "total_trades": 176,
+        "avg_holding_days": 4.954545454545454
+      },
+      "score": 12.34,
+      "rank": 150
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -0.055315111694333605,
+        "win_rate": 0.17777777777777778,
+        "profit_factor": 0.9977935969200695,
+        "max_drawdown_pct": 5.201886688678532,
+        "sharpe_ratio": 0.01268911941565521,
+        "total_trades": 270,
+        "avg_holding_days": 4.377777777777778
+      },
+      "score": 12.26,
+      "rank": 151
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.1545122723387906,
+        "win_rate": 0.152,
+        "profit_factor": 0.8488695439541305,
+        "max_drawdown_pct": 3.4128053032694874,
+        "sharpe_ratio": -0.05649502570080401,
+        "total_trades": 125,
+        "avg_holding_days": 4.424
+      },
+      "score": 12.26,
+      "rank": 152
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.1545122723387906,
+        "win_rate": 0.152,
+        "profit_factor": 0.8488695439541305,
+        "max_drawdown_pct": 3.4128053032694874,
+        "sharpe_ratio": -0.05649502570080401,
+        "total_trades": 125,
+        "avg_holding_days": 4.424
+      },
+      "score": 12.26,
+      "rank": 153
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.1545122723387906,
+        "win_rate": 0.152,
+        "profit_factor": 0.8488695439541305,
+        "max_drawdown_pct": 3.4128053032694874,
+        "sharpe_ratio": -0.05649502570080401,
+        "total_trades": 125,
+        "avg_holding_days": 4.424
+      },
+      "score": 12.26,
+      "rank": 154
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.5175695571899268,
+        "win_rate": 0.21212121212121213,
+        "profit_factor": 0.9177275703941467,
+        "max_drawdown_pct": 4.374193822221468,
+        "sharpe_ratio": -0.0492537765465813,
+        "total_trades": 99,
+        "avg_holding_days": 9.02020202020202
+      },
+      "score": 12.22,
+      "rank": 155
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.5175695571899268,
+        "win_rate": 0.21212121212121213,
+        "profit_factor": 0.9177275703941467,
+        "max_drawdown_pct": 4.374193822221468,
+        "sharpe_ratio": -0.0492537765465813,
+        "total_trades": 99,
+        "avg_holding_days": 9.02020202020202
+      },
+      "score": 12.22,
+      "rank": 156
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 2.5,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.3093810128785264,
+        "win_rate": 0.21808510638297873,
+        "profit_factor": 0.9435052017525688,
+        "max_drawdown_pct": 4.787361744943371,
+        "sharpe_ratio": -0.011654534010057895,
+        "total_trades": 188,
+        "avg_holding_days": 6.632978723404255
+      },
+      "score": 12.18,
+      "rank": 157
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -3.2922783874512245,
+        "win_rate": 0.28651685393258425,
+        "profit_factor": 0.8716681126265058,
+        "max_drawdown_pct": 5.726475036632301,
+        "sharpe_ratio": -0.05625577050982555,
+        "total_trades": 178,
+        "avg_holding_days": 7.752808988764045
+      },
+      "score": 11.98,
+      "rank": 158
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.0588644940185186,
+        "win_rate": 0.2356020942408377,
+        "profit_factor": 0.961270899253805,
+        "max_drawdown_pct": 5.918732646752504,
+        "sharpe_ratio": 0.004345850013821372,
+        "total_trades": 191,
+        "avg_holding_days": 9.989528795811518
+      },
+      "score": 11.93,
+      "rank": 159
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.7380439404296633,
+        "win_rate": 0.11864406779661017,
+        "profit_factor": 0.7993841443687132,
+        "max_drawdown_pct": 3.4191958582949376,
+        "sharpe_ratio": -0.07158472820170861,
+        "total_trades": 118,
+        "avg_holding_days": 5.194915254237288
+      },
+      "score": 11.87,
+      "rank": 160
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.7380439404296633,
+        "win_rate": 0.11864406779661017,
+        "profit_factor": 0.7993841443687132,
+        "max_drawdown_pct": 3.4191958582949376,
+        "sharpe_ratio": -0.07158472820170861,
+        "total_trades": 118,
+        "avg_holding_days": 5.194915254237288
+      },
+      "score": 11.87,
+      "rank": 161
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.7380439404296633,
+        "win_rate": 0.11864406779661017,
+        "profit_factor": 0.7993841443687132,
+        "max_drawdown_pct": 3.4191958582949376,
+        "sharpe_ratio": -0.07158472820170861,
+        "total_trades": 118,
+        "avg_holding_days": 5.194915254237288
+      },
+      "score": 11.87,
+      "rank": 162
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 2.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -4.050923816223149,
+        "win_rate": 0.2935323383084577,
+        "profit_factor": 0.858611817538428,
+        "max_drawdown_pct": 5.894170234912629,
+        "sharpe_ratio": -0.06614693006948025,
+        "total_trades": 201,
+        "avg_holding_days": 7.422885572139304
+      },
+      "score": 11.54,
+      "rank": 163
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.1110111434935823,
+        "win_rate": 0.15,
+        "profit_factor": 0.953555121629047,
+        "max_drawdown_pct": 5.589323247792614,
+        "sharpe_ratio": -0.0009093834983609375,
+        "total_trades": 260,
+        "avg_holding_days": 5.515384615384615
+      },
+      "score": 11.16,
+      "rank": 164
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.2548039880370925,
+        "win_rate": 0.14885496183206107,
+        "profit_factor": 0.9477890743178442,
+        "max_drawdown_pct": 5.597863630393833,
+        "sharpe_ratio": -0.00352892014285463,
+        "total_trades": 262,
+        "avg_holding_days": 5.480916030534351
+      },
+      "score": 11.05,
+      "rank": 165
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.0288587985229387,
+        "win_rate": 0.22695035460992907,
+        "profit_factor": 0.9550556000423407,
+        "max_drawdown_pct": 6.775327851116915,
+        "sharpe_ratio": -0.017626620921856698,
+        "total_trades": 141,
+        "avg_holding_days": 9.588652482269504
+      },
+      "score": 10.97,
+      "rank": 166
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.0288587985229387,
+        "win_rate": 0.22695035460992907,
+        "profit_factor": 0.9550556000423407,
+        "max_drawdown_pct": 6.775327851116915,
+        "sharpe_ratio": -0.017626620921856698,
+        "total_trades": 141,
+        "avg_holding_days": 9.588652482269504
+      },
+      "score": 10.97,
+      "rank": 167
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.4639066766357574,
+        "win_rate": 0.21774193548387097,
+        "profit_factor": 0.93440855185142,
+        "max_drawdown_pct": 6.2332336935537445,
+        "sharpe_ratio": -0.04146983511403282,
+        "total_trades": 124,
+        "avg_holding_days": 8.46774193548387
+      },
+      "score": 10.88,
+      "rank": 168
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.4639066766357574,
+        "win_rate": 0.21774193548387097,
+        "profit_factor": 0.93440855185142,
+        "max_drawdown_pct": 6.2332336935537445,
+        "sharpe_ratio": -0.04146983511403282,
+        "total_trades": 124,
+        "avg_holding_days": 8.46774193548387
+      },
+      "score": 10.88,
+      "rank": 169
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.6098723162842217,
+        "win_rate": 0.22807017543859648,
+        "profit_factor": 0.9372292752123972,
+        "max_drawdown_pct": 6.724247951749131,
+        "sharpe_ratio": -0.009924036373958698,
+        "total_trades": 171,
+        "avg_holding_days": 9.678362573099415
+      },
+      "score": 10.66,
+      "rank": 170
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.6354338421631691,
+        "win_rate": 0.21656050955414013,
+        "profit_factor": 0.9307054354792167,
+        "max_drawdown_pct": 6.410259677688209,
+        "sharpe_ratio": -0.013611301361040398,
+        "total_trades": 157,
+        "avg_holding_days": 10.605095541401274
+      },
+      "score": 10.59,
+      "rank": 171
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.75,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.2916851559448697,
+        "win_rate": 0.18674698795180722,
+        "profit_factor": 0.8934578332831159,
+        "max_drawdown_pct": 5.3986743116175715,
+        "sharpe_ratio": -0.027260813609723045,
+        "total_trades": 166,
+        "avg_holding_days": 7.710843373493976
+      },
+      "score": 10.53,
+      "rank": 172
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.0846632751464496,
+        "win_rate": 0.13744075829383887,
+        "profit_factor": 0.9005525595542689,
+        "max_drawdown_pct": 5.750479540019342,
+        "sharpe_ratio": -0.011742029412272972,
+        "total_trades": 211,
+        "avg_holding_days": 4.85781990521327
+      },
+      "score": 10.38,
+      "rank": 173
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.0,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.3902877291870246,
+        "win_rate": 0.22388059701492538,
+        "profit_factor": 0.9383987256100388,
+        "max_drawdown_pct": 7.307484298972124,
+        "sharpe_ratio": -0.021844893682406885,
+        "total_trades": 134,
+        "avg_holding_days": 9.567164179104477
+      },
+      "score": 10.21,
+      "rank": 174
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 7,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.3976318682861453,
+        "win_rate": 0.13488372093023257,
+        "profit_factor": 0.8871252575864307,
+        "max_drawdown_pct": 5.793862355120861,
+        "sharpe_ratio": -0.024663889669060954,
+        "total_trades": 215,
+        "avg_holding_days": 5.1069767441860465
+      },
+      "score": 10.14,
+      "rank": 175
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -2.3976318682861453,
+        "win_rate": 0.13488372093023257,
+        "profit_factor": 0.8871252575864307,
+        "max_drawdown_pct": 5.793862355120861,
+        "sharpe_ratio": -0.024663889669060954,
+        "total_trades": 215,
+        "avg_holding_days": 5.1069767441860465
+      },
+      "score": 10.14,
+      "rank": 176
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 2.25,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -1.7614733108520888,
+        "win_rate": 0.21487603305785125,
+        "profit_factor": 0.9202873800438067,
+        "max_drawdown_pct": 6.793111890512144,
+        "sharpe_ratio": -0.04723975351449235,
+        "total_trades": 121,
+        "avg_holding_days": 8.537190082644628
+      },
+      "score": 10.14,
+      "rank": 177
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 10,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -3.0175345596313274,
+        "win_rate": 0.22950819672131148,
+        "profit_factor": 0.8911086096664976,
+        "max_drawdown_pct": 6.813434076450803,
+        "sharpe_ratio": -0.034078401264460316,
+        "total_trades": 183,
+        "avg_holding_days": 9.256830601092895
+      },
+      "score": 9.7,
+      "rank": 178
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.5,
+        "stop_atr_multiplier": 0.5,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -3.9352196157837174,
+        "win_rate": 0.13168724279835392,
+        "profit_factor": 0.8312245235704971,
+        "max_drawdown_pct": 6.298052315093618,
+        "sharpe_ratio": -0.044445227222745576,
+        "total_trades": 243,
+        "avg_holding_days": 5.098765432098766
+      },
+      "score": 8.71,
+      "rank": 179
+    },
+    {
+      "parameters": {
+        "rrs_threshold": 1.75,
+        "stop_atr_multiplier": 1.0,
+        "target_atr_multiplier": 3.0,
+        "use_relaxed_criteria": true,
+        "max_positions": 5,
+        "max_risk_per_trade": 0.01,
+        "daily_strength_min_score": 3
+      },
+      "metrics": {
+        "total_return_pct": -3.638345864868141,
+        "win_rate": 0.20915032679738563,
+        "profit_factor": 0.8500191869609727,
+        "max_drawdown_pct": 7.834426157201614,
+        "sharpe_ratio": -0.052236316191380354,
+        "total_trades": 153,
+        "avg_holding_days": 9.699346405228757
+      },
+      "score": 7.89,
+      "rank": 180
+    }
+  ]
+}
