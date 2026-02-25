@@ -591,7 +591,7 @@ class EnhancedBacktestEngine:
             if len(day_data) > 0:
                 col = column.capitalize() if column.lower() in ['open', 'high', 'low', 'close'] else column
                 return float(day_data[col].iloc[0])
-        except:
+        except Exception:
             pass
         return None
 

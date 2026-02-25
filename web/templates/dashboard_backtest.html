@@ -1,0 +1,573 @@
+{% extends "base.html" %}
+
+{% block title %}Backtest - RDT Trading{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dashboard-layout {
+        display: grid;
+        grid-template-columns: 240px 1fr;
+        min-height: calc(100vh - 60px);
+    }
+    .sidebar {
+        background: var(--primary);
+        padding: 20px;
+        position: sticky;
+        top: 60px;
+        height: calc(100vh - 60px);
+    }
+    .sidebar-nav { list-style: none; }
+    .sidebar-nav li { margin-bottom: 5px; }
+    .sidebar-nav a {
+        display: block;
+        padding: 12px 15px;
+        color: rgba(255,255,255,0.7);
+        border-radius: 5px;
+        transition: all 0.3s;
+    }
+    .sidebar-nav a:hover, .sidebar-nav a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        text-decoration: none;
+    }
+    .sidebar-section {
+        color: rgba(255,255,255,0.5);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        margin: 20px 0 10px;
+        padding-left: 15px;
+    }
+    .main-content { padding: 25px; }
+
+    .page-header {
+        margin-bottom: 25px;
+    }
+    .page-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 5px;
+    }
+    .page-subtitle {
+        color: var(--text-light);
+        font-size: 0.9rem;
+    }
+
+    .backtest-form {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+    }
+    .form-row {
+        display: flex;
+        flex-direction: column;
+    }
+    .form-row.full-width {
+        grid-column: 1 / -1;
+    }
+
+    .preset-buttons {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    .btn-preset {
+        flex: 1;
+        padding: 12px 20px;
+        border: 2px solid var(--border);
+        background: var(--card);
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.3s;
+        text-align: center;
+    }
+    .btn-preset:hover {
+        border-color: var(--accent);
+        background: var(--bg);
+    }
+    .btn-preset.active {
+        border-color: var(--accent);
+        background: rgba(76, 175, 80, 0.1);
+    }
+    .btn-preset .preset-name {
+        font-weight: 600;
+        font-size: 1rem;
+        margin-bottom: 4px;
+    }
+    .btn-preset .preset-desc {
+        font-size: 0.75rem;
+        color: var(--text-light);
+    }
+
+    .results-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 15px;
+        margin-bottom: 25px;
+    }
+    .result-card {
+        background: var(--bg);
+        padding: 20px;
+        border-radius: 8px;
+        text-align: center;
+    }
+    .result-label {
+        font-size: 0.8rem;
+        color: var(--text-light);
+        text-transform: uppercase;
+        margin-bottom: 8px;
+    }
+    .result-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+    }
+    .result-value.positive { color: var(--success); }
+    .result-value.negative { color: var(--danger); }
+
+    .trades-table-container {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+
+    .loading-overlay {
+        display: none;
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255,255,255,0.9);
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        border-radius: 10px;
+        z-index: 10;
+    }
+    .loading-overlay.active {
+        display: flex;
+    }
+    .loading-text {
+        margin-top: 15px;
+        color: var(--text-light);
+    }
+
+    .card-relative {
+        position: relative;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--text-light);
+    }
+    .empty-state-icon {
+        font-size: 3rem;
+        margin-bottom: 15px;
+        opacity: 0.5;
+    }
+
+    @media (max-width: 1024px) {
+        .dashboard-layout { grid-template-columns: 1fr; }
+        .sidebar { display: none; }
+        .backtest-form { grid-template-columns: 1fr; }
+        .results-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 600px) {
+        .results-grid { grid-template-columns: 1fr; }
+        .preset-buttons { flex-direction: column; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+    <aside class="sidebar">
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard">Overview</a></li>
+            <li><a href="/dashboard/signals">Active Signals</a></li>
+            <li><a href="/dashboard/positions">Positions</a></li>
+            <li><a href="/dashboard/history">History</a></li>
+        </ul>
+        <div class="sidebar-section">Analysis</div>
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard/scanner">Live Scanner</a></li>
+            <li><a href="/dashboard/backtest" class="active">Backtest</a></li>
+            <li><a href="/performance">Performance</a></li>
+        </ul>
+        <div class="sidebar-section">Settings</div>
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard/alerts">Alerts</a></li>
+            <li><a href="/dashboard/settings">Settings</a></li>
+            <li><a href="/api/v1/health" target="_blank">API Status</a></li>
+        </ul>
+    </aside>
+
+    <main class="main-content">
+        <div class="page-header">
+            <h1 class="page-title">Strategy Backtest</h1>
+            <p class="page-subtitle">Test RRS trading strategies against historical data</p>
+        </div>
+
+        <!-- Configuration Card -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Backtest Configuration</h3>
+            </div>
+
+            <!-- Preset Buttons -->
+            <div class="preset-buttons">
+                <button type="button" class="btn-preset" onclick="applyPreset('conservative')">
+                    <div class="preset-name">Conservative</div>
+                    <div class="preset-desc">Lower risk, tighter stops</div>
+                </button>
+                <button type="button" class="btn-preset" onclick="applyPreset('balanced')">
+                    <div class="preset-name">Balanced</div>
+                    <div class="preset-desc">Moderate risk/reward</div>
+                </button>
+                <button type="button" class="btn-preset" onclick="applyPreset('aggressive')">
+                    <div class="preset-name">Aggressive</div>
+                    <div class="preset-desc">Higher risk, larger targets</div>
+                </button>
+            </div>
+
+            <!-- Configuration Form -->
+            <form id="backtest-form" onsubmit="runBacktest(event)">
+                <div class="backtest-form">
+                    <div class="form-row">
+                        <label class="form-label" for="days">Days to Backtest</label>
+                        <select id="days" name="days" class="form-control">
+                            <option value="30">30 days</option>
+                            <option value="90" selected>90 days</option>
+                            <option value="180">180 days</option>
+                            <option value="365">365 days</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label" for="rrs_threshold">RRS Threshold</label>
+                        <select id="rrs_threshold" name="rrs_threshold" class="form-control">
+                            <option value="1.5">1.5 (More signals)</option>
+                            <option value="1.75">1.75</option>
+                            <option value="2.0" selected>2.0 (Default)</option>
+                            <option value="2.25">2.25</option>
+                            <option value="2.5">2.5 (Fewer, stronger signals)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label" for="stop_atr">Stop ATR Multiplier</label>
+                        <select id="stop_atr" name="stop_atr" class="form-control">
+                            <option value="0.5">0.5x (Tight stop)</option>
+                            <option value="0.75">0.75x</option>
+                            <option value="1.0" selected>1.0x (Default)</option>
+                            <option value="1.5">1.5x (Wide stop)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label" for="target_atr">Target ATR Multiplier</label>
+                        <select id="target_atr" name="target_atr" class="form-control">
+                            <option value="1.0">1.0x (Quick profit)</option>
+                            <option value="1.5">1.5x</option>
+                            <option value="2.0" selected>2.0x (Default)</option>
+                            <option value="3.0">3.0x (Extended target)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label" for="watchlist">Watchlist</label>
+                        <select id="watchlist" name="watchlist" class="form-control">
+                            <option value="core" selected>Core (Top 50 liquid stocks)</option>
+                            <option value="full">Full (Extended universe)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label">&nbsp;</label>
+                        <button type="submit" class="btn btn-primary" id="submit-btn">
+                            Run Backtest
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <!-- Results Card -->
+        <div class="card card-relative mt-2" id="results-card" style="display: none;">
+            <div class="loading-overlay" id="loading-overlay">
+                <div class="spinner" style="width: 40px; height: 40px;"></div>
+                <div class="loading-text">Running backtest...</div>
+            </div>
+
+            <div class="card-header">
+                <h3 class="card-title">Backtest Results</h3>
+                <span class="text-muted" id="results-period"></span>
+            </div>
+
+            <!-- Results Summary -->
+            <div class="results-grid" id="results-summary">
+                <div class="result-card">
+                    <div class="result-label">Total Return</div>
+                    <div class="result-value" id="result-return">--</div>
+                </div>
+                <div class="result-card">
+                    <div class="result-label">Win Rate</div>
+                    <div class="result-value" id="result-winrate">--</div>
+                </div>
+                <div class="result-card">
+                    <div class="result-label">Profit Factor</div>
+                    <div class="result-value" id="result-pf">--</div>
+                </div>
+                <div class="result-card">
+                    <div class="result-label">Trade Count</div>
+                    <div class="result-value" id="result-trades">--</div>
+                </div>
+                <div class="result-card">
+                    <div class="result-label">Max Drawdown</div>
+                    <div class="result-value" id="result-drawdown">--</div>
+                </div>
+                <div class="result-card">
+                    <div class="result-label">Sharpe Ratio</div>
+                    <div class="result-value" id="result-sharpe">--</div>
+                </div>
+            </div>
+
+            <!-- Trade List -->
+            <div class="card-header" style="margin-top: 20px;">
+                <h3 class="card-title">Trade History</h3>
+                <span class="text-muted" id="trade-count"></span>
+            </div>
+            <div class="trades-table-container">
+                <table class="table" id="trades-table">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Direction</th>
+                            <th>Entry Date</th>
+                            <th>Entry Price</th>
+                            <th>Exit Date</th>
+                            <th>Exit Price</th>
+                            <th>P&L %</th>
+                            <th>Result</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trades-body">
+                        <!-- Trade rows populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Empty State (shown before running backtest) -->
+        <div class="card mt-2" id="empty-state">
+            <div class="empty-state">
+                <div class="empty-state-icon">&#128200;</div>
+                <h3>No Backtest Results</h3>
+                <p>Configure your parameters above and click "Run Backtest" to see results.</p>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Preset configurations
+    const presets = {
+        conservative: {
+            days: '90',
+            rrs_threshold: '2.25',
+            stop_atr: '0.75',
+            target_atr: '1.5',
+            watchlist: 'core'
+        },
+        balanced: {
+            days: '90',
+            rrs_threshold: '2.0',
+            stop_atr: '1.0',
+            target_atr: '2.0',
+            watchlist: 'core'
+        },
+        aggressive: {
+            days: '180',
+            rrs_threshold: '1.75',
+            stop_atr: '1.5',
+            target_atr: '3.0',
+            watchlist: 'full'
+        }
+    };
+
+    // Apply preset configuration
+    function applyPreset(presetName) {
+        const preset = presets[presetName];
+        if (!preset) return;
+
+        // Update form values
+        document.getElementById('days').value = preset.days;
+        document.getElementById('rrs_threshold').value = preset.rrs_threshold;
+        document.getElementById('stop_atr').value = preset.stop_atr;
+        document.getElementById('target_atr').value = preset.target_atr;
+        document.getElementById('watchlist').value = preset.watchlist;
+
+        // Update button states
+        document.querySelectorAll('.btn-preset').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        event.target.closest('.btn-preset').classList.add('active');
+    }
+
+    // Ensure no service worker is intercepting requests
+    async function ensureNoServiceWorker() {
+        if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const reg of registrations) {
+                await reg.unregister();
+            }
+            // Clear all caches
+            const cacheNames = await caches.keys();
+            await Promise.all(cacheNames.map(n => caches.delete(n)));
+        }
+    }
+
+    // Run backtest
+    async function runBacktest(event) {
+        event.preventDefault();
+
+        const submitBtn = document.getElementById('submit-btn');
+        const resultsCard = document.getElementById('results-card');
+        const emptyState = document.getElementById('empty-state');
+        const loadingOverlay = document.getElementById('loading-overlay');
+
+        // Show results card and loading state
+        emptyState.style.display = 'none';
+        resultsCard.style.display = 'block';
+        loadingOverlay.classList.add('active');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Running...';
+
+        // Kill any service worker before making the request
+        await ensureNoServiceWorker();
+
+        // Gather form data
+        const formData = {
+            days: parseInt(document.getElementById('days').value),
+            rrs_threshold: parseFloat(document.getElementById('rrs_threshold').value),
+            stop_atr: parseFloat(document.getElementById('stop_atr').value),
+            target_atr: parseFloat(document.getElementById('target_atr').value),
+            watchlist: document.getElementById('watchlist').value
+        };
+
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 min timeout
+
+            const response = await fetch('/api/v1/backtest', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(formData),
+                signal: controller.signal,
+                cache: 'no-store'
+            });
+
+            clearTimeout(timeoutId);
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || data.message || 'Backtest failed with status ' + response.status);
+            }
+
+            displayResults(data);
+
+        } catch (error) {
+            console.error('Backtest error:', error);
+            alert('Backtest error: ' + error.message);
+        } finally {
+            loadingOverlay.classList.remove('active');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Run Backtest';
+        }
+    }
+
+    // Display backtest results
+    function displayResults(data) {
+        const results = data.results || data;
+
+        // Update period label
+        document.getElementById('results-period').textContent =
+            `${document.getElementById('days').value} days | ${document.getElementById('watchlist').value} watchlist`;
+
+        // Update summary metrics
+        const totalReturn = results.total_return || 0;
+        const returnEl = document.getElementById('result-return');
+        returnEl.textContent = (totalReturn >= 0 ? '+' : '') + totalReturn.toFixed(2) + '%';
+        returnEl.className = 'result-value ' + (totalReturn >= 0 ? 'positive' : 'negative');
+
+        const winRate = results.win_rate || 0;
+        const winRateEl = document.getElementById('result-winrate');
+        winRateEl.textContent = (winRate * 100).toFixed(1) + '%';
+        winRateEl.className = 'result-value ' + (winRate >= 0.5 ? 'positive' : 'negative');
+
+        const profitFactor = results.profit_factor || 0;
+        const pfEl = document.getElementById('result-pf');
+        pfEl.textContent = profitFactor.toFixed(2);
+        pfEl.className = 'result-value ' + (profitFactor >= 1 ? 'positive' : 'negative');
+
+        document.getElementById('result-trades').textContent = results.trade_count || 0;
+
+        const maxDrawdown = results.max_drawdown || 0;
+        const ddEl = document.getElementById('result-drawdown');
+        ddEl.textContent = maxDrawdown.toFixed(2) + '%';
+        ddEl.className = 'result-value negative';
+
+        const sharpe = results.sharpe_ratio || 0;
+        const sharpeEl = document.getElementById('result-sharpe');
+        sharpeEl.textContent = sharpe.toFixed(2);
+        sharpeEl.className = 'result-value ' + (sharpe >= 1 ? 'positive' : (sharpe >= 0 ? '' : 'negative'));
+
+        // Update trade count label
+        document.getElementById('trade-count').textContent = `${results.trade_count || 0} trades`;
+
+        // Populate trades table
+        const tbody = document.getElementById('trades-body');
+        tbody.innerHTML = '';
+
+        const trades = results.trades || [];
+        if (trades.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="text-center text-muted" style="padding: 30px;">
+                        No trades generated with these parameters
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        trades.forEach(trade => {
+            const pnl = trade.pnl_percent || 0;
+            const isWin = pnl > 0;
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><strong>${trade.symbol}</strong></td>
+                <td><span class="badge ${trade.direction === 'long' ? 'badge-long' : 'badge-short'}">${trade.direction.toUpperCase()}</span></td>
+                <td>${formatDate(trade.entry_date)}</td>
+                <td>$${trade.entry_price.toFixed(2)}</td>
+                <td>${formatDate(trade.exit_date)}</td>
+                <td>$${trade.exit_price.toFixed(2)}</td>
+                <td class="${isWin ? 'text-success' : 'text-danger'}">${isWin ? '+' : ''}${pnl.toFixed(2)}%</td>
+                <td><span class="badge ${isWin ? 'badge-success' : 'badge-danger'}">${isWin ? 'WIN' : 'LOSS'}</span></td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    // Format date for display
+    function formatDate(dateStr) {
+        if (!dateStr) return '--';
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+</script>
+{% endblock %}

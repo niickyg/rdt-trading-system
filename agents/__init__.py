@@ -20,6 +20,9 @@ from agents.base import (
 from agents.scanner_agent import ScannerAgent
 from agents.analyzer_agent import AnalyzerAgent
 from agents.executor_agent import ExecutorAgent
+from agents.risk_agent import RiskAgent
+from agents.learning_agent import LearningAgent
+from agents.adaptive_learner import AdaptiveLearner, get_adaptive_learner
 from agents.orchestrator import Orchestrator, run_trading_system
 
 __all__ = [
@@ -39,6 +42,10 @@ __all__ = [
     "ScannerAgent",
     "AnalyzerAgent",
     "ExecutorAgent",
+    "RiskAgent",
+    "LearningAgent",
+    "AdaptiveLearner",
+    "get_adaptive_learner",
     "Orchestrator",
     # Runner
     "run_trading_system"

@@ -1,8 +1,8 @@
-# Core dependencies
-requests>=2.31.0
-pandas>=2.1.0
-numpy>=1.24.0
-python-dotenv>=1.0.0
+# Core dependencies (pinned for compatibility)
+requests==2.32.5
+pandas==2.2.3
+numpy==1.26.4
+python-dotenv==1.0.1
 
 # Configuration
 pydantic>=2.5.0
@@ -13,7 +13,19 @@ schwab-py>=1.0.0  # Schwab
 ib-insync>=0.9.86  # Interactive Brokers
 
 # Market data
-yfinance>=0.2.28
+yfinance==0.2.66  # Pinned to latest 0.2.x; 1.x is a new major with breaking API changes
+
+# Machine Learning (pinned for compatibility)
+scikit-learn==1.6.1
+hmmlearn==0.3.3
+matplotlib==3.9.4
+seaborn==0.13.2
+optuna==3.6.2  # Pinned to latest 3.x; 4.x is a major version with API changes
+plotly==5.24.1  # For Optuna visualizations; pinned to latest 5.x, not 6.x (major)
+
+# Deep Learning (pinned for stability)
+tensorflow==2.15.0  # Pinned for compatibility — do NOT upgrade without full testing
+joblib==1.4.2  # For model serialization
 
 # Technical indicators (optional)
 # ta-lib>=0.4.28  # Requires system library
@@ -25,7 +37,9 @@ plyer>=2.1.0
 
 # Database
 sqlalchemy>=2.0.0
+alembic>=1.13.0
 aiosqlite>=0.19.0
+psycopg2-binary>=2.9.9  # PostgreSQL support — optional, only needed when using PostgreSQL backend
 
 # Async support
 asyncio-throttle>=1.0.0
@@ -38,7 +52,7 @@ APScheduler>=3.10.0
 loguru>=0.7.0
 
 # Data serialization
-pyarrow>=14.0.0
+pyarrow==15.0.2
 
 # Testing
 pytest>=7.4.0
@@ -49,3 +63,35 @@ pytest-asyncio>=0.21.0
 black>=23.0.0
 pylint>=3.0.0
 mypy>=1.7.0
+aiohttp
+
+# Web Dashboard
+flask>=3.0.0
+flask-cors>=4.0.0
+flask-login>=0.6.3
+flask-wtf>=1.2.0
+email-validator>=2.1.0
+werkzeug>=3.0.0
+
+# WebSocket support
+flask-socketio>=5.3.0
+python-socketio>=5.10.0
+eventlet>=0.35.0
+
+# GraphQL support
+graphene>=3.3.0
+graphql-core>=3.2.0
+
+# Distributed Tracing (OpenTelemetry - all pinned together for version coherence)
+# NOTE: opentelemetry-exporter-jaeger is abandoned at 1.21.0 (no newer releases).
+# All OTel packages must stay version-locked together. To upgrade, replace
+# opentelemetry-exporter-jaeger with opentelemetry-exporter-otlp and bump all
+# packages to a consistent newer version (api/sdk 1.27.0 + instrumentation 0.48b0).
+opentelemetry-api==1.21.0
+opentelemetry-sdk==1.21.0
+opentelemetry-instrumentation-flask==0.42b0
+opentelemetry-exporter-jaeger==1.21.0
+opentelemetry-instrumentation-requests==0.42b0
+opentelemetry-instrumentation-sqlalchemy==0.42b0
+opentelemetry-propagator-jaeger==1.21.0
+opentelemetry-semantic-conventions==0.42b0

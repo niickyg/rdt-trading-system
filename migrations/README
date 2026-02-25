@@ -1,0 +1,42 @@
+RDT Trading System Database Migrations
+======================================
+
+This directory contains Alembic database migrations for the RDT Trading System.
+
+Directory Structure
+-------------------
+- env.py          : Alembic environment configuration
+- script.py.mako  : Template for generating migration scripts
+- versions/       : Directory containing migration scripts
+
+Usage
+-----
+Use the db_migrate.py CLI tool in the scripts/ directory:
+
+    # Initialize/upgrade to latest
+    python scripts/db_migrate.py upgrade
+
+    # Create a new migration
+    python scripts/db_migrate.py migrate -m "Add new column"
+
+    # Downgrade one revision
+    python scripts/db_migrate.py downgrade
+
+    # Show migration history
+    python scripts/db_migrate.py history
+
+Or use Alembic directly:
+
+    # Upgrade to latest
+    alembic upgrade head
+
+    # Generate migration from model changes
+    alembic revision --autogenerate -m "description"
+
+    # Downgrade
+    alembic downgrade -1
+
+Environment Variables
+---------------------
+- DATABASE_URL or RDT_DATABASE_URL: Override the database connection URL
+- Default: sqlite:///data/rdt_trading.db

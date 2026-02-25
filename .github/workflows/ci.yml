@@ -1,0 +1,347 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+env:
+  PYTHON_DEFAULT_VERSION: "3.11"
+  COVERAGE_THRESHOLD: 70
+
+jobs:
+  lint:
+    name: Lint (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-lint-${{ matrix.python-version }}-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-lint-${{ matrix.python-version }}-
+            ${{ runner.os }}-pip-lint-
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run Black (formatting check)
+        run: |
+          black --check --diff .
+
+      - name: Run isort (import sorting check)
+        run: |
+          isort --check-only --diff .
+
+      - name: Run Pylint
+        run: |
+          pylint --rcfile=pyproject.toml --exit-zero --output-format=colorized \
+            --reports=y \
+            $(find . -type f -name "*.py" ! -path "./.venv/*" ! -path "./__pycache__/*" ! -path "./data/*")
+
+      - name: Run MyPy (type checking)
+        run: |
+          mypy --config-file=pyproject.toml \
+            --ignore-missing-imports \
+            --no-error-summary \
+            $(find . -type f -name "*.py" ! -path "./.venv/*" ! -path "./__pycache__/*" ! -path "./data/*") || true
+
+  test:
+    name: Test (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-test-${{ matrix.python-version }}-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-test-${{ matrix.python-version }}-
+            ${{ runner.os }}-pip-test-
+            ${{ runner.os }}-pip-
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpq-dev
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run tests with coverage
+        run: |
+          pytest \
+            --cov=. \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-report=term-missing \
+            --cov-fail-under=${{ env.COVERAGE_THRESHOLD }} \
+            --junitxml=test-results-${{ matrix.python-version }}.xml \
+            -v \
+            tests/
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: unittests-${{ matrix.python-version }}
+          name: codecov-python-${{ matrix.python-version }}
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.python-version }}
+          path: |
+            test-results-${{ matrix.python-version }}.xml
+            htmlcov/
+          retention-days: 30
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_DEFAULT_VERSION }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-security-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-security-
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run Bandit (security linter)
+        run: |
+          bandit -r . \
+            -x ./tests,./data,./.venv,./htmlcov \
+            -f json \
+            -o bandit-report.json \
+            --severity-level medium \
+            || true
+
+      - name: Display Bandit results
+        run: |
+          bandit -r . \
+            -x ./tests,./data,./.venv,./htmlcov \
+            -f txt \
+            --severity-level medium \
+            || true
+
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-security-report
+          path: bandit-report.json
+          retention-days: 30
+
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [test, security]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: |
+            rdt-trading-system:${{ github.sha }}
+            rdt-trading-system:latest
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+
+      - name: Move cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+      - name: Test Docker image
+        run: |
+          docker build -t rdt-trading-system:test .
+          docker run --rm rdt-trading-system:test python -c "import sys; print(f'Python {sys.version}')"
+
+  # ==========================================================================
+  # Performance Tests (Optional - runs on schedule or manual trigger)
+  # ==========================================================================
+  performance:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    needs: test
+    # Only run on main branch, schedule, or manual trigger
+    if: |
+      github.ref == 'refs/heads/main' ||
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.message, '[perf]')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_DEFAULT_VERSION }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-perf-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-perf-
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run benchmark tests
+        run: |
+          pytest tests/performance/ \
+            -v \
+            --benchmark-only \
+            --benchmark-autosave \
+            --benchmark-compare \
+            --benchmark-group-by=class \
+            --benchmark-json=benchmark-results.json \
+            -x \
+            || true
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            benchmark-results.json
+            .benchmarks/
+          retention-days: 90
+
+      - name: Comment benchmark results on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            try {
+              const results = JSON.parse(fs.readFileSync('benchmark-results.json', 'utf8'));
+              const benchmarks = results.benchmarks || [];
+
+              let comment = '## Performance Benchmark Results\n\n';
+              comment += '| Test | Mean | Min | Max | Rounds |\n';
+              comment += '|------|------|-----|-----|--------|\n';
+
+              for (const b of benchmarks.slice(0, 20)) {
+                const mean = (b.stats.mean * 1000).toFixed(2);
+                const min = (b.stats.min * 1000).toFixed(2);
+                const max = (b.stats.max * 1000).toFixed(2);
+                comment += `| ${b.name} | ${mean}ms | ${min}ms | ${max}ms | ${b.stats.rounds} |\n`;
+              }
+
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            } catch (e) {
+              console.log('Could not post benchmark results:', e.message);
+            }
+
+  all-checks-passed:
+    name: All CI Checks Passed
+    runs-on: ubuntu-latest
+    needs: [lint, test, security, build]
+    if: always()
+
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [[ "${{ needs.lint.result }}" != "success" ]] || \
+             [[ "${{ needs.test.result }}" != "success" ]] || \
+             [[ "${{ needs.security.result }}" != "success" ]] || \
+             [[ "${{ needs.build.result }}" != "success" ]]; then
+            echo "One or more jobs failed"
+            exit 1
+          fi
+          echo "All CI checks passed successfully!"

@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1a1a2e">
+    <title>Offline - RDT Trading System</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <style>
+        :root {
+            --primary: #1a1a2e;
+            --secondary: #16213e;
+            --accent: #4CAF50;
+            --accent-hover: #45a049;
+            --danger: #e74c3c;
+            --warning: #f39c12;
+            --text: #333;
+            --text-light: #666;
+            --bg: #f0f2f5;
+            --card: #ffffff;
+            --border: #e0e0e0;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .navbar {
+            background: var(--primary);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .navbar-brand {
+            color: white;
+            font-size: 1.4rem;
+            font-weight: bold;
+            text-decoration: none;
+        }
+
+        .offline-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+
+        .offline-content {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 50px;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .offline-icon {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 30px;
+            background: #fff3e0;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .offline-icon svg {
+            width: 60px;
+            height: 60px;
+            color: var(--warning);
+        }
+
+        .offline-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+            color: var(--primary);
+        }
+
+        .offline-message {
+            color: var(--text-light);
+            font-size: 1.1rem;
+            margin-bottom: 30px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 14px 28px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.3s;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+        }
+
+        .btn-secondary {
+            background: var(--bg);
+            color: var(--text);
+            margin-left: 10px;
+        }
+
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+
+        .btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #ffffff40;
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: none;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .btn.loading .spinner {
+            display: inline-block;
+        }
+
+        .btn.loading .btn-text {
+            display: none;
+        }
+
+        .cached-data {
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 1px solid var(--border);
+            text-align: left;
+        }
+
+        .cached-data-title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: var(--text);
+        }
+
+        .cached-item {
+            background: var(--bg);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .cached-item-title {
+            font-weight: 500;
+            margin-bottom: 5px;
+        }
+
+        .cached-item-time {
+            font-size: 0.85rem;
+            color: var(--text-light);
+        }
+
+        .no-cached-data {
+            color: var(--text-light);
+            font-size: 0.95rem;
+            font-style: italic;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 20px;
+            font-size: 0.9rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--danger);
+        }
+
+        .status-dot.online {
+            background: var(--accent);
+        }
+
+        .footer {
+            background: var(--primary);
+            color: rgba(255,255,255,0.7);
+            padding: 20px;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 600px) {
+            .offline-content {
+                padding: 30px 20px;
+            }
+
+            .offline-title {
+                font-size: 1.5rem;
+            }
+
+            .offline-message {
+                font-size: 1rem;
+            }
+
+            .btn {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+
+            .btn-secondary {
+                margin-left: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="/" class="navbar-brand">RDT Trading</a>
+    </nav>
+
+    <div class="offline-container">
+        <div class="offline-content">
+            <div class="offline-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                    <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
+                    <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
+                    <path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path>
+                    <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path>
+                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                    <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                </svg>
+            </div>
+
+            <h1 class="offline-title">You're Offline</h1>
+
+            <p class="offline-message">
+                It looks like you've lost your internet connection.
+                Don't worry - we'll reconnect automatically when you're back online.
+            </p>
+
+            <div class="actions">
+                <button id="retry-btn" class="btn btn-primary" onclick="retryConnection()">
+                    <span class="spinner"></span>
+                    <span class="btn-text">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
+                        Try Again
+                    </span>
+                </button>
+            </div>
+
+            <div class="status-indicator">
+                <div id="status-dot" class="status-dot"></div>
+                <span id="status-text">Offline</span>
+            </div>
+
+            <div id="cached-data-section" class="cached-data" style="display: none;">
+                <h3 class="cached-data-title">Cached Data Available</h3>
+                <div id="cached-items"></div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>RDT Trading System - Data cached for offline access</p>
+    </footer>
+
+    <script>
+        // Check online status
+        function updateOnlineStatus() {
+            const statusDot = document.getElementById('status-dot');
+            const statusText = document.getElementById('status-text');
+
+            if (navigator.onLine) {
+                statusDot.classList.add('online');
+                statusText.textContent = 'Connection Restored';
+
+                // Redirect after a short delay
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            } else {
+                statusDot.classList.remove('online');
+                statusText.textContent = 'Offline';
+            }
+        }
+
+        // Retry connection
+        function retryConnection() {
+            const btn = document.getElementById('retry-btn');
+            btn.classList.add('loading');
+
+            fetch('/health', { method: 'HEAD' })
+                .then(response => {
+                    if (response.ok) {
+                        window.location.reload();
+                    } else {
+                        throw new Error('Not available');
+                    }
+                })
+                .catch(() => {
+                    btn.classList.remove('loading');
+                    showNotification('Still offline. Please check your connection.');
+                });
+        }
+
+        // Show notification
+        function showNotification(message) {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: #333;
+                color: white;
+                padding: 12px 24px;
+                border-radius: 8px;
+                font-size: 0.9rem;
+                z-index: 1000;
+                animation: fadeIn 0.3s ease;
+            `;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.animation = 'fadeOut 0.3s ease';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+
+        // Load cached data
+        async function loadCachedData() {
+            const section = document.getElementById('cached-data-section');
+            const itemsContainer = document.getElementById('cached-items');
+
+            try {
+                const cache = await caches.open('rdt-trading-api-v1');
+                const keys = await cache.keys();
+
+                if (keys.length === 0) {
+                    return;
+                }
+
+                section.style.display = 'block';
+                let hasData = false;
+
+                for (const request of keys) {
+                    try {
+                        const response = await cache.match(request);
+                        if (response) {
+                            const url = new URL(request.url);
+                            const cachedDate = response.headers.get('date');
+
+                            const item = document.createElement('div');
+                            item.className = 'cached-item';
+                            item.innerHTML = `
+                                <div class="cached-item-title">${formatEndpointName(url.pathname)}</div>
+                                <div class="cached-item-time">Cached: ${cachedDate ? new Date(cachedDate).toLocaleString() : 'Unknown'}</div>
+                            `;
+                            itemsContainer.appendChild(item);
+                            hasData = true;
+                        }
+                    } catch (e) {
+                        console.log('Error reading cache entry:', e);
+                    }
+                }
+
+                if (!hasData) {
+                    itemsContainer.innerHTML = '<p class="no-cached-data">No cached data available</p>';
+                }
+            } catch (error) {
+                console.log('Error loading cached data:', error);
+            }
+        }
+
+        // Format endpoint name for display
+        function formatEndpointName(pathname) {
+            const mapping = {
+                '/api/v1/signals': 'Trading Signals',
+                '/api/v1/positions': 'Positions',
+                '/api/v1/alerts': 'Price Alerts',
+                '/api/status': 'System Status',
+                '/health': 'Health Check'
+            };
+
+            return mapping[pathname] || pathname;
+        }
+
+        // Event listeners
+        window.addEventListener('online', updateOnlineStatus);
+        window.addEventListener('offline', updateOnlineStatus);
+
+        // Initial load
+        updateOnlineStatus();
+        loadCachedData();
+
+        // Add CSS animations
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+                to { opacity: 1; transform: translateX(-50%) translateY(0); }
+            }
+            @keyframes fadeOut {
+                from { opacity: 1; transform: translateX(-50%) translateY(0); }
+                to { opacity: 0; transform: translateX(-50%) translateY(20px); }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>

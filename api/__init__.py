@@ -9,7 +9,7 @@ Provides endpoints for:
 - Account management
 """
 
-from api.v1.app import create_app
-from api.v1.auth import require_api_key, require_subscription
+from api.v1.routes import api_bp
+from api.v1.auth import require_api_key, require_subscription, init_api_auth
 
-__all__ = ['create_app', 'require_api_key', 'require_subscription']
+__all__ = ['api_bp', 'require_api_key', 'require_subscription', 'init_api_auth']

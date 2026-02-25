@@ -1,0 +1,133 @@
+{
+  "name": "RDT Trading System",
+  "short_name": "RDT Trading",
+  "description": "Professional-grade trading signals powered by Real Relative Strength analysis. Get real-time alerts, track positions, and manage your portfolio.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#1a1a2e",
+  "background_color": "#f0f2f5",
+  "categories": ["finance", "business", "productivity"],
+  "lang": "en-US",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/static/images/icons/icon-72x72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/images/icons/icon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/images/icons/icon-128x128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/images/icons/icon-144x144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/images/icons/icon-152x152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/images/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/images/icons/icon-384x384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/images/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/images/icons/icon-maskable-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/static/images/icons/icon-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/static/images/screenshots/dashboard-wide.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Trading Dashboard"
+    },
+    {
+      "src": "/static/images/screenshots/dashboard-narrow.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Mobile Dashboard"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "View your trading dashboard",
+      "url": "/dashboard",
+      "icons": [{ "src": "/static/images/icons/icon-96x96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Active Signals",
+      "short_name": "Signals",
+      "description": "View current trading signals",
+      "url": "/dashboard/signals",
+      "icons": [{ "src": "/static/images/icons/icon-96x96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Positions",
+      "short_name": "Positions",
+      "description": "Track your open positions",
+      "url": "/dashboard/positions",
+      "icons": [{ "src": "/static/images/icons/icon-96x96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Alerts",
+      "short_name": "Alerts",
+      "description": "Manage price alerts",
+      "url": "/dashboard/alerts",
+      "icons": [{ "src": "/static/images/icons/icon-96x96.png", "sizes": "96x96" }]
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false,
+  "share_target": {
+    "action": "/share",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
+}

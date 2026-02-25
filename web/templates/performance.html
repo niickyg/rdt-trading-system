@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Performance - RDT Trading{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1000px; padding: 40px 20px;">
+    <h1 class="text-center mb-2">Strategy Performance</h1>
+    <p class="text-center text-muted mb-2">Historical performance of the RDT Trading strategy</p>
+
+    <!-- Performance Summary -->
+    <div class="grid grid-4 mb-2">
+        <div class="stat-card text-center">
+            <div class="stat-label">Annual Return</div>
+            <div class="stat-value text-success">+{{ stats.annual_return }}%</div>
+            <div class="stat-change">Last 12 months</div>
+        </div>
+        <div class="stat-card text-center">
+            <div class="stat-label">Win Rate</div>
+            <div class="stat-value">{{ stats.win_rate }}%</div>
+            <div class="stat-change">{{ stats.total_trades }} trades</div>
+        </div>
+        <div class="stat-card text-center">
+            <div class="stat-label">Profit Factor</div>
+            <div class="stat-value">{{ stats.profit_factor }}</div>
+            <div class="stat-change">Avg Win/Avg Loss</div>
+        </div>
+        <div class="stat-card text-center">
+            <div class="stat-label">Max Drawdown</div>
+            <div class="stat-value text-danger">{{ stats.max_drawdown }}%</div>
+            <div class="stat-change">Peak to trough</div>
+        </div>
+    </div>
+
+    <!-- Detailed Stats -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Detailed Statistics</h3>
+            <span class="text-muted">Last 365 days</span>
+        </div>
+        <div class="grid grid-2">
+            <div>
+                <h4 style="margin-bottom: 15px; color: var(--text-light);">Trade Metrics</h4>
+                <table class="table">
+                    <tr><td>Total Trades</td><td class="text-right"><strong>{{ stats.total_trades }}</strong></td></tr>
+                    <tr><td>Winning Trades</td><td class="text-right text-success"><strong>{{ stats.winning_trades }}</strong></td></tr>
+                    <tr><td>Losing Trades</td><td class="text-right text-danger"><strong>{{ stats.losing_trades }}</strong></td></tr>
+                    <tr><td>Win Rate</td><td class="text-right"><strong>{{ stats.win_rate }}%</strong></td></tr>
+                    <tr><td>Avg Holding Period</td><td class="text-right"><strong>{{ stats.avg_holding_days }} days</strong></td></tr>
+                </table>
+            </div>
+            <div>
+                <h4 style="margin-bottom: 15px; color: var(--text-light);">Return Metrics</h4>
+                <table class="table">
+                    <tr><td>Total Return</td><td class="text-right text-success"><strong>+{{ stats.annual_return }}%</strong></td></tr>
+                    <tr><td>Profit Factor</td><td class="text-right"><strong>{{ stats.profit_factor }}</strong></td></tr>
+                    <tr><td>Max Drawdown</td><td class="text-right text-danger"><strong>{{ stats.max_drawdown }}%</strong></td></tr>
+                    <tr><td>Sharpe Ratio</td><td class="text-right"><strong>{{ stats.sharpe_ratio }}</strong></td></tr>
+                    <tr><td>Recovery Factor</td><td class="text-right"><strong>{{ stats.recovery_factor }}</strong></td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monthly Returns -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Monthly Returns</h3>
+        </div>
+        <div class="grid grid-4" style="gap: 10px;">
+            {% for month in monthly_returns %}
+            <div style="background: {% if month.return >= 0 %}#e8f5e9{% else %}#ffebee{% endif %}; padding: 15px; border-radius: 8px; text-align: center;">
+                <div style="font-size: 0.85rem; color: var(--text-light);">{{ month.name }}</div>
+                <div style="font-size: 1.2rem; font-weight: bold; color: {% if month.return >= 0 %}#2e7d32{% else %}#c62828{% endif %};">
+                    {% if month.return >= 0 %}+{% endif %}{{ month.return }}%
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-light);">{{ month.trades }} trades</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Strategy Description -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Strategy Overview</h3>
+        </div>
+        <div class="grid grid-2">
+            <div>
+                <h4 style="margin-bottom: 10px;">Entry Criteria</h4>
+                <ul style="padding-left: 20px; color: var(--text-light);">
+                    <li>Real Relative Strength (RRS) > 2.0</li>
+                    <li>Daily chart showing strength (above key EMAs)</li>
+                    <li>ML confidence > 72%</li>
+                    <li>Favorable market regime</li>
+                    <li>No negative news or upcoming earnings</li>
+                </ul>
+            </div>
+            <div>
+                <h4 style="margin-bottom: 10px;">Exit Rules</h4>
+                <ul style="padding-left: 20px; color: var(--text-light);">
+                    <li>Stop loss: 1x ATR below entry</li>
+                    <li>Profit target: 1x ATR above entry</li>
+                    <li>Time stop: Exit after max holding period</li>
+                    <li>Trailing stop for longer-term trades</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Disclaimer -->
+    <div class="alert alert-warning">
+        <strong>Disclaimer:</strong> Past performance does not guarantee future results.
+        Trading involves substantial risk of loss. These results are from backtesting and may not
+        reflect actual trading performance. Always do your own research and consider your risk tolerance.
+    </div>
+
+    <div class="text-center mt-2">
+        <a href="/pricing" class="btn btn-primary">Start Trading</a>
+        <a href="/dashboard" class="btn btn-secondary">View Dashboard</a>
+    </div>
+</div>
+{% endblock %}

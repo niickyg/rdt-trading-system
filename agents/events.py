@@ -4,6 +4,7 @@ Implements publish-subscribe pattern for agent messaging
 """
 
 import asyncio
+import json
 from datetime import datetime
 from typing import Dict, List, Callable, Any, Optional
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ class EventType(Enum):
     SYSTEM_START = "system.start"
     SYSTEM_STOP = "system.stop"
     SYSTEM_ERROR = "system.error"
+    SYSTEM_MODEL_UPDATED = "system.model_updated"
 
     # Market events
     MARKET_OPEN = "market.open"
@@ -52,6 +54,7 @@ class EventType(Enum):
     # Risk events
     RISK_CHECK_PASSED = "risk.passed"
     RISK_CHECK_FAILED = "risk.failed"
+    RISK_ALERT = "risk.alert"
     DAILY_LIMIT_HIT = "risk.daily_limit"
     DRAWDOWN_WARNING = "risk.drawdown_warning"
     TRADING_HALTED = "risk.trading_halted"
@@ -59,6 +62,10 @@ class EventType(Enum):
     # Portfolio events
     PORTFOLIO_UPDATED = "portfolio.updated"
     PNL_UPDATED = "portfolio.pnl_updated"
+
+    # Market regime events
+    REGIME_CHANGE = "regime.change"
+    REGIME_DETECTED = "regime.detected"
 
 
 @dataclass
@@ -164,11 +171,8 @@ class EventBus:
         Synchronously publish an event (creates new event loop if needed)
         """
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.create_task(self.publish(event))
-            else:
-                loop.run_until_complete(self.publish(event))
+            loop = asyncio.get_running_loop()
+            asyncio.create_task(self.publish(event))
         except RuntimeError:
             asyncio.run(self.publish(event))
 
@@ -210,15 +214,340 @@ class EventBus:
         return events[-limit:]
 
 
+class PersistentEventBus(EventBus):
+    """
+    Event bus with database persistence for recovery.
+
+    Persists events before publishing and marks them as processed
+    after successful delivery. Supports replaying unprocessed events
+    after system restart.
+    """
+
+    MAX_RETRY_COUNT = 3
+
+    def __init__(self, db_manager=None):
+        """
+        Initialize persistent event bus.
+
+        Args:
+            db_manager: Database manager instance (lazy loaded if None)
+        """
+        super().__init__()
+        self._db_manager = db_manager
+
+    def _get_db_manager(self):
+        """Lazy load database manager."""
+        if self._db_manager is None:
+            from data.database.connection import get_db_manager
+            self._db_manager = get_db_manager()
+        return self._db_manager
+
+    def _persist_event(self, event: Event) -> bool:
+        """
+        Persist event to database before publishing.
+
+        Args:
+            event: Event to persist
+
+        Returns:
+            True if persisted successfully
+        """
+        try:
+            from data.database.models import EventRecord, EventStatus
+
+            db = self._get_db_manager()
+            with db.get_session() as session:
+                record = EventRecord(
+                    event_id=event.event_id,
+                    event_type=event.event_type.value,
+                    source=event.source,
+                    priority=event.priority,
+                    data=json.dumps(event.data, default=str),
+                    status=EventStatus.PENDING,
+                    created_at=event.timestamp
+                )
+                session.add(record)
+                session.commit()
+                logger.debug(f"Persisted event {event.event_id}")
+                return True
+
+        except Exception as e:
+            logger.error(f"Failed to persist event {event.event_id}: {e}")
+            return False
+
+    def _mark_published(self, event_id: str) -> None:
+        """Mark event as published in database."""
+        try:
+            from data.database.models import EventRecord, EventStatus
+
+            db = self._get_db_manager()
+            with db.get_session() as session:
+                record = session.query(EventRecord).filter_by(event_id=event_id).first()
+                if record:
+                    record.status = EventStatus.PUBLISHED
+                    record.published_at = datetime.now()
+                    session.commit()
+
+        except Exception as e:
+            logger.error(f"Failed to mark event {event_id} as published: {e}")
+
+    def _mark_processed(self, event_id: str) -> None:
+        """Mark event as fully processed in database."""
+        try:
+            from data.database.models import EventRecord, EventStatus
+
+            db = self._get_db_manager()
+            with db.get_session() as session:
+                record = session.query(EventRecord).filter_by(event_id=event_id).first()
+                if record:
+                    record.status = EventStatus.PROCESSED
+                    record.processed_at = datetime.now()
+                    session.commit()
+
+        except Exception as e:
+            logger.error(f"Failed to mark event {event_id} as processed: {e}")
+
+    def _mark_failed(self, event_id: str, error_message: str) -> None:
+        """Mark event as failed in database."""
+        try:
+            from data.database.models import EventRecord, EventStatus
+
+            db = self._get_db_manager()
+            with db.get_session() as session:
+                record = session.query(EventRecord).filter_by(event_id=event_id).first()
+                if record:
+                    record.retry_count += 1
+                    record.error_message = error_message
+                    if record.retry_count >= self.MAX_RETRY_COUNT:
+                        record.status = EventStatus.FAILED
+                    session.commit()
+
+        except Exception as e:
+            logger.error(f"Failed to mark event {event_id} as failed: {e}")
+
+    async def publish(self, event: Event):
+        """
+        Publish an event with persistence.
+
+        Persists event before publishing, then marks as processed
+        after successful delivery to all subscribers.
+
+        Args:
+            event: Event to publish
+        """
+        if not self._running:
+            logger.warning("EventBus not running, event not published")
+            return
+
+        # Persist before publishing
+        persisted = self._persist_event(event)
+
+        # Store in memory history
+        self._event_history.append(event)
+        if len(self._event_history) > self._max_history:
+            self._event_history.pop(0)
+
+        logger.debug(f"Publishing: {event}")
+
+        # Get subscribers for this event type
+        subscribers = self._subscribers.get(event.event_type, [])
+        all_succeeded = True
+        error_msg = None
+
+        for callback in subscribers:
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(event)
+                else:
+                    callback(event)
+            except Exception as e:
+                all_succeeded = False
+                error_msg = str(e)
+                logger.error(f"Error in event handler: {e}")
+
+        # Update persistence status
+        if persisted:
+            if all_succeeded:
+                self._mark_processed(event.event_id)
+            elif error_msg:
+                self._mark_failed(event.event_id, error_msg)
+            else:
+                self._mark_published(event.event_id)
+
+    async def replay_unprocessed(self, max_events: int = 100) -> int:
+        """
+        Replay unprocessed events from database.
+
+        Used for recovery after system restart. Replays events that
+        were persisted but not marked as processed.
+
+        Args:
+            max_events: Maximum number of events to replay
+
+        Returns:
+            Number of events replayed
+        """
+        if not self._running:
+            logger.warning("EventBus not running, cannot replay events")
+            return 0
+
+        try:
+            from data.database.models import EventRecord, EventStatus
+
+            db = self._get_db_manager()
+            replayed = 0
+
+            with db.get_session() as session:
+                # Get unprocessed events (PENDING or PUBLISHED, not FAILED)
+                records = (
+                    session.query(EventRecord)
+                    .filter(EventRecord.status.in_([EventStatus.PENDING, EventStatus.PUBLISHED]))
+                    .filter(EventRecord.retry_count < self.MAX_RETRY_COUNT)
+                    .order_by(EventRecord.created_at)
+                    .limit(max_events)
+                    .all()
+                )
+
+                for record in records:
+                    try:
+                        # Reconstruct event
+                        event_type = EventType(record.event_type)
+                        event = Event(
+                            event_type=event_type,
+                            data=json.loads(record.data),
+                            timestamp=record.created_at,
+                            event_id=record.event_id,
+                            source=record.source,
+                            priority=record.priority
+                        )
+
+                        logger.info(f"Replaying event {event.event_id} ({event.event_type.value})")
+
+                        # Publish to subscribers (without re-persisting)
+                        subscribers = self._subscribers.get(event.event_type, [])
+                        all_succeeded = True
+                        error_msg = None
+
+                        for callback in subscribers:
+                            try:
+                                if asyncio.iscoroutinefunction(callback):
+                                    await callback(event)
+                                else:
+                                    callback(event)
+                            except Exception as e:
+                                all_succeeded = False
+                                error_msg = str(e)
+                                logger.error(f"Error replaying to handler: {e}")
+
+                        # Update status
+                        if all_succeeded:
+                            record.status = EventStatus.PROCESSED
+                            record.processed_at = datetime.now()
+                            replayed += 1
+                        else:
+                            record.retry_count += 1
+                            record.error_message = error_msg
+                            if record.retry_count >= self.MAX_RETRY_COUNT:
+                                record.status = EventStatus.FAILED
+
+                    except ValueError:
+                        # Invalid event type, mark as failed
+                        logger.error(f"Invalid event type: {record.event_type}")
+                        record.status = EventStatus.FAILED
+                        record.error_message = f"Invalid event type: {record.event_type}"
+
+                session.commit()
+
+            logger.info(f"Replayed {replayed} unprocessed events")
+            return replayed
+
+        except Exception as e:
+            logger.error(f"Failed to replay unprocessed events: {e}")
+            return 0
+
+    def get_unprocessed_count(self) -> int:
+        """Get count of unprocessed events in database."""
+        try:
+            from data.database.models import EventRecord, EventStatus
+
+            db = self._get_db_manager()
+            with db.get_session() as session:
+                count = (
+                    session.query(EventRecord)
+                    .filter(EventRecord.status.in_([EventStatus.PENDING, EventStatus.PUBLISHED]))
+                    .filter(EventRecord.retry_count < self.MAX_RETRY_COUNT)
+                    .count()
+                )
+                return count
+
+        except Exception as e:
+            logger.error(f"Failed to get unprocessed count: {e}")
+            return 0
+
+    def cleanup_old_events(self, days: int = 7) -> int:
+        """
+        Clean up old processed events from database.
+
+        Args:
+            days: Delete events older than this many days
+
+        Returns:
+            Number of events deleted
+        """
+        try:
+            from datetime import timedelta
+            from data.database.models import EventRecord, EventStatus
+
+            db = self._get_db_manager()
+            cutoff = datetime.now() - timedelta(days=days)
+
+            with db.get_session() as session:
+                deleted = (
+                    session.query(EventRecord)
+                    .filter(EventRecord.status == EventStatus.PROCESSED)
+                    .filter(EventRecord.processed_at < cutoff)
+                    .delete()
+                )
+                session.commit()
+
+            logger.info(f"Cleaned up {deleted} old events")
+            return deleted
+
+        except Exception as e:
+            logger.error(f"Failed to cleanup old events: {e}")
+            return 0
+
+
 # Global event bus instance
 _event_bus: Optional[EventBus] = None
 
 
-def get_event_bus() -> EventBus:
-    """Get or create global event bus instance"""
+def get_event_bus(persistent: bool = False) -> EventBus:
+    """
+    Get or create global event bus instance.
+
+    Args:
+        persistent: If True and no bus exists, create a PersistentEventBus
+
+    Returns:
+        EventBus instance (possibly PersistentEventBus)
+    """
     global _event_bus
     if _event_bus is None:
-        _event_bus = EventBus()
+        if persistent:
+            _event_bus = PersistentEventBus()
+            logger.info("Created PersistentEventBus for event recovery support")
+        else:
+            _event_bus = EventBus()
+    return _event_bus
+
+
+def get_persistent_event_bus() -> PersistentEventBus:
+    """Get or create a persistent event bus instance."""
+    global _event_bus
+    if _event_bus is None or not isinstance(_event_bus, PersistentEventBus):
+        _event_bus = PersistentEventBus()
+        logger.info("Created PersistentEventBus")
     return _event_bus
 
 

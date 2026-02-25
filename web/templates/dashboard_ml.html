@@ -1,0 +1,720 @@
+{% extends "base.html" %}
+
+{% block title %}ML Model Monitor - RDT Trading{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dashboard-layout {
+        display: grid;
+        grid-template-columns: 240px 1fr;
+        min-height: calc(100vh - 60px);
+    }
+    .sidebar {
+        background: var(--primary);
+        padding: 20px;
+        position: sticky;
+        top: 60px;
+        height: calc(100vh - 60px);
+        overflow-y: auto;
+    }
+    .sidebar-nav { list-style: none; }
+    .sidebar-nav li { margin-bottom: 5px; }
+    .sidebar-nav a {
+        display: block;
+        padding: 12px 15px;
+        color: rgba(255,255,255,0.7);
+        border-radius: 5px;
+        transition: all 0.3s;
+    }
+    .sidebar-nav a:hover, .sidebar-nav a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        text-decoration: none;
+    }
+    .sidebar-section {
+        color: rgba(255,255,255,0.5);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        margin: 20px 0 10px;
+        padding-left: 15px;
+    }
+    .main-content { padding: 25px; }
+
+    /* Page Header */
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 25px;
+    }
+    .page-title { font-size: 1.5rem; font-weight: 600; }
+    .page-subtitle { color: var(--text-light); font-size: 0.9rem; margin-top: 5px; }
+
+    /* Summary stat cards row */
+    .stats-summary {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 15px;
+        margin-bottom: 25px;
+    }
+    .summary-stat {
+        background: var(--card);
+        padding: 18px 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+    .summary-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.3rem;
+        flex-shrink: 0;
+    }
+    .summary-icon.model  { background: #e3f2fd; color: #1565c0; }
+    .summary-icon.preds  { background: #e8f5e9; color: #2e7d32; }
+    .summary-icon.drift  { background: #fff3e0; color: #e65100; }
+    .summary-icon.action { background: #ffebee; color: #c62828; }
+    .summary-content { flex: 1; min-width: 0; }
+    .summary-value { font-size: 1.4rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .summary-label { font-size: 0.78rem; color: var(--text-light); margin-top: 2px; }
+
+    /* Drift severity badge colours */
+    .drift-none     { background: #e8f5e9; color: #2e7d32; }
+    .drift-low      { background: #e3f2fd; color: #1565c0; }
+    .drift-medium   { background: #fff3e0; color: #e65100; }
+    .drift-high     { background: #ffebee; color: #c62828; }
+    .drift-critical { background: #b71c1c; color: #fff; }
+    .drift-unknown  { background: #f0f0f0; color: #888; }
+
+    /* Cards grid */
+    .cards-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+        margin-bottom: 25px;
+    }
+
+    /* Info rows inside cards */
+    .info-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border);
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: var(--text-light); font-size: 0.875rem; }
+    .info-value { font-weight: 600; font-size: 0.9rem; text-align: right; max-width: 60%; word-break: break-word; }
+
+    /* Metric bars */
+    .metric-bar-row {
+        padding: 8px 0;
+        border-bottom: 1px solid var(--border);
+    }
+    .metric-bar-row:last-child { border-bottom: none; }
+    .metric-bar-header {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.85rem;
+        margin-bottom: 4px;
+    }
+    .metric-bar-label { color: var(--text-light); }
+    .metric-bar-value { font-weight: 600; }
+    .metric-bar-track {
+        height: 7px;
+        background: var(--border);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    .metric-bar-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.4s;
+    }
+    .fill-good    { background: var(--success); }
+    .fill-warning { background: var(--warning); }
+    .fill-bad     { background: var(--danger); }
+
+    /* Feature drift table */
+    .feature-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .feature-table th, .feature-table td {
+        padding: 10px 14px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.875rem;
+    }
+    .feature-table th {
+        background: var(--bg);
+        font-weight: 600;
+        color: var(--text-light);
+        text-transform: uppercase;
+        font-size: 0.78rem;
+    }
+    .feature-table tbody tr:hover { background: var(--bg); }
+    .feature-table tbody tr:last-child td { border-bottom: none; }
+
+    /* Predictions table */
+    .predictions-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .predictions-table th, .predictions-table td {
+        padding: 10px 14px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.875rem;
+    }
+    .predictions-table th {
+        background: var(--bg);
+        font-weight: 600;
+        color: var(--text-light);
+        text-transform: uppercase;
+        font-size: 0.78rem;
+    }
+    .predictions-table tbody tr:hover { background: var(--bg); }
+    .predictions-table tbody tr:last-child td { border-bottom: none; }
+
+    /* No-data notice */
+    .no-data {
+        text-align: center;
+        padding: 40px 20px;
+        color: var(--text-light);
+    }
+    .no-data-icon { font-size: 2.5rem; margin-bottom: 12px; opacity: 0.5; }
+    .no-data-title { font-size: 1.1rem; font-weight: 500; color: var(--text); margin-bottom: 6px; }
+
+    /* Status indicator pill */
+    .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .status-pill .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+    }
+    .pill-ok       { background: #e8f5e9; color: #2e7d32; }
+    .pill-ok .dot  { background: #2e7d32; }
+    .pill-warn       { background: #fff3e0; color: #e65100; }
+    .pill-warn .dot  { background: #e65100; }
+    .pill-error       { background: #ffebee; color: #c62828; }
+    .pill-error .dot  { background: #c62828; }
+    .pill-unknown       { background: #f0f0f0; color: #888; }
+    .pill-unknown .dot  { background: #bbb; }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+        .dashboard-layout { grid-template-columns: 1fr; }
+        .sidebar { display: none; }
+        .stats-summary { grid-template-columns: repeat(2, 1fr); }
+        .cards-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 600px) {
+        .stats-summary { grid-template-columns: 1fr; }
+        .main-content { padding: 15px; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard">Overview</a></li>
+            <li><a href="/dashboard/signals">Active Signals</a></li>
+            <li><a href="/dashboard/positions">Positions</a></li>
+            <li><a href="/dashboard/history">History</a></li>
+        </ul>
+        <div class="sidebar-section">Analysis</div>
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard/scanner">Live Scanner</a></li>
+            <li><a href="/dashboard/backtest">Backtest</a></li>
+            <li><a href="/dashboard/ml" class="active">ML Models</a></li>
+            <li><a href="/performance">Performance</a></li>
+        </ul>
+        <div class="sidebar-section">Settings</div>
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard/alerts">Alerts</a></li>
+            <li><a href="/dashboard/settings">Settings</a></li>
+            <li><a href="/api/v1/health" target="_blank">API Status</a></li>
+        </ul>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main-content">
+        <!-- Page Header -->
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">ML Model Monitor</h1>
+                <p class="page-subtitle">Stacked ensemble performance, drift detection, and prediction tracking</p>
+            </div>
+            <div>
+                <a href="/dashboard/ml" class="btn btn-primary btn-sm">Refresh</a>
+            </div>
+        </div>
+
+        {% if ml_data.error and ml_data.error == 'no_monitors' %}
+        <!-- No monitors registered yet -->
+        <div class="alert alert-info">
+            No model monitors are currently registered. Monitors are created when the ensemble model is
+            loaded and begins making predictions.
+        </div>
+        {% elif ml_data.error %}
+        <div class="alert alert-warning">
+            <strong>Note:</strong> Could not load full monitoring data: {{ ml_data.error }}
+            The dashboard will display partial information where available.
+        </div>
+        {% endif %}
+
+        <!-- Summary Stats Row -->
+        {% set status = ml_data.model_status %}
+        {% set drift  = ml_data.drift_status %}
+
+        <div class="stats-summary">
+            <!-- Total Predictions -->
+            <div class="summary-stat">
+                <div class="summary-icon preds">&#x1F4CA;</div>
+                <div class="summary-content">
+                    <div class="summary-value">
+                        {% if status %}{{ status.total_predictions | default(0) }}{% else %}--{% endif %}
+                    </div>
+                    <div class="summary-label">Total Predictions</div>
+                </div>
+            </div>
+
+            <!-- Model Version -->
+            <div class="summary-stat">
+                <div class="summary-icon model">&#x1F9E0;</div>
+                <div class="summary-content">
+                    <div class="summary-value">
+                        {% if status %}v{{ status.model_version | default('—') }}{% else %}--{% endif %}
+                    </div>
+                    <div class="summary-label">Model Version</div>
+                </div>
+            </div>
+
+            <!-- Drift Severity -->
+            <div class="summary-stat">
+                <div class="summary-icon drift">&#x1F50D;</div>
+                <div class="summary-content">
+                    <div class="summary-value">
+                        {% if drift %}
+                            {{ drift.summary.overall_severity | capitalize }}
+                        {% elif status %}
+                            {{ status.overall_drift_severity | capitalize }}
+                        {% else %}
+                            Unknown
+                        {% endif %}
+                    </div>
+                    <div class="summary-label">Drift Severity</div>
+                </div>
+            </div>
+
+            <!-- Retrain Recommended -->
+            <div class="summary-stat">
+                <div class="summary-icon action">&#x26A0;</div>
+                <div class="summary-content">
+                    <div class="summary-value">
+                        {% if status %}
+                            {% if status.retrain_recommended %}Yes{% else %}No{% endif %}
+                        {% else %}
+                            --
+                        {% endif %}
+                    </div>
+                    <div class="summary-label">Retrain Needed</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top cards row -->
+        <div class="cards-grid">
+
+            <!-- ===================== MODEL STATUS CARD ===================== -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Model Status</h2>
+                    {% if status %}
+                        {% if status.monitoring_active %}
+                        <span class="status-pill pill-ok"><span class="dot"></span>Monitoring Active</span>
+                        {% else %}
+                        <span class="status-pill pill-unknown"><span class="dot"></span>Not Monitoring</span>
+                        {% endif %}
+                    {% else %}
+                    <span class="status-pill pill-unknown"><span class="dot"></span>No Data</span>
+                    {% endif %}
+                </div>
+
+                {% if status %}
+                <div class="info-row">
+                    <span class="info-label">Model Name</span>
+                    <span class="info-value">{{ status.model_name | default('—') }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Version</span>
+                    <span class="info-value">{{ status.model_version | default('—') }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Total Predictions</span>
+                    <span class="info-value">{{ status.total_predictions | default(0) }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Outcomes Recorded</span>
+                    <span class="info-value">{{ status.total_outcomes | default(0) }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Predictions Since Retrain</span>
+                    <span class="info-value">{{ status.predictions_since_retrain | default(0) }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Last Drift Check</span>
+                    <span class="info-value">
+                        {% if status.last_drift_check %}{{ status.last_drift_check | replace('T', ' ') | truncate(19, True, '') }}{% else %}Never{% endif %}
+                    </span>
+                </div>
+                {% if ml_data.ensemble_path_exists is defined %}
+                <div class="info-row">
+                    <span class="info-label">Saved Ensemble</span>
+                    <span class="info-value">
+                        {% if ml_data.ensemble_path_exists %}
+                        <span class="badge badge-success">Found</span>
+                        {% else %}
+                        <span class="badge badge-warning">Not found</span>
+                        {% endif %}
+                    </span>
+                </div>
+                {% endif %}
+                {% else %}
+                <div class="no-data">
+                    <div class="no-data-icon">&#x1F9E0;</div>
+                    <div class="no-data-title">Model Not Loaded</div>
+                    <p>No model monitor is registered. Load and run the ensemble to see status.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- ===================== DRIFT DETECTION CARD ===================== -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Drift Detection</h2>
+                    {% if drift %}
+                        {% set sev = drift.summary.overall_severity %}
+                        {% if sev == 'none' or sev == 'low' %}
+                        <span class="status-pill pill-ok"><span class="dot"></span>OK</span>
+                        {% elif sev == 'medium' %}
+                        <span class="status-pill pill-warn"><span class="dot"></span>Warning</span>
+                        {% elif sev in ['high', 'critical'] %}
+                        <span class="status-pill pill-error"><span class="dot"></span>Action Required</span>
+                        {% else %}
+                        <span class="status-pill pill-unknown"><span class="dot"></span>Unknown</span>
+                        {% endif %}
+                    {% else %}
+                    <span class="status-pill pill-unknown"><span class="dot"></span>No Report</span>
+                    {% endif %}
+                </div>
+
+                {% if drift %}
+                <div class="info-row">
+                    <span class="info-label">Overall Severity</span>
+                    <span class="info-value">
+                        {% set sev = drift.summary.overall_severity %}
+                        <span class="badge drift-{{ sev }}">{{ sev | upper }}</span>
+                    </span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Last Checked</span>
+                    <span class="info-value">{{ drift.timestamp | replace('T', ' ') | truncate(19, True, '') }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Features Checked</span>
+                    <span class="info-value">{{ drift.summary.total_features_checked }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Features with Drift</span>
+                    <span class="info-value">
+                        {% if drift.summary.features_with_drift > 0 %}
+                        <span style="color: var(--warning); font-weight: 700;">{{ drift.summary.features_with_drift }}</span>
+                        {% else %}
+                        0
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Prediction Drift</span>
+                    <span class="info-value">
+                        {% if drift.summary.prediction_drift_detected %}
+                        <span class="badge badge-warning">Detected</span>
+                        {% else %}
+                        <span class="badge badge-success">OK</span>
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Performance Degradation</span>
+                    <span class="info-value">
+                        {% if drift.summary.performance_degradation_detected %}
+                        <span class="badge badge-danger">Detected</span>
+                        {% else %}
+                        <span class="badge badge-success">OK</span>
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Baseline Samples</span>
+                    <span class="info-value">{{ drift.samples.baseline }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Current Window Samples</span>
+                    <span class="info-value">{{ drift.samples.current }}</span>
+                </div>
+                {% if drift.summary.recommended_action %}
+                <div class="mt-2" style="padding: 12px; background: #fafafa; border-radius: 6px; border-left: 4px solid
+                    {% set sev = drift.summary.overall_severity %}
+                    {% if sev in ['critical', 'high'] %}var(--danger){% elif sev == 'medium' %}var(--warning){% else %}var(--accent){% endif %};">
+                    <small style="color: var(--text-light); display: block; margin-bottom: 4px; font-size: 0.78rem; text-transform: uppercase;">Recommended Action</small>
+                    <span style="font-size: 0.875rem;">{{ drift.summary.recommended_action }}</span>
+                </div>
+                {% endif %}
+                {% else %}
+                <div class="no-data">
+                    <div class="no-data-icon">&#x1F50D;</div>
+                    <div class="no-data-title">No Drift Report</div>
+                    <p>Drift detection runs after {{ 50 }} predictions have been recorded. Keep the model making predictions to enable drift analysis.</p>
+                </div>
+                {% endif %}
+            </div>
+
+        </div><!-- /.cards-grid -->
+
+        <!-- ===================== PERFORMANCE METRICS CARD ===================== -->
+        {% set perf = ml_data.performance_status %}
+        <div class="card mb-2">
+            <div class="card-header">
+                <h2 class="card-title">Performance Metrics</h2>
+                {% if perf and perf.degradation_detected %}
+                <span class="status-pill pill-warn"><span class="dot"></span>Degradation Detected</span>
+                {% elif perf %}
+                <span class="status-pill pill-ok"><span class="dot"></span>Healthy</span>
+                {% else %}
+                <span class="status-pill pill-unknown"><span class="dot"></span>No Data</span>
+                {% endif %}
+            </div>
+
+            {% if perf and perf.current_metrics %}
+                {% set m = perf.current_metrics %}
+
+                {% if m.sample_count is defined and m.sample_count > 0 %}
+                <p class="text-muted mb-1" style="font-size: 0.85rem;">
+                    Based on {{ m.sample_count }} outcomes with known results.
+                    {% if perf.degraded_metrics %}
+                    Degraded metrics: <strong>{{ perf.degraded_metrics | join(', ') }}</strong>.
+                    {% endif %}
+                </p>
+
+                <div class="metric-bar-row">
+                    <div class="metric-bar-header">
+                        <span class="metric-bar-label">Accuracy</span>
+                        <span class="metric-bar-value">{{ '%.1f' % (m.accuracy * 100) if m.accuracy else 'N/A' }}%</span>
+                    </div>
+                    <div class="metric-bar-track">
+                        <div class="metric-bar-fill {% if m.accuracy and m.accuracy >= 0.6 %}fill-good{% elif m.accuracy and m.accuracy >= 0.5 %}fill-warning{% else %}fill-bad{% endif %}"
+                             style="width: {{ '%.0f' % (m.accuracy * 100) if m.accuracy else 0 }}%"></div>
+                    </div>
+                </div>
+
+                <div class="metric-bar-row">
+                    <div class="metric-bar-header">
+                        <span class="metric-bar-label">Precision</span>
+                        <span class="metric-bar-value">{{ '%.1f' % (m.precision * 100) if m.precision else 'N/A' }}%</span>
+                    </div>
+                    <div class="metric-bar-track">
+                        <div class="metric-bar-fill {% if m.precision and m.precision >= 0.6 %}fill-good{% elif m.precision and m.precision >= 0.5 %}fill-warning{% else %}fill-bad{% endif %}"
+                             style="width: {{ '%.0f' % (m.precision * 100) if m.precision else 0 }}%"></div>
+                    </div>
+                </div>
+
+                <div class="metric-bar-row">
+                    <div class="metric-bar-header">
+                        <span class="metric-bar-label">Recall</span>
+                        <span class="metric-bar-value">{{ '%.1f' % (m.recall * 100) if m.recall else 'N/A' }}%</span>
+                    </div>
+                    <div class="metric-bar-track">
+                        <div class="metric-bar-fill {% if m.recall and m.recall >= 0.6 %}fill-good{% elif m.recall and m.recall >= 0.5 %}fill-warning{% else %}fill-bad{% endif %}"
+                             style="width: {{ '%.0f' % (m.recall * 100) if m.recall else 0 }}%"></div>
+                    </div>
+                </div>
+
+                <div class="metric-bar-row">
+                    <div class="metric-bar-header">
+                        <span class="metric-bar-label">F1 Score</span>
+                        <span class="metric-bar-value">{{ '%.1f' % (m.f1_score * 100) if m.f1_score else 'N/A' }}%</span>
+                    </div>
+                    <div class="metric-bar-track">
+                        <div class="metric-bar-fill {% if m.f1_score and m.f1_score >= 0.6 %}fill-good{% elif m.f1_score and m.f1_score >= 0.5 %}fill-warning{% else %}fill-bad{% endif %}"
+                             style="width: {{ '%.0f' % (m.f1_score * 100) if m.f1_score else 0 }}%"></div>
+                    </div>
+                </div>
+
+                {% if m.avg_confidence is defined %}
+                <div class="metric-bar-row">
+                    <div class="metric-bar-header">
+                        <span class="metric-bar-label">Average Confidence</span>
+                        <span class="metric-bar-value">{{ '%.1f' % (m.avg_confidence * 100) if m.avg_confidence else 'N/A' }}%</span>
+                    </div>
+                    <div class="metric-bar-track">
+                        <div class="metric-bar-fill fill-good"
+                             style="width: {{ '%.0f' % (m.avg_confidence * 100) if m.avg_confidence else 0 }}%"></div>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% else %}
+                <div class="no-data">
+                    <div class="no-data-icon">&#x1F4C8;</div>
+                    <div class="no-data-title">Insufficient Outcomes</div>
+                    <p>Performance metrics require at least 30 prediction outcomes to be recorded. Use <code>monitor.record_outcome()</code> after trades resolve.</p>
+                </div>
+                {% endif %}
+
+            {% else %}
+            <div class="no-data">
+                <div class="no-data-icon">&#x1F4C8;</div>
+                <div class="no-data-title">No Performance Data</div>
+                <p>Performance metrics will appear once the model has been making predictions and outcomes have been recorded.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- ===================== FEATURE DRIFT TABLE ===================== -->
+        {% if ml_data.feature_drift %}
+        <div class="card mb-2">
+            <div class="card-header">
+                <h2 class="card-title">Feature Drift Details</h2>
+                <span style="font-size: 0.85rem; color: var(--text-light);">PSI-based drift scores per feature</span>
+            </div>
+            <div style="overflow-x: auto;">
+                <table class="feature-table">
+                    <thead>
+                        <tr>
+                            <th>Feature</th>
+                            <th>PSI Score</th>
+                            <th>Severity</th>
+                            <th>Drift Detected</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for feat in ml_data.feature_drift | sort(attribute='psi_score', reverse=True) %}
+                        <tr>
+                            <td style="font-family: monospace; font-size: 0.82rem;">{{ feat.feature }}</td>
+                            <td>{{ '%.4f' % feat.psi_score }}</td>
+                            <td>
+                                <span class="badge drift-{{ feat.severity }}">{{ feat.severity | upper }}</span>
+                            </td>
+                            <td>
+                                {% if feat.drift_detected %}
+                                <span class="badge badge-danger">Yes</span>
+                                {% else %}
+                                <span class="badge badge-success">No</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- ===================== RECENT PREDICTIONS TABLE ===================== -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Recent Predictions</h2>
+                <span style="font-size: 0.85rem; color: var(--text-light);">Last 20 recorded predictions</span>
+            </div>
+
+            {% if ml_data.recent_predictions %}
+            <div style="overflow-x: auto;">
+                <table class="predictions-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Predicted Class</th>
+                            <th>Confidence</th>
+                            <th>Outcome Known</th>
+                            <th>Model Version</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for pred in ml_data.recent_predictions %}
+                        <tr>
+                            <td style="font-size: 0.8rem; color: var(--text-light);">
+                                {{ pred.timestamp | replace('T', ' ') | truncate(19, True, '') }}
+                            </td>
+                            <td>
+                                {% if pred.predicted_class == 1 %}
+                                <span class="badge badge-long">Success</span>
+                                {% else %}
+                                <span class="badge badge-short">Failure</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div class="confidence-bar" style="width: 70px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;">
+                                        <div style="height: 100%; width: {{ pred.confidence }}%;
+                                            background: {% if pred.confidence >= 70 %}var(--success){% elif pred.confidence >= 50 %}var(--warning){% else %}var(--danger){% endif %};
+                                            border-radius: 3px;"></div>
+                                    </div>
+                                    <span style="font-size: 0.85rem; font-weight: 600;">{{ pred.confidence }}%</span>
+                                </div>
+                            </td>
+                            <td>
+                                {% if pred.metadata and pred.metadata.actual_class is defined %}
+                                <span class="badge badge-info">Yes</span>
+                                {% else %}
+                                <span class="text-muted" style="font-size: 0.82rem;">Pending</span>
+                                {% endif %}
+                            </td>
+                            <td style="font-family: monospace; font-size: 0.8rem; color: var(--text-light);">
+                                {{ pred.model_version }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="no-data">
+                <div class="no-data-icon">&#x1F4CB;</div>
+                <div class="no-data-title">No Predictions Yet</div>
+                <p>Predictions are recorded automatically when the ensemble model is used. Run the scanner or make predictions to populate this table.</p>
+            </div>
+            {% endif %}
+        </div>
+
+    </main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Auto-refresh page every 60 seconds to pick up new monitoring data
+    setTimeout(function() {
+        window.location.reload();
+    }, 60000);
+</script>
+{% endblock %}

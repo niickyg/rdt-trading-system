@@ -101,8 +101,8 @@ class BacktestEngine:
         rrs_threshold: float = 1.5,  # Lowered from 2.0 based on Hari's methodology
         max_positions: int = 5,
         use_relaxed_criteria: bool = True,  # Use relaxed daily chart checks
-        stop_atr_multiplier: float = 1.0,  # Tighter stops per RDT methodology
-        target_atr_multiplier: float = 2.0  # 2:1 R/R minimum
+        stop_atr_multiplier: float = 1.5,  # Wider stops = fewer stop-outs
+        target_atr_multiplier: float = 1.0  # Tight targets = higher win rate
     ):
         self.initial_capital = initial_capital
         self.risk_limits = risk_limits or RiskLimits()
@@ -402,7 +402,7 @@ class BacktestEngine:
             if len(day_data) > 0:
                 col = column.capitalize() if column.lower() in ['open', 'high', 'low', 'close'] else column
                 return float(day_data[col].iloc[0])
-        except:
+        except Exception:
             pass
         return None
 

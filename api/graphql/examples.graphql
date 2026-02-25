@@ -1,0 +1,546 @@
+# =============================================================================
+# RDT Trading System - GraphQL Example Queries
+# =============================================================================
+#
+# Use these examples in the GraphQL Playground at /graphql
+# Remember to set your API key in the HTTP headers:
+# { "X-API-Key": "your_api_key_here" }
+#
+# Default test key: rdt_test_key_for_development_only
+# =============================================================================
+
+
+# =============================================================================
+# SIGNAL QUERIES
+# =============================================================================
+
+# Get recent signals with all fields
+query GetAllSignals {
+  signals(limit: 20) {
+    id
+    symbol
+    direction
+    strength
+    rrs
+    price
+    entryPrice
+    atr
+    status
+    timestamp
+    dailyStrong
+    dailyWeak
+    strategy
+  }
+}
+
+# Get only LONG signals
+query GetLongSignals {
+  signals(direction: LONG, limit: 10) {
+    symbol
+    rrs
+    price
+    strength
+    timestamp
+  }
+}
+
+# Get only SHORT signals
+query GetShortSignals {
+  signals(direction: SHORT, limit: 10) {
+    symbol
+    rrs
+    price
+    strength
+    timestamp
+  }
+}
+
+# Get strong signals only
+query GetStrongSignals {
+  signals(strength: STRONG, limit: 10) {
+    symbol
+    direction
+    rrs
+    price
+    timestamp
+  }
+}
+
+# Get signals with high RRS values
+query GetHighRrsSignals {
+  signals(minRrs: 1.5, limit: 10) {
+    symbol
+    direction
+    rrs
+    price
+    strength
+  }
+}
+
+# Get a specific signal by ID
+query GetSignalById {
+  signal(id: 1) {
+    id
+    symbol
+    direction
+    rrs
+    price
+    status
+    timestamp
+  }
+}
+
+# Paginated signals
+query GetSignalsPaginated {
+  signals(limit: 10, offset: 20) {
+    symbol
+    direction
+    rrs
+    timestamp
+  }
+}
+
+
+# =============================================================================
+# POSITION QUERIES
+# =============================================================================
+
+# Get all open positions
+query GetAllPositions {
+  positions {
+    id
+    symbol
+    direction
+    entryPrice
+    shares
+    entryTime
+    stopLoss
+    takeProfit
+    currentPrice
+    pnl
+    pnlPct
+    rrsAtEntry
+  }
+}
+
+# Get positions for a specific symbol
+query GetPositionBySymbol {
+  position(symbol: "AAPL") {
+    symbol
+    direction
+    entryPrice
+    shares
+    currentPrice
+    pnl
+    pnlPct
+    stopLoss
+    takeProfit
+  }
+}
+
+# Get only profitable positions
+query GetProfitablePositions {
+  positions(profitableOnly: true) {
+    symbol
+    direction
+    pnl
+    pnlPct
+  }
+}
+
+# Get LONG positions only
+query GetLongPositions {
+  positions(direction: LONG) {
+    symbol
+    entryPrice
+    shares
+    pnl
+  }
+}
+
+
+# =============================================================================
+# TRADE QUERIES
+# =============================================================================
+
+# Get recent trades
+query GetRecentTrades {
+  trades(days: 30, limit: 50) {
+    id
+    symbol
+    direction
+    entryPrice
+    exitPrice
+    shares
+    entryTime
+    exitTime
+    pnl
+    pnlPercent
+    status
+    exitReason
+  }
+}
+
+# Get closed trades only
+query GetClosedTrades {
+  trades(status: CLOSED, days: 30) {
+    symbol
+    direction
+    entryPrice
+    exitPrice
+    pnl
+    pnlPercent
+    exitReason
+    exitTime
+  }
+}
+
+# Get trades for specific symbol
+query GetTradesForSymbol {
+  trades(symbol: "AAPL", days: 90) {
+    id
+    direction
+    entryPrice
+    exitPrice
+    pnl
+    status
+    entryTime
+  }
+}
+
+# Get a specific trade by ID
+query GetTradeById {
+  trade(id: 1) {
+    id
+    symbol
+    direction
+    entryPrice
+    exitPrice
+    shares
+    pnl
+    pnlPercent
+    status
+    exitReason
+  }
+}
+
+
+# =============================================================================
+# PORTFOLIO QUERIES
+# =============================================================================
+
+# Get full portfolio summary
+query GetPortfolio {
+  portfolio {
+    totalValue
+    cashAvailable
+    buyingPower
+    dayPnl
+    dayPnlPercent
+    totalPnl
+    totalPnlPercent
+    positionsCount
+    positions {
+      symbol
+      direction
+      entryPrice
+      shares
+      pnl
+    }
+    performance {
+      totalSignals
+      wins
+      losses
+      winRate
+      avgWinPct
+      avgLossPct
+      profitFactor
+      totalReturnPct
+      maxDrawdownPct
+      totalPnl
+    }
+  }
+}
+
+# Get only performance stats from portfolio
+query GetPerformanceStats {
+  portfolio {
+    performance {
+      winRate
+      profitFactor
+      totalReturnPct
+      totalPnl
+    }
+  }
+}
+
+
+# =============================================================================
+# MARKET & SCANNER STATUS
+# =============================================================================
+
+# Get market status
+query GetMarketStatus {
+  marketStatus {
+    isOpen
+    status
+    currentTime
+    nextOpen
+    nextClose
+    timezone
+  }
+}
+
+# Get scanner status
+query GetScannerStatus {
+  scannerStatus {
+    isRunning
+    lastScan
+    symbolsMonitored
+    activeSignals
+    scanIntervalSeconds
+    scannerVersion
+  }
+}
+
+
+# =============================================================================
+# DAILY STATISTICS
+# =============================================================================
+
+# Get daily stats for last 30 days
+query GetDailyStats {
+  dailyStats(days: 30) {
+    date
+    numTrades
+    winners
+    losers
+    pnl
+    winRate
+  }
+}
+
+# Get stats for specific date range
+query GetStatsDateRange {
+  dailyStats(startDate: "2024-01-01", endDate: "2024-01-31") {
+    date
+    pnl
+    numTrades
+    winRate
+  }
+}
+
+
+# =============================================================================
+# USER QUERIES
+# =============================================================================
+
+# Get current user info
+query GetCurrentUser {
+  me {
+    id
+    email
+    tier
+    createdAt
+    isActive
+    rateLimit
+    features
+  }
+}
+
+
+# =============================================================================
+# MUTATIONS
+# =============================================================================
+
+# Create a price alert
+mutation CreatePriceAlert {
+  createAlert(input: {
+    symbol: "AAPL"
+    price: 200.00
+    condition: ABOVE
+    notificationMethod: EMAIL
+    message: "AAPL hit $200 target"
+  }) {
+    success
+    message
+    alert {
+      id
+      symbol
+      price
+      condition
+      isActive
+    }
+  }
+}
+
+# Close a position
+mutation ClosePosition {
+  closePosition(
+    symbol: "AAPL"
+    price: 195.50
+    exitReason: TAKE_PROFIT
+  ) {
+    success
+    message
+    trade {
+      symbol
+      pnl
+      pnlPercent
+      exitReason
+    }
+  }
+}
+
+# Update user settings
+mutation UpdateSettings {
+  updateSettings(input: {
+    emailAlerts: true
+    pushAlerts: false
+    defaultPositionSize: 2000
+    riskPerTrade: 1.5
+    maxOpenPositions: 10
+    autoTrailingStop: true
+    trailingStopPercent: 2.5
+  }) {
+    success
+    message
+    settings {
+      emailAlerts
+      defaultPositionSize
+      riskPerTrade
+      autoTrailingStop
+    }
+  }
+}
+
+
+# =============================================================================
+# COMBINED QUERIES (Multiple queries in one request)
+# =============================================================================
+
+# Dashboard data - get multiple things at once
+query DashboardData {
+  marketStatus {
+    isOpen
+    status
+  }
+  scannerStatus {
+    isRunning
+    activeSignals
+  }
+  signals(limit: 5, strength: STRONG) {
+    symbol
+    direction
+    rrs
+    price
+  }
+  positions {
+    symbol
+    pnl
+  }
+  portfolio {
+    totalValue
+    dayPnl
+    positionsCount
+  }
+}
+
+# Morning check - signals and market status
+query MorningCheck {
+  marketStatus {
+    isOpen
+    status
+    currentTime
+  }
+  signals(limit: 10) {
+    symbol
+    direction
+    strength
+    rrs
+    price
+    timestamp
+  }
+  scannerStatus {
+    lastScan
+    activeSignals
+  }
+}
+
+
+# =============================================================================
+# USING VARIABLES
+# =============================================================================
+
+# Query with variables (pass variables in the Variables panel)
+query GetSignalsWithVariables($limit: Int, $direction: DirectionEnum) {
+  signals(limit: $limit, direction: $direction) {
+    symbol
+    direction
+    rrs
+    price
+  }
+}
+# Variables:
+# {
+#   "limit": 10,
+#   "direction": "LONG"
+# }
+
+# Close position with variables
+mutation ClosePositionWithVariables($symbol: String!, $price: Float!) {
+  closePosition(symbol: $symbol, price: $price) {
+    success
+    message
+    trade {
+      pnl
+    }
+  }
+}
+# Variables:
+# {
+#   "symbol": "AAPL",
+#   "price": 195.50
+# }
+
+
+# =============================================================================
+# INTROSPECTION
+# =============================================================================
+
+# Get schema information
+query GetSchema {
+  __schema {
+    types {
+      name
+      description
+    }
+  }
+}
+
+# Get Query type fields
+query GetQueryFields {
+  __type(name: "Query") {
+    name
+    fields {
+      name
+      description
+      type {
+        name
+      }
+    }
+  }
+}
+
+# Get Signal type structure
+query GetSignalType {
+  __type(name: "Signal") {
+    name
+    fields {
+      name
+      type {
+        name
+      }
+    }
+  }
+}

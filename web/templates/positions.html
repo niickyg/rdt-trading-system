@@ -1,0 +1,1365 @@
+{% extends "base.html" %}
+
+{% block title %}Position Tracker - RDT Trading{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dashboard-layout {
+        display: grid;
+        grid-template-columns: 240px 1fr;
+        min-height: calc(100vh - 60px);
+    }
+    .sidebar {
+        background: var(--primary);
+        padding: 20px;
+        position: sticky;
+        top: 60px;
+        height: calc(100vh - 60px);
+    }
+    .sidebar-nav { list-style: none; }
+    .sidebar-nav li { margin-bottom: 5px; }
+    .sidebar-nav a {
+        display: block;
+        padding: 12px 15px;
+        color: rgba(255,255,255,0.7);
+        border-radius: 5px;
+        transition: all 0.3s;
+    }
+    .sidebar-nav a:hover, .sidebar-nav a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        text-decoration: none;
+    }
+    .sidebar-section {
+        color: rgba(255,255,255,0.5);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        margin: 20px 0 10px;
+        padding-left: 15px;
+    }
+    .main-content { padding: 25px; }
+
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 25px;
+    }
+    .page-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 5px;
+    }
+    .page-subtitle {
+        color: var(--text-light);
+        font-size: 0.9rem;
+    }
+    .header-actions {
+        display: flex;
+        gap: 10px;
+    }
+
+    /* Portfolio Summary Cards */
+    .portfolio-summary {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 15px;
+        margin-bottom: 25px;
+    }
+    .summary-card {
+        background: var(--card);
+        padding: 18px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        transition: transform 0.2s;
+    }
+    .summary-card:hover {
+        transform: translateY(-2px);
+    }
+    .summary-card.highlight {
+        background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%);
+        color: white;
+    }
+    .summary-card.highlight .summary-label {
+        opacity: 0.8;
+    }
+    .summary-card.pnl-positive {
+        border-left: 4px solid var(--success);
+    }
+    .summary-card.pnl-negative {
+        border-left: 4px solid var(--danger);
+    }
+    .summary-label {
+        font-size: 0.8rem;
+        color: var(--text-light);
+        margin-bottom: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .summary-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+    }
+    .summary-value.positive { color: var(--success); }
+    .summary-value.negative { color: var(--danger); }
+    .summary-change {
+        font-size: 0.8rem;
+        margin-top: 4px;
+    }
+
+    /* Tab Navigation */
+    .tab-nav {
+        display: flex;
+        gap: 5px;
+        margin-bottom: 20px;
+        border-bottom: 2px solid var(--border);
+        padding-bottom: 0;
+    }
+    .tab-btn {
+        padding: 12px 24px;
+        border: none;
+        background: none;
+        cursor: pointer;
+        font-size: 0.95rem;
+        font-weight: 500;
+        color: var(--text-light);
+        border-bottom: 2px solid transparent;
+        margin-bottom: -2px;
+        transition: all 0.2s;
+    }
+    .tab-btn:hover {
+        color: var(--text);
+    }
+    .tab-btn.active {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+    }
+    .tab-content {
+        display: none;
+    }
+    .tab-content.active {
+        display: block;
+    }
+
+    /* Position Cards */
+    .position-card {
+        background: var(--card);
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 15px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        transition: all 0.2s;
+        border-left: 4px solid transparent;
+    }
+    .position-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .position-card.profitable {
+        border-left-color: var(--success);
+    }
+    .position-card.losing {
+        border-left-color: var(--danger);
+    }
+    .position-card.stop-warning {
+        background: linear-gradient(135deg, #fff5f5 0%, var(--card) 100%);
+    }
+    .position-card.target-near {
+        background: linear-gradient(135deg, #f5fff5 0%, var(--card) 100%);
+    }
+    .position-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    .position-symbol {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .position-ticker {
+        font-size: 1.4rem;
+        font-weight: 700;
+    }
+    .position-pnl {
+        text-align: right;
+    }
+    .position-pnl-value {
+        font-size: 1.3rem;
+        font-weight: 600;
+    }
+    .position-pnl-pct {
+        font-size: 0.95rem;
+    }
+
+    /* Position Details Grid */
+    .position-details {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 15px;
+        padding: 15px 0;
+        border-top: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
+    }
+    .detail-item {
+        text-align: center;
+    }
+    .detail-label {
+        font-size: 0.7rem;
+        color: var(--text-light);
+        text-transform: uppercase;
+        margin-bottom: 4px;
+        letter-spacing: 0.5px;
+    }
+    .detail-value {
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+    .detail-value.editable {
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 4px;
+        transition: background 0.2s;
+    }
+    .detail-value.editable:hover {
+        background: var(--bg);
+    }
+
+    /* Progress Bar for Target/Stop */
+    .progress-container {
+        margin: 15px 0;
+        padding: 10px 0;
+    }
+    .progress-bar-track {
+        position: relative;
+        height: 8px;
+        background: var(--border);
+        border-radius: 4px;
+        margin: 8px 0;
+    }
+    .progress-bar-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.3s;
+    }
+    .progress-bar-fill.to-target {
+        background: linear-gradient(90deg, var(--accent) 0%, var(--success) 100%);
+    }
+    .progress-bar-fill.to-stop {
+        background: linear-gradient(90deg, var(--warning) 0%, var(--danger) 100%);
+    }
+    .progress-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.75rem;
+        color: var(--text-light);
+    }
+    .progress-current {
+        position: absolute;
+        top: -20px;
+        transform: translateX(-50%);
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 2px 6px;
+        background: var(--primary);
+        color: white;
+        border-radius: 3px;
+    }
+
+    /* Position Actions */
+    .position-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid var(--border);
+    }
+    .position-meta {
+        font-size: 0.85rem;
+        color: var(--text-light);
+    }
+    .position-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    /* Inline Edit Input */
+    .inline-edit {
+        display: none;
+        align-items: center;
+        gap: 5px;
+    }
+    .inline-edit.active {
+        display: flex;
+    }
+    .inline-edit input {
+        width: 80px;
+        padding: 4px 8px;
+        border: 1px solid var(--accent);
+        border-radius: 4px;
+        font-size: 0.9rem;
+    }
+    .inline-edit button {
+        padding: 4px 8px;
+        font-size: 0.8rem;
+    }
+
+    /* Journal Section */
+    .journal-section {
+        background: var(--card);
+        border-radius: 10px;
+        padding: 20px;
+        margin-top: 20px;
+    }
+    .journal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    .journal-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+    .note-form {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    .note-input {
+        flex: 1;
+        padding: 12px 15px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: 0.95rem;
+        resize: none;
+    }
+    .note-input:focus {
+        outline: none;
+        border-color: var(--accent);
+    }
+    .note-type-select {
+        padding: 10px 15px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: white;
+        font-size: 0.9rem;
+    }
+    .notes-list {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    .note-item {
+        padding: 12px 15px;
+        background: var(--bg);
+        border-radius: 8px;
+        margin-bottom: 10px;
+    }
+    .note-meta {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 6px;
+        font-size: 0.8rem;
+        color: var(--text-light);
+    }
+    .note-type-badge {
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+    }
+    .note-type-badge.entry { background: #e3f2fd; color: #1565c0; }
+    .note-type-badge.exit { background: #fff3e0; color: #e65100; }
+    .note-type-badge.lesson { background: #f3e5f5; color: #7b1fa2; }
+    .note-type-badge.general { background: #e8eaf6; color: #3949ab; }
+    .note-text {
+        font-size: 0.95rem;
+        line-height: 1.5;
+    }
+
+    /* Performance Stats */
+    .performance-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 20px;
+        margin-bottom: 25px;
+    }
+    .perf-card {
+        background: var(--card);
+        padding: 20px;
+        border-radius: 10px;
+        text-align: center;
+    }
+    .perf-value {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 5px;
+    }
+    .perf-label {
+        font-size: 0.85rem;
+        color: var(--text-light);
+    }
+
+    /* Empty State */
+    .empty-state {
+        text-align: center;
+        padding: 80px 20px;
+        color: var(--text-light);
+    }
+    .empty-state-icon {
+        font-size: 4rem;
+        margin-bottom: 20px;
+        opacity: 0.5;
+    }
+    .empty-state-title {
+        font-size: 1.3rem;
+        font-weight: 500;
+        margin-bottom: 10px;
+        color: var(--text);
+    }
+
+    /* Loading State */
+    .loading-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px;
+        gap: 15px;
+    }
+    .loading-state .spinner {
+        width: 40px;
+        height: 40px;
+    }
+
+    /* Modal */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+    }
+    .modal-overlay.active {
+        display: flex;
+    }
+    .modal {
+        background: white;
+        border-radius: 12px;
+        padding: 30px;
+        max-width: 500px;
+        width: 90%;
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+    .modal-title {
+        font-size: 1.2rem;
+        font-weight: 600;
+    }
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: var(--text-light);
+    }
+    .modal-body {
+        margin-bottom: 20px;
+    }
+    .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+    }
+
+    /* Form Groups */
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+
+    /* Alerts Section */
+    .alerts-container {
+        margin-bottom: 20px;
+    }
+    .alert-item {
+        display: flex;
+        align-items: center;
+        padding: 12px 15px;
+        border-radius: 8px;
+        margin-bottom: 10px;
+    }
+    .alert-item.stop-alert {
+        background: #ffebee;
+        border: 1px solid #ef9a9a;
+    }
+    .alert-item.target-alert {
+        background: #e8f5e9;
+        border: 1px solid #a5d6a7;
+    }
+    .alert-icon {
+        font-size: 1.2rem;
+        margin-right: 12px;
+    }
+    .alert-text {
+        flex: 1;
+        font-size: 0.9rem;
+    }
+    .alert-action {
+        margin-left: 10px;
+    }
+
+    @media (max-width: 1200px) {
+        .portfolio-summary { grid-template-columns: repeat(3, 1fr); }
+        .position-details { grid-template-columns: repeat(3, 1fr); }
+        .performance-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 1024px) {
+        .dashboard-layout { grid-template-columns: 1fr; }
+        .sidebar { display: none; }
+    }
+    @media (max-width: 768px) {
+        .portfolio-summary { grid-template-columns: repeat(2, 1fr); }
+        .position-details { grid-template-columns: repeat(2, 1fr); }
+        .form-row { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 480px) {
+        .portfolio-summary { grid-template-columns: 1fr; }
+        .performance-grid { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+    <aside class="sidebar">
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard">Overview</a></li>
+            <li><a href="/dashboard/signals">Active Signals</a></li>
+            <li><a href="/dashboard/positions" class="active">Positions</a></li>
+            <li><a href="/dashboard/history">History</a></li>
+        </ul>
+        <div class="sidebar-section">Analysis</div>
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard/scanner">Live Scanner</a></li>
+            <li><a href="/dashboard/backtest">Backtest</a></li>
+            <li><a href="/performance">Performance</a></li>
+        </ul>
+        <div class="sidebar-section">Settings</div>
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard/alerts">Alerts</a></li>
+            <li><a href="/dashboard/settings">Settings</a></li>
+            <li><a href="/api/v1/health" target="_blank">API Status</a></li>
+        </ul>
+    </aside>
+
+    <main class="main-content">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Position Tracker</h1>
+                <p class="page-subtitle">Real-time position management with P&L tracking</p>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary" onclick="refreshPositions()">
+                    Refresh
+                </button>
+                <button class="btn btn-primary" onclick="openNewPositionModal()">
+                    + New Position
+                </button>
+            </div>
+        </div>
+
+        <!-- Alerts for Stops/Targets Hit -->
+        <div id="alerts-container" class="alerts-container"></div>
+
+        <!-- Portfolio Summary -->
+        <div class="portfolio-summary">
+            <div class="summary-card highlight">
+                <div class="summary-label">Total Exposure</div>
+                <div class="summary-value" id="total-exposure">$0</div>
+                <div class="summary-change" id="position-count">0 positions</div>
+            </div>
+            <div class="summary-card" id="pnl-card">
+                <div class="summary-label">Unrealized P&L</div>
+                <div class="summary-value" id="total-pnl">$0</div>
+                <div class="summary-change" id="total-pnl-pct">0.00%</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">At Risk</div>
+                <div class="summary-value" id="at-risk">$0</div>
+                <div class="summary-change">Max stop loss</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">Long / Short</div>
+                <div class="summary-value" id="long-short">0 / 0</div>
+                <div class="summary-change" id="profitable-count">0 profitable</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">Last Update</div>
+                <div class="summary-value" id="last-update" style="font-size: 1rem;">--:--:--</div>
+                <div class="summary-change">Auto-refresh 30s</div>
+            </div>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="tab-nav">
+            <button class="tab-btn active" onclick="switchTab('positions')">Open Positions</button>
+            <button class="tab-btn" onclick="switchTab('journal')">Trade Journal</button>
+            <button class="tab-btn" onclick="switchTab('performance')">Performance</button>
+        </div>
+
+        <!-- Open Positions Tab -->
+        <div id="tab-positions" class="tab-content active">
+            <div id="positions-container">
+                <div class="loading-state">
+                    <div class="spinner"></div>
+                    <span>Loading positions...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trade Journal Tab -->
+        <div id="tab-journal" class="tab-content">
+            <div class="journal-section">
+                <div class="journal-header">
+                    <h3 class="journal-title">Trade Journal</h3>
+                    <select id="journal-symbol-filter" class="note-type-select" onchange="filterJournalNotes()">
+                        <option value="">All Symbols</option>
+                    </select>
+                </div>
+                <div id="journal-notes-container">
+                    <div class="empty-state">
+                        <div class="empty-state-title">No Journal Entries</div>
+                        <p>Add notes to your positions to track your trading thoughts and lessons.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance Tab -->
+        <div id="tab-performance" class="tab-content">
+            <div class="performance-grid">
+                <div class="perf-card">
+                    <div class="perf-value" id="perf-total-trades">0</div>
+                    <div class="perf-label">Total Trades</div>
+                </div>
+                <div class="perf-card">
+                    <div class="perf-value" id="perf-win-rate">0%</div>
+                    <div class="perf-label">Win Rate</div>
+                </div>
+                <div class="perf-card">
+                    <div class="perf-value" id="perf-profit-factor">0.00</div>
+                    <div class="perf-label">Profit Factor</div>
+                </div>
+                <div class="perf-card">
+                    <div class="perf-value" id="perf-total-pnl">$0</div>
+                    <div class="perf-label">Total P&L</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Recent Closed Trades</h3>
+                </div>
+                <div id="closed-trades-container">
+                    <div class="text-center text-muted" style="padding: 40px;">
+                        No closed trades yet
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- New Position Modal -->
+<div id="new-position-modal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Open New Position</h3>
+            <button class="modal-close" onclick="closeModal('new-position-modal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Symbol</label>
+                    <input type="text" class="form-control" id="new-symbol" placeholder="AAPL" style="text-transform: uppercase;">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Direction</label>
+                    <select class="form-control" id="new-direction">
+                        <option value="long">Long</option>
+                        <option value="short">Short</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Entry Price</label>
+                    <input type="number" class="form-control" id="new-entry-price" step="0.01" placeholder="0.00">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Shares</label>
+                    <input type="number" class="form-control" id="new-shares" placeholder="100">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Stop Price</label>
+                    <input type="number" class="form-control" id="new-stop-price" step="0.01" placeholder="0.00">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Target Price</label>
+                    <input type="number" class="form-control" id="new-target-price" step="0.01" placeholder="0.00">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">RRS at Entry (optional)</label>
+                <input type="number" class="form-control" id="new-rrs" step="0.01" placeholder="2.00">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('new-position-modal')">Cancel</button>
+            <button class="btn btn-primary" onclick="submitNewPosition()">Open Position</button>
+        </div>
+    </div>
+</div>
+
+<!-- Close Position Modal -->
+<div id="close-position-modal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Close Position: <span id="close-symbol"></span></h3>
+            <button class="modal-close" onclick="closeModal('close-position-modal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">Exit Price</label>
+                <input type="number" class="form-control" id="close-exit-price" step="0.01" placeholder="0.00">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Exit Reason</label>
+                <select class="form-control" id="close-reason">
+                    <option value="manual">Manual Exit</option>
+                    <option value="stop_loss">Stop Loss</option>
+                    <option value="take_profit">Take Profit</option>
+                    <option value="trailing_stop">Trailing Stop</option>
+                    <option value="end_of_day">End of Day</option>
+                </select>
+            </div>
+            <div id="close-preview" style="margin-top: 15px; padding: 15px; background: var(--bg); border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between;">
+                    <span>Estimated P&L:</span>
+                    <span id="close-pnl-preview" style="font-weight: 600;">$0.00</span>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('close-position-modal')">Cancel</button>
+            <button class="btn btn-danger" onclick="confirmClosePosition()">Close Position</button>
+        </div>
+    </div>
+</div>
+
+<!-- Add Note Modal -->
+<div id="add-note-modal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Add Note: <span id="note-symbol"></span></h3>
+            <button class="modal-close" onclick="closeModal('add-note-modal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">Note Type</label>
+                <select class="form-control" id="note-type">
+                    <option value="general">General</option>
+                    <option value="entry">Entry Reason</option>
+                    <option value="exit">Exit Plan</option>
+                    <option value="lesson">Lesson Learned</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Note</label>
+                <textarea class="form-control" id="note-text" rows="4" placeholder="Enter your trade notes..."></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('add-note-modal')">Cancel</button>
+            <button class="btn btn-primary" onclick="submitNote()">Add Note</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // State
+    let positionsData = [];
+    let currentSymbol = null;
+    let allNotes = [];
+
+    // Fetch positions from API
+    async function fetchPositions() {
+        try {
+            const response = await fetch('/api/v1/positions');
+            if (response.ok) {
+                const data = await response.json();
+                positionsData = data.positions || [];
+                renderPositions();
+                updateSummary(data.summary);
+                updateLastUpdate();
+                checkAlerts();
+                updateJournalSymbols();
+            }
+        } catch (error) {
+            console.error('Error fetching positions:', error);
+        }
+    }
+
+    // Fetch performance stats
+    async function fetchPerformance() {
+        try {
+            const response = await fetch('/api/v1/positions/performance');
+            if (response.ok) {
+                const data = await response.json();
+                renderPerformance(data.performance);
+            }
+        } catch (error) {
+            console.error('Error fetching performance:', error);
+        }
+    }
+
+    // Check for stop/target alerts
+    async function checkAlerts() {
+        try {
+            const response = await fetch('/api/v1/positions/check');
+            if (response.ok) {
+                const data = await response.json();
+                renderAlerts(data.alerts);
+            }
+        } catch (error) {
+            console.error('Error checking alerts:', error);
+        }
+    }
+
+    function renderAlerts(alerts) {
+        const container = document.getElementById('alerts-container');
+        let html = '';
+
+        if (alerts.stops_hit && alerts.stops_hit.length > 0) {
+            alerts.stops_hit.forEach(alert => {
+                html += `
+                    <div class="alert-item stop-alert">
+                        <span class="alert-icon">&#9888;</span>
+                        <span class="alert-text">
+                            <strong>${alert.symbol}</strong> hit stop at $${alert.current_price.toFixed(2)}
+                            (Stop: $${alert.stop_price.toFixed(2)}) - P&L: ${formatCurrency(alert.unrealized_pnl)}
+                        </span>
+                        <button class="btn btn-danger btn-sm alert-action" onclick="openCloseModal('${alert.symbol}', ${alert.current_price})">
+                            Close Now
+                        </button>
+                    </div>
+                `;
+            });
+        }
+
+        if (alerts.targets_hit && alerts.targets_hit.length > 0) {
+            alerts.targets_hit.forEach(alert => {
+                html += `
+                    <div class="alert-item target-alert">
+                        <span class="alert-icon">&#127942;</span>
+                        <span class="alert-text">
+                            <strong>${alert.symbol}</strong> reached target at $${alert.current_price.toFixed(2)}
+                            (Target: $${alert.target_price.toFixed(2)}) - P&L: ${formatCurrency(alert.unrealized_pnl)}
+                        </span>
+                        <button class="btn btn-primary btn-sm alert-action" onclick="openCloseModal('${alert.symbol}', ${alert.current_price})">
+                            Take Profit
+                        </button>
+                    </div>
+                `;
+            });
+        }
+
+        container.innerHTML = html;
+    }
+
+    function updateSummary(summary) {
+        if (!summary) return;
+
+        document.getElementById('total-exposure').textContent = formatCurrency(summary.total_exposure || 0);
+        document.getElementById('position-count').textContent = `${summary.total_positions || 0} position${(summary.total_positions || 0) !== 1 ? 's' : ''}`;
+
+        const pnl = summary.total_unrealized_pnl || 0;
+        const pnlPct = summary.total_unrealized_pnl_pct || 0;
+        const pnlEl = document.getElementById('total-pnl');
+        const pnlPctEl = document.getElementById('total-pnl-pct');
+        const pnlCard = document.getElementById('pnl-card');
+
+        pnlEl.textContent = formatCurrency(pnl);
+        pnlEl.className = 'summary-value ' + (pnl >= 0 ? 'positive' : 'negative');
+        pnlPctEl.textContent = formatPct(pnlPct);
+        pnlPctEl.className = 'summary-change ' + (pnl >= 0 ? 'positive' : 'negative');
+        pnlCard.className = 'summary-card ' + (pnl >= 0 ? 'pnl-positive' : 'pnl-negative');
+
+        document.getElementById('at-risk').textContent = formatCurrency(summary.total_risk || 0);
+        document.getElementById('long-short').textContent = `${summary.long_positions || 0} / ${summary.short_positions || 0}`;
+        document.getElementById('profitable-count').textContent = `${summary.profitable_positions || 0} profitable`;
+    }
+
+    function updateLastUpdate() {
+        const now = new Date();
+        document.getElementById('last-update').textContent = now.toLocaleTimeString();
+    }
+
+    function renderPositions() {
+        const container = document.getElementById('positions-container');
+
+        if (positionsData.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">&#128200;</div>
+                    <div class="empty-state-title">No Open Positions</div>
+                    <p>Click "New Position" to add a position or check the signals page for opportunities.</p>
+                    <button class="btn btn-primary mt-2" onclick="openNewPositionModal()">+ New Position</button>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '';
+        positionsData.forEach(pos => {
+            const pnl = pos.unrealized_pnl || 0;
+            const pnlPct = pos.unrealized_pnl_pct || 0;
+            const isProfit = pnl >= 0;
+            const dirBadge = pos.direction === 'long' ? 'badge-long' : 'badge-short';
+
+            // Determine card state
+            let cardClass = 'position-card';
+            if (isProfit) cardClass += ' profitable';
+            else cardClass += ' losing';
+            if (pos.is_stop_hit) cardClass += ' stop-warning';
+            if (pos.is_target_hit) cardClass += ' target-near';
+
+            // Calculate progress
+            const entryPrice = pos.entry_price || 0;
+            const currentPrice = pos.current_price || entryPrice;
+            const stopPrice = pos.stop_price || 0;
+            const targetPrice = pos.target_price || 0;
+
+            let progressPct = 0;
+            let progressClass = 'to-target';
+            if (pos.direction === 'long') {
+                const range = targetPrice - stopPrice;
+                if (range > 0) {
+                    progressPct = ((currentPrice - stopPrice) / range) * 100;
+                }
+            } else {
+                const range = stopPrice - targetPrice;
+                if (range > 0) {
+                    progressPct = ((stopPrice - currentPrice) / range) * 100;
+                }
+            }
+            progressPct = Math.max(0, Math.min(100, progressPct));
+            if (progressPct < 30) progressClass = 'to-stop';
+
+            html += `
+                <div class="${cardClass}" data-symbol="${pos.symbol}">
+                    <div class="position-header">
+                        <div class="position-symbol">
+                            <span class="position-ticker">${pos.symbol}</span>
+                            <span class="badge ${dirBadge}">${pos.direction.toUpperCase()}</span>
+                            ${pos.is_stop_hit ? '<span class="badge badge-danger">STOP HIT</span>' : ''}
+                            ${pos.is_target_hit ? '<span class="badge badge-success">TARGET HIT</span>' : ''}
+                        </div>
+                        <div class="position-pnl">
+                            <div class="position-pnl-value ${isProfit ? 'text-success' : 'text-danger'}">
+                                ${isProfit ? '+' : ''}${formatCurrency(pnl)}
+                            </div>
+                            <div class="position-pnl-pct ${isProfit ? 'text-success' : 'text-danger'}">
+                                ${isProfit ? '+' : ''}${pnlPct.toFixed(2)}%
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="progress-container">
+                        <div class="progress-labels">
+                            <span class="text-danger">Stop: $${stopPrice.toFixed(2)}</span>
+                            <span>Current: $${currentPrice.toFixed(2)}</span>
+                            <span class="text-success">Target: $${targetPrice.toFixed(2)}</span>
+                        </div>
+                        <div class="progress-bar-track">
+                            <div class="progress-bar-fill ${progressClass}" style="width: ${progressPct}%"></div>
+                        </div>
+                    </div>
+
+                    <div class="position-details">
+                        <div class="detail-item">
+                            <div class="detail-label">Shares</div>
+                            <div class="detail-value">${pos.shares}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Entry</div>
+                            <div class="detail-value">$${entryPrice.toFixed(2)}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Stop</div>
+                            <div class="detail-value editable text-danger" onclick="editStop('${pos.symbol}', ${stopPrice})">
+                                $${stopPrice.toFixed(2)}
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Target</div>
+                            <div class="detail-value editable text-success" onclick="editTarget('${pos.symbol}', ${targetPrice})">
+                                $${targetPrice.toFixed(2)}
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Risk/Reward</div>
+                            <div class="detail-value">${pos.risk_reward_ratio || 0}:1</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Days Held</div>
+                            <div class="detail-value">${pos.holding_days || 0}</div>
+                        </div>
+                    </div>
+
+                    <div class="position-footer">
+                        <div class="position-meta">
+                            Value: ${formatCurrency(pos.current_value || 0)} |
+                            RRS: ${pos.rrs_at_entry ? pos.rrs_at_entry.toFixed(2) : 'N/A'} |
+                            Notes: ${pos.notes_count || 0}
+                        </div>
+                        <div class="position-actions">
+                            <button class="btn btn-secondary btn-sm" onclick="openNoteModal('${pos.symbol}')">
+                                Add Note
+                            </button>
+                            <button class="btn btn-danger btn-sm" onclick="openCloseModal('${pos.symbol}', ${currentPrice})">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+        collectAllNotes();
+    }
+
+    function collectAllNotes() {
+        allNotes = [];
+        positionsData.forEach(pos => {
+            if (pos.notes && pos.notes.length > 0) {
+                pos.notes.forEach(note => {
+                    allNotes.push({
+                        ...note,
+                        symbol: pos.symbol
+                    });
+                });
+            }
+        });
+        allNotes.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    }
+
+    function updateJournalSymbols() {
+        const select = document.getElementById('journal-symbol-filter');
+        const symbols = [...new Set(positionsData.map(p => p.symbol))];
+        select.innerHTML = '<option value="">All Symbols</option>';
+        symbols.forEach(sym => {
+            select.innerHTML += `<option value="${sym}">${sym}</option>`;
+        });
+    }
+
+    function filterJournalNotes() {
+        const filter = document.getElementById('journal-symbol-filter').value;
+        renderJournalNotes(filter);
+    }
+
+    function renderJournalNotes(symbolFilter = '') {
+        const container = document.getElementById('journal-notes-container');
+        let notes = symbolFilter ? allNotes.filter(n => n.symbol === symbolFilter) : allNotes;
+
+        if (notes.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-title">No Journal Entries</div>
+                    <p>Add notes to your positions to track your trading thoughts and lessons.</p>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '<div class="notes-list">';
+        notes.forEach(note => {
+            const date = new Date(note.timestamp);
+            html += `
+                <div class="note-item">
+                    <div class="note-meta">
+                        <span><strong>${note.symbol}</strong> - ${date.toLocaleDateString()} ${date.toLocaleTimeString()}</span>
+                        <span class="note-type-badge ${note.note_type}">${note.note_type}</span>
+                    </div>
+                    <div class="note-text">${note.note}</div>
+                </div>
+            `;
+        });
+        html += '</div>';
+
+        container.innerHTML = html;
+    }
+
+    function renderPerformance(perf) {
+        if (!perf) return;
+
+        document.getElementById('perf-total-trades').textContent = perf.total_trades || 0;
+        document.getElementById('perf-win-rate').textContent = ((perf.win_rate || 0) * 100).toFixed(1) + '%';
+        document.getElementById('perf-profit-factor').textContent = (perf.profit_factor || 0).toFixed(2);
+        document.getElementById('perf-total-pnl').textContent = formatCurrency(perf.total_pnl || 0);
+    }
+
+    // Tab switching
+    function switchTab(tabName) {
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+        document.querySelector(`[onclick="switchTab('${tabName}')"]`).classList.add('active');
+        document.getElementById(`tab-${tabName}`).classList.add('active');
+
+        if (tabName === 'journal') {
+            renderJournalNotes();
+        } else if (tabName === 'performance') {
+            fetchPerformance();
+        }
+    }
+
+    // Modal functions
+    function openModal(id) {
+        document.getElementById(id).classList.add('active');
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).classList.remove('active');
+    }
+
+    function openNewPositionModal() {
+        document.getElementById('new-symbol').value = '';
+        document.getElementById('new-direction').value = 'long';
+        document.getElementById('new-entry-price').value = '';
+        document.getElementById('new-shares').value = '';
+        document.getElementById('new-stop-price').value = '';
+        document.getElementById('new-target-price').value = '';
+        document.getElementById('new-rrs').value = '';
+        openModal('new-position-modal');
+    }
+
+    function openCloseModal(symbol, currentPrice) {
+        currentSymbol = symbol;
+        document.getElementById('close-symbol').textContent = symbol;
+        document.getElementById('close-exit-price').value = currentPrice.toFixed(2);
+        document.getElementById('close-reason').value = 'manual';
+        updateClosePreview();
+        openModal('close-position-modal');
+    }
+
+    function openNoteModal(symbol) {
+        currentSymbol = symbol;
+        document.getElementById('note-symbol').textContent = symbol;
+        document.getElementById('note-type').value = 'general';
+        document.getElementById('note-text').value = '';
+        openModal('add-note-modal');
+    }
+
+    function updateClosePreview() {
+        const exitPrice = parseFloat(document.getElementById('close-exit-price').value) || 0;
+        const pos = positionsData.find(p => p.symbol === currentSymbol);
+        if (!pos) return;
+
+        let pnl;
+        if (pos.direction === 'long') {
+            pnl = (exitPrice - pos.entry_price) * pos.shares;
+        } else {
+            pnl = (pos.entry_price - exitPrice) * pos.shares;
+        }
+
+        const previewEl = document.getElementById('close-pnl-preview');
+        previewEl.textContent = formatCurrency(pnl);
+        previewEl.className = pnl >= 0 ? 'text-success' : 'text-danger';
+        previewEl.style.fontWeight = '600';
+    }
+
+    // Listen for exit price changes
+    document.getElementById('close-exit-price').addEventListener('input', updateClosePreview);
+
+    // API submission functions
+    async function submitNewPosition() {
+        const data = {
+            symbol: document.getElementById('new-symbol').value.toUpperCase(),
+            direction: document.getElementById('new-direction').value,
+            entry_price: parseFloat(document.getElementById('new-entry-price').value),
+            shares: parseInt(document.getElementById('new-shares').value),
+            stop_price: parseFloat(document.getElementById('new-stop-price').value),
+            target_price: parseFloat(document.getElementById('new-target-price').value)
+        };
+
+        const rrs = document.getElementById('new-rrs').value;
+        if (rrs) data.rrs_at_entry = parseFloat(rrs);
+
+        try {
+            const response = await fetch('/api/v1/positions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+            if (response.ok) {
+                closeModal('new-position-modal');
+                refreshPositions();
+            } else {
+                alert(result.error || 'Failed to open position');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Failed to open position');
+        }
+    }
+
+    async function confirmClosePosition() {
+        const data = {
+            exit_price: parseFloat(document.getElementById('close-exit-price').value),
+            reason: document.getElementById('close-reason').value
+        };
+
+        try {
+            const response = await fetch(`/api/v1/positions/${currentSymbol}/close`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+            if (response.ok) {
+                closeModal('close-position-modal');
+                refreshPositions();
+                fetchPerformance();
+            } else {
+                alert(result.error || 'Failed to close position');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Failed to close position');
+        }
+    }
+
+    async function submitNote() {
+        const data = {
+            note: document.getElementById('note-text').value,
+            note_type: document.getElementById('note-type').value
+        };
+
+        try {
+            const response = await fetch(`/api/v1/positions/${currentSymbol}/notes`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+            if (response.ok) {
+                closeModal('add-note-modal');
+                refreshPositions();
+            } else {
+                alert(result.error || 'Failed to add note');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Failed to add note');
+        }
+    }
+
+    async function editStop(symbol, currentStop) {
+        const newStop = prompt(`Update stop price for ${symbol}:`, currentStop.toFixed(2));
+        if (newStop === null) return;
+
+        try {
+            const response = await fetch(`/api/v1/positions/${symbol}/stop`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ stop_price: parseFloat(newStop) })
+            });
+
+            if (response.ok) {
+                refreshPositions();
+            } else {
+                const result = await response.json();
+                alert(result.error || 'Failed to update stop');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Failed to update stop');
+        }
+    }
+
+    async function editTarget(symbol, currentTarget) {
+        const newTarget = prompt(`Update target price for ${symbol}:`, currentTarget.toFixed(2));
+        if (newTarget === null) return;
+
+        try {
+            const response = await fetch(`/api/v1/positions/${symbol}/target`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_price: parseFloat(newTarget) })
+            });
+
+            if (response.ok) {
+                refreshPositions();
+            } else {
+                const result = await response.json();
+                alert(result.error || 'Failed to update target');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Failed to update target');
+        }
+    }
+
+    // Utility functions
+    function formatCurrency(value) {
+        const sign = value >= 0 ? '' : '-';
+        return sign + '$' + Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function formatPct(value) {
+        const sign = value >= 0 ? '+' : '';
+        return sign + value.toFixed(2) + '%';
+    }
+
+    function refreshPositions() {
+        document.getElementById('positions-container').innerHTML = `
+            <div class="loading-state">
+                <div class="spinner"></div>
+                <span>Refreshing...</span>
+            </div>
+        `;
+        fetchPositions();
+    }
+
+    // Initial load
+    fetchPositions();
+    fetchPerformance();
+
+    // Auto-refresh every 30 seconds
+    setInterval(fetchPositions, 30000);
+</script>
+{% endblock %}

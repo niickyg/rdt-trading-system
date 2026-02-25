@@ -1,0 +1,869 @@
+{% extends "base.html" %}
+
+{% block title %}Trading Accounts - RDT Trading{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dashboard-layout {
+        display: grid;
+        grid-template-columns: 240px 1fr;
+        min-height: calc(100vh - 60px);
+    }
+    .sidebar {
+        background: var(--primary);
+        padding: 20px;
+        position: sticky;
+        top: 60px;
+        height: calc(100vh - 60px);
+    }
+    .sidebar-nav { list-style: none; }
+    .sidebar-nav li { margin-bottom: 5px; }
+    .sidebar-nav a {
+        display: block;
+        padding: 12px 15px;
+        color: rgba(255,255,255,0.7);
+        border-radius: 5px;
+        transition: all 0.3s;
+    }
+    .sidebar-nav a:hover, .sidebar-nav a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        text-decoration: none;
+    }
+    .sidebar-section {
+        color: rgba(255,255,255,0.5);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        margin: 20px 0 10px;
+        padding-left: 15px;
+    }
+    .main-content { padding: 25px; }
+
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+    }
+    .page-title {
+        font-size: 1.8rem;
+        font-weight: 600;
+        margin-bottom: 5px;
+    }
+    .page-subtitle {
+        color: var(--text-light);
+    }
+
+    /* Account Cards */
+    .accounts-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+
+    .account-card {
+        background: var(--card);
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        padding: 20px;
+        position: relative;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .account-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .account-card.default {
+        border: 2px solid var(--accent);
+    }
+    .account-card.inactive {
+        opacity: 0.7;
+    }
+
+    .account-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 15px;
+    }
+    .account-name {
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+    .account-badges {
+        display: flex;
+        gap: 5px;
+    }
+    .account-badge {
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        font-weight: 600;
+    }
+    .account-badge.default { background: var(--accent); color: white; }
+    .account-badge.paper { background: #e3f2fd; color: #1565c0; }
+    .account-badge.schwab { background: #e8f5e9; color: #2e7d32; }
+    .account-badge.ibkr { background: #fff3e0; color: #e65100; }
+    .account-badge.inactive { background: #ffebee; color: #c62828; }
+
+    .account-stats {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+    .account-stat-item {
+        text-align: center;
+        padding: 10px;
+        background: var(--bg);
+        border-radius: 8px;
+    }
+    .account-stat-value {
+        font-size: 1.3rem;
+        font-weight: 700;
+    }
+    .account-stat-label {
+        font-size: 0.75rem;
+        color: var(--text-light);
+        text-transform: uppercase;
+    }
+
+    .account-actions {
+        display: flex;
+        gap: 10px;
+        padding-top: 15px;
+        border-top: 1px solid var(--border);
+    }
+    .account-actions .btn {
+        flex: 1;
+        text-align: center;
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+    }
+    .modal-overlay.active {
+        display: flex;
+    }
+    .modal-content {
+        background: var(--card);
+        border-radius: 10px;
+        padding: 30px;
+        width: 100%;
+        max-width: 500px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+    .modal-title {
+        font-size: 1.3rem;
+        font-weight: 600;
+    }
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: var(--text-light);
+    }
+
+    /* Aggregated Summary */
+    .portfolio-summary {
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        color: white;
+        border-radius: 10px;
+        padding: 25px;
+        margin-bottom: 30px;
+    }
+    .portfolio-summary-title {
+        font-size: 0.9rem;
+        opacity: 0.8;
+        margin-bottom: 5px;
+    }
+    .portfolio-summary-value {
+        font-size: 2.2rem;
+        font-weight: 700;
+        margin-bottom: 20px;
+    }
+    .portfolio-summary-stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 20px;
+    }
+    .portfolio-summary-stat {
+        text-align: center;
+    }
+    .portfolio-summary-stat-value {
+        font-size: 1.2rem;
+        font-weight: 600;
+    }
+    .portfolio-summary-stat-label {
+        font-size: 0.8rem;
+        opacity: 0.7;
+    }
+
+    /* Performance table */
+    .performance-section {
+        margin-top: 30px;
+    }
+
+    /* Connection status */
+    .connection-status {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 0.8rem;
+        color: var(--text-light);
+        margin-top: 10px;
+    }
+    .connection-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+    }
+    .connection-dot.connected { background: var(--success); }
+    .connection-dot.disconnected { background: var(--danger); }
+    .connection-dot.unknown { background: var(--warning); }
+
+    @media (max-width: 1024px) {
+        .dashboard-layout { grid-template-columns: 1fr; }
+        .sidebar { display: none; }
+        .portfolio-summary-stats { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 768px) {
+        .accounts-grid { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+    <aside class="sidebar">
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard">Overview</a></li>
+            <li><a href="/dashboard/signals">Active Signals</a></li>
+            <li><a href="/dashboard/positions">Positions</a></li>
+            <li><a href="/dashboard/history">History</a></li>
+        </ul>
+        <div class="sidebar-section">Analysis</div>
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard/scanner">Live Scanner</a></li>
+            <li><a href="/dashboard/backtest">Backtest</a></li>
+            <li><a href="/performance">Performance</a></li>
+        </ul>
+        <div class="sidebar-section">Account</div>
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard/accounts" class="active">Trading Accounts</a></li>
+            <li><a href="/dashboard/alerts">Alerts</a></li>
+            <li><a href="/dashboard/settings">Settings</a></li>
+        </ul>
+    </aside>
+
+    <main class="main-content">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Trading Accounts</h1>
+                <p class="page-subtitle">Manage your trading accounts across multiple brokers</p>
+            </div>
+            <button class="btn btn-primary" onclick="openAddAccountModal()">
+                + Add Account
+            </button>
+        </div>
+
+        <!-- Aggregated Portfolio Summary -->
+        <div class="portfolio-summary" id="portfolio-summary">
+            <div class="portfolio-summary-title">Total Portfolio Value</div>
+            <div class="portfolio-summary-value" id="total-portfolio-value">$0.00</div>
+            <div class="portfolio-summary-stats">
+                <div class="portfolio-summary-stat">
+                    <div class="portfolio-summary-stat-value" id="total-daily-pnl">$0.00</div>
+                    <div class="portfolio-summary-stat-label">Daily P&L</div>
+                </div>
+                <div class="portfolio-summary-stat">
+                    <div class="portfolio-summary-stat-value" id="total-positions">0</div>
+                    <div class="portfolio-summary-stat-label">Total Positions</div>
+                </div>
+                <div class="portfolio-summary-stat">
+                    <div class="portfolio-summary-stat-value" id="total-buying-power">$0.00</div>
+                    <div class="portfolio-summary-stat-label">Buying Power</div>
+                </div>
+                <div class="portfolio-summary-stat">
+                    <div class="portfolio-summary-stat-value" id="accounts-count">0</div>
+                    <div class="portfolio-summary-stat-label">Accounts</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Account Cards -->
+        <div class="accounts-grid" id="accounts-grid">
+            <!-- Accounts loaded dynamically -->
+            <div class="card text-center" style="padding: 40px;">
+                <div class="spinner" style="margin: 0 auto 15px;"></div>
+                <p class="text-muted">Loading accounts...</p>
+            </div>
+        </div>
+
+        <!-- Performance by Account -->
+        <div class="card performance-section">
+            <div class="card-header">
+                <h3 class="card-title">Account Performance</h3>
+                <select id="performance-period" class="form-control" style="width: auto;">
+                    <option value="1d">Today</option>
+                    <option value="1w">This Week</option>
+                    <option value="1m" selected>This Month</option>
+                    <option value="3m">3 Months</option>
+                    <option value="ytd">YTD</option>
+                </select>
+            </div>
+            <table class="table" id="performance-table">
+                <thead>
+                    <tr>
+                        <th>Account</th>
+                        <th>Broker</th>
+                        <th>Value</th>
+                        <th>P&L</th>
+                        <th>P&L %</th>
+                        <th>Positions</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Data loaded dynamically -->
+                </tbody>
+            </table>
+        </div>
+    </main>
+</div>
+
+<!-- Add Account Modal -->
+<div class="modal-overlay" id="add-account-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">Add Trading Account</h3>
+            <button class="modal-close" onclick="closeAddAccountModal()">&times;</button>
+        </div>
+        <form id="add-account-form">
+            <div class="form-group">
+                <label class="form-label" for="account-name">Account Name</label>
+                <input type="text" id="account-name" name="name" class="form-control"
+                       placeholder="e.g., Main Trading Account" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="broker-type">Broker</label>
+                <select id="broker-type" name="broker_type" class="form-control" required onchange="updateCredentialsForm()">
+                    <option value="">Select a broker...</option>
+                    <option value="paper">Paper Trading (Simulation)</option>
+                    <option value="schwab">Charles Schwab</option>
+                    <option value="ibkr">Interactive Brokers</option>
+                </select>
+            </div>
+
+            <!-- Dynamic credentials form -->
+            <div id="credentials-form"></div>
+
+            <div class="form-group">
+                <label class="toggle-switch" style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="set-default" name="is_default">
+                    <span class="toggle-slider"></span>
+                    <span style="font-weight: 500;">Set as default account</span>
+                </label>
+            </div>
+
+            <div class="btn-group" style="margin-top: 20px;">
+                <button type="submit" class="btn btn-primary">Add Account</button>
+                <button type="button" class="btn btn-secondary" onclick="closeAddAccountModal()">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Account Details Modal -->
+<div class="modal-overlay" id="account-details-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title" id="details-modal-title">Account Details</h3>
+            <button class="modal-close" onclick="closeDetailsModal()">&times;</button>
+        </div>
+        <div id="account-details-content">
+            <!-- Details loaded dynamically -->
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // API helper
+    async function apiRequest(endpoint, options = {}) {
+        const baseUrl = '/api/v1';
+        const response = await fetch(`${baseUrl}${endpoint}`, {
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': localStorage.getItem('apiKey') || '',
+                ...options.headers
+            }
+        });
+        return response;
+    }
+
+    // Format currency
+    function formatCurrency(value) {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD'
+        }).format(value || 0);
+    }
+
+    // Format percentage
+    function formatPercent(value) {
+        const sign = value >= 0 ? '+' : '';
+        return `${sign}${(value || 0).toFixed(2)}%`;
+    }
+
+    // Load accounts
+    async function loadAccounts() {
+        try {
+            const response = await apiRequest('/accounts');
+            if (response.ok) {
+                const data = await response.json();
+                renderAccounts(data.accounts);
+                updatePortfolioSummary(data.accounts);
+            } else {
+                showError('Failed to load accounts');
+            }
+        } catch (error) {
+            console.error('Error loading accounts:', error);
+            showError('Error loading accounts');
+        }
+    }
+
+    // Render account cards
+    function renderAccounts(accounts) {
+        const grid = document.getElementById('accounts-grid');
+
+        if (!accounts || accounts.length === 0) {
+            grid.innerHTML = `
+                <div class="card text-center" style="padding: 40px; grid-column: 1 / -1;">
+                    <h3>No Trading Accounts</h3>
+                    <p class="text-muted">Add your first trading account to get started.</p>
+                    <button class="btn btn-primary mt-2" onclick="openAddAccountModal()">
+                        + Add Account
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        grid.innerHTML = accounts.map(account => `
+            <div class="account-card ${account.is_default ? 'default' : ''} ${!account.is_active ? 'inactive' : ''}">
+                <div class="account-header">
+                    <div class="account-name">${escapeHtml(account.name)}</div>
+                    <div class="account-badges">
+                        ${account.is_default ? '<span class="account-badge default">Default</span>' : ''}
+                        <span class="account-badge ${account.broker_type}">${account.broker_type.toUpperCase()}</span>
+                        ${!account.is_active ? '<span class="account-badge inactive">Inactive</span>' : ''}
+                    </div>
+                </div>
+
+                <div class="account-stats">
+                    <div class="account-stat-item">
+                        <div class="account-stat-value">${formatCurrency(account.equity)}</div>
+                        <div class="account-stat-label">Equity</div>
+                    </div>
+                    <div class="account-stat-item">
+                        <div class="account-stat-value ${(account.daily_pnl || 0) >= 0 ? 'text-success' : 'text-danger'}">
+                            ${formatCurrency(account.daily_pnl)}
+                        </div>
+                        <div class="account-stat-label">Daily P&L</div>
+                    </div>
+                    <div class="account-stat-item">
+                        <div class="account-stat-value">${formatCurrency(account.buying_power)}</div>
+                        <div class="account-stat-label">Buying Power</div>
+                    </div>
+                    <div class="account-stat-item">
+                        <div class="account-stat-value">${account.positions_count || 0}</div>
+                        <div class="account-stat-label">Positions</div>
+                    </div>
+                </div>
+
+                <div class="connection-status">
+                    <span class="connection-dot ${account.connected ? 'connected' : (account.error ? 'disconnected' : 'unknown')}"></span>
+                    ${account.connected ? 'Connected' : (account.error ? 'Disconnected' : 'Unknown')}
+                </div>
+
+                <div class="account-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="viewAccountDetails('${account.id}')">
+                        Details
+                    </button>
+                    ${!account.is_default ? `
+                        <button class="btn btn-secondary btn-sm" onclick="setDefaultAccount('${account.id}')">
+                            Set Default
+                        </button>
+                    ` : ''}
+                    <button class="btn btn-secondary btn-sm" onclick="testConnection('${account.id}')">
+                        Test
+                    </button>
+                    <button class="btn btn-danger btn-sm" onclick="removeAccount('${account.id}', '${escapeHtml(account.name)}')">
+                        Remove
+                    </button>
+                </div>
+            </div>
+        `).join('');
+
+        // Update performance table
+        updatePerformanceTable(accounts);
+    }
+
+    // Update portfolio summary
+    function updatePortfolioSummary(accounts) {
+        let totalEquity = 0;
+        let totalDailyPnl = 0;
+        let totalPositions = 0;
+        let totalBuyingPower = 0;
+
+        accounts.forEach(account => {
+            if (account.is_active && !account.error) {
+                totalEquity += account.equity || 0;
+                totalDailyPnl += account.daily_pnl || 0;
+                totalPositions += account.positions_count || 0;
+                totalBuyingPower += account.buying_power || 0;
+            }
+        });
+
+        document.getElementById('total-portfolio-value').textContent = formatCurrency(totalEquity);
+        document.getElementById('total-daily-pnl').textContent = formatCurrency(totalDailyPnl);
+        document.getElementById('total-daily-pnl').className = `portfolio-summary-stat-value ${totalDailyPnl >= 0 ? '' : 'text-danger'}`;
+        document.getElementById('total-positions').textContent = totalPositions;
+        document.getElementById('total-buying-power').textContent = formatCurrency(totalBuyingPower);
+        document.getElementById('accounts-count').textContent = accounts.length;
+    }
+
+    // Update performance table
+    function updatePerformanceTable(accounts) {
+        const tbody = document.querySelector('#performance-table tbody');
+
+        if (!accounts || accounts.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No accounts</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = accounts.map(account => {
+            const pnlPct = account.equity > 0 ? ((account.daily_pnl || 0) / account.equity * 100) : 0;
+            return `
+                <tr>
+                    <td>
+                        <strong>${escapeHtml(account.name)}</strong>
+                        ${account.is_default ? '<span class="badge badge-success">Default</span>' : ''}
+                    </td>
+                    <td><span class="badge badge-info">${account.broker_type.toUpperCase()}</span></td>
+                    <td>${formatCurrency(account.equity)}</td>
+                    <td class="${(account.daily_pnl || 0) >= 0 ? 'text-success' : 'text-danger'}">
+                        ${formatCurrency(account.daily_pnl)}
+                    </td>
+                    <td class="${pnlPct >= 0 ? 'text-success' : 'text-danger'}">
+                        ${formatPercent(pnlPct)}
+                    </td>
+                    <td>${account.positions_count || 0}</td>
+                    <td>
+                        <span class="status-dot ${account.connected ? 'online' : 'offline'}"></span>
+                        ${account.connected ? 'Connected' : 'Disconnected'}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // Update credentials form based on broker type
+    function updateCredentialsForm() {
+        const brokerType = document.getElementById('broker-type').value;
+        const form = document.getElementById('credentials-form');
+
+        const credentialsForms = {
+            paper: `
+                <div class="form-group">
+                    <label class="form-label" for="initial-balance">Initial Balance ($)</label>
+                    <input type="number" id="initial-balance" name="initial_balance" class="form-control"
+                           placeholder="25000" value="25000" min="100" step="100">
+                    <p class="form-hint">Starting balance for paper trading simulation</p>
+                </div>
+            `,
+            schwab: `
+                <div class="form-group">
+                    <label class="form-label" for="app-key">App Key</label>
+                    <input type="text" id="app-key" name="app_key" class="form-control"
+                           placeholder="Your Schwab App Key" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="app-secret">App Secret</label>
+                    <input type="password" id="app-secret" name="app_secret" class="form-control"
+                           placeholder="Your Schwab App Secret" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="callback-url">Callback URL (optional)</label>
+                    <input type="url" id="callback-url" name="callback_url" class="form-control"
+                           placeholder="https://localhost:8080">
+                </div>
+                <p class="form-hint">
+                    Get your API credentials from <a href="https://developer.schwab.com/" target="_blank">Schwab Developer Portal</a>
+                </p>
+            `,
+            ibkr: `
+                <div class="form-group">
+                    <label class="form-label" for="ibkr-host">Host</label>
+                    <input type="text" id="ibkr-host" name="host" class="form-control"
+                           placeholder="127.0.0.1" value="127.0.0.1">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="ibkr-port">Port</label>
+                    <input type="number" id="ibkr-port" name="port" class="form-control"
+                           placeholder="7497" value="7497" min="1" max="65535">
+                    <p class="form-hint">7497 for paper trading, 7496 for live trading</p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="client-id">Client ID</label>
+                    <input type="number" id="client-id" name="client_id" class="form-control"
+                           placeholder="1" value="1" min="1">
+                </div>
+                <p class="form-hint">
+                    Ensure TWS or IB Gateway is running and API connections are enabled.
+                </p>
+            `
+        };
+
+        form.innerHTML = credentialsForms[brokerType] || '';
+    }
+
+    // Open add account modal
+    function openAddAccountModal() {
+        document.getElementById('add-account-modal').classList.add('active');
+        document.getElementById('add-account-form').reset();
+        document.getElementById('credentials-form').innerHTML = '';
+    }
+
+    // Close add account modal
+    function closeAddAccountModal() {
+        document.getElementById('add-account-modal').classList.remove('active');
+    }
+
+    // Close details modal
+    function closeDetailsModal() {
+        document.getElementById('account-details-modal').classList.remove('active');
+    }
+
+    // Handle add account form submission
+    document.getElementById('add-account-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const formData = new FormData(this);
+        const brokerType = formData.get('broker_type');
+
+        // Build credentials object based on broker type
+        let credentials = {};
+        if (brokerType === 'paper') {
+            credentials.initial_balance = parseFloat(formData.get('initial_balance')) || 25000;
+        } else if (brokerType === 'schwab') {
+            credentials.app_key = formData.get('app_key');
+            credentials.app_secret = formData.get('app_secret');
+            if (formData.get('callback_url')) {
+                credentials.callback_url = formData.get('callback_url');
+            }
+        } else if (brokerType === 'ibkr') {
+            credentials.host = formData.get('host') || '127.0.0.1';
+            credentials.port = parseInt(formData.get('port')) || 7497;
+            credentials.client_id = parseInt(formData.get('client_id')) || 1;
+        }
+
+        const data = {
+            name: formData.get('name'),
+            broker_type: brokerType,
+            credentials: credentials,
+            is_default: formData.get('is_default') === 'on'
+        };
+
+        try {
+            const response = await apiRequest('/accounts', {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+
+            if (response.ok) {
+                closeAddAccountModal();
+                loadAccounts();
+                showSuccess('Account added successfully');
+            } else {
+                const error = await response.json();
+                showError(error.error || 'Failed to add account');
+            }
+        } catch (error) {
+            console.error('Error adding account:', error);
+            showError('Error adding account');
+        }
+    });
+
+    // View account details
+    async function viewAccountDetails(accountId) {
+        try {
+            const response = await apiRequest(`/accounts/${accountId}`);
+            if (response.ok) {
+                const data = await response.json();
+                const account = data.account;
+
+                document.getElementById('details-modal-title').textContent = account.name;
+                document.getElementById('account-details-content').innerHTML = `
+                    <div class="account-stats" style="margin-bottom: 20px;">
+                        <div class="account-stat-item">
+                            <div class="account-stat-value">${formatCurrency(account.equity)}</div>
+                            <div class="account-stat-label">Equity</div>
+                        </div>
+                        <div class="account-stat-item">
+                            <div class="account-stat-value">${formatCurrency(account.cash)}</div>
+                            <div class="account-stat-label">Cash</div>
+                        </div>
+                        <div class="account-stat-item">
+                            <div class="account-stat-value">${formatCurrency(account.buying_power)}</div>
+                            <div class="account-stat-label">Buying Power</div>
+                        </div>
+                        <div class="account-stat-item">
+                            <div class="account-stat-value">${account.positions_count || 0}</div>
+                            <div class="account-stat-label">Positions</div>
+                        </div>
+                    </div>
+
+                    <h4 style="margin-bottom: 15px;">Account Information</h4>
+                    <table class="table">
+                        <tr><td>Account ID</td><td><code>${account.id}</code></td></tr>
+                        <tr><td>Broker Type</td><td>${account.broker_type.toUpperCase()}</td></tr>
+                        <tr><td>Default Account</td><td>${account.is_default ? 'Yes' : 'No'}</td></tr>
+                        <tr><td>Status</td><td>${account.is_active ? 'Active' : 'Inactive'}</td></tr>
+                        <tr><td>Created</td><td>${new Date(account.created_at).toLocaleString()}</td></tr>
+                        <tr><td>Last Connected</td><td>${account.last_connected_at ? new Date(account.last_connected_at).toLocaleString() : 'Never'}</td></tr>
+                    </table>
+                `;
+
+                document.getElementById('account-details-modal').classList.add('active');
+            } else {
+                showError('Failed to load account details');
+            }
+        } catch (error) {
+            console.error('Error loading account details:', error);
+            showError('Error loading account details');
+        }
+    }
+
+    // Set default account
+    async function setDefaultAccount(accountId) {
+        try {
+            const response = await apiRequest(`/accounts/${accountId}/default`, {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                loadAccounts();
+                showSuccess('Default account updated');
+            } else {
+                const error = await response.json();
+                showError(error.error || 'Failed to set default account');
+            }
+        } catch (error) {
+            console.error('Error setting default account:', error);
+            showError('Error setting default account');
+        }
+    }
+
+    // Test connection
+    async function testConnection(accountId) {
+        try {
+            const response = await apiRequest(`/accounts/${accountId}/test`, {
+                method: 'POST'
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                showSuccess(`Connection successful! Equity: ${formatCurrency(result.equity)}`);
+            } else {
+                showError(`Connection failed: ${result.error}`);
+            }
+        } catch (error) {
+            console.error('Error testing connection:', error);
+            showError('Error testing connection');
+        }
+    }
+
+    // Remove account
+    async function removeAccount(accountId, accountName) {
+        if (!confirm(`Are you sure you want to remove "${accountName}"? This action cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            const response = await apiRequest(`/accounts/${accountId}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                loadAccounts();
+                showSuccess('Account removed');
+            } else {
+                const error = await response.json();
+                showError(error.error || 'Failed to remove account');
+            }
+        } catch (error) {
+            console.error('Error removing account:', error);
+            showError('Error removing account');
+        }
+    }
+
+    // Helper functions
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function showSuccess(message) {
+        // Could integrate with a toast library
+        alert(message);
+    }
+
+    function showError(message) {
+        // Could integrate with a toast library
+        alert('Error: ' + message);
+    }
+
+    // Close modals on outside click
+    document.querySelectorAll('.modal-overlay').forEach(modal => {
+        modal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.classList.remove('active');
+            }
+        });
+    });
+
+    // Load accounts on page load
+    loadAccounts();
+
+    // Refresh accounts periodically
+    setInterval(loadAccounts, 60000);
+</script>
+{% endblock %}

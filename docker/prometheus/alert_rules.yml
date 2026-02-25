@@ -1,0 +1,227 @@
+# Prometheus Alert Rules for RDT Trading System
+# These rules detect critical conditions that require immediate attention
+
+groups:
+  - name: trading_alerts
+    rules:
+      # High Portfolio Loss
+      - alert: HighPortfolioLoss
+        expr: rdt_portfolio_daily_pnl < -5000
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High portfolio loss detected"
+          description: "Daily P&L is {{ $value | printf \"%.2f\" }}, below -$5000 threshold"
+
+      # Max Drawdown Exceeded
+      - alert: MaxDrawdownExceeded
+        expr: rdt_portfolio_drawdown_percent > 10
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Maximum drawdown exceeded"
+          description: "Drawdown is {{ $value | printf \"%.1f\" }}%, above 10% threshold"
+
+      # Low Order Fill Rate
+      - alert: LowOrderFillRate
+        expr: (rdt_orders_filled_total / rdt_orders_submitted_total) * 100 < 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low order fill rate"
+          description: "Order fill rate is {{ $value | printf \"%.1f\" }}%, below 90%"
+
+      # Scanner Stalled
+      - alert: ScannerStalled
+        expr: time() - rdt_scanner_last_scan_timestamp > 300
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Scanner stalled"
+          description: "No scan completed in over 5 minutes"
+
+      # Trading Halted
+      - alert: TradingHalted
+        expr: rdt_trading_halted == 1
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Trading has been halted"
+          description: "Risk manager has halted trading due to risk limit breach"
+
+  - name: infrastructure_alerts
+    rules:
+      # Database Connections Low
+      - alert: DatabaseConnectionsLow
+        expr: rdt_db_pool_available < 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool running low"
+          description: "Only {{ $value }} database connections available"
+
+      # Database Connections Exhausted
+      - alert: DatabaseConnectionsExhausted
+        expr: rdt_db_pool_available == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database connection pool exhausted"
+          description: "No database connections available"
+
+      # High API Latency
+      - alert: HighAPILatency
+        expr: histogram_quantile(0.99, sum(rate(rdt_http_request_duration_seconds_bucket[5m])) by (le, endpoint)) > 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API latency detected"
+          description: "P99 latency for {{ $labels.endpoint }} is {{ $value | printf \"%.2f\" }}s"
+
+      # High Error Rate
+      - alert: HighErrorRate
+        expr: sum(rate(rdt_http_requests_total{status=~"5.."}[5m])) / sum(rate(rdt_http_requests_total[5m])) * 100 > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP error rate"
+          description: "Error rate is {{ $value | printf \"%.1f\" }}%"
+
+  - name: broker_alerts
+    rules:
+      # Broker Disconnected
+      - alert: BrokerDisconnected
+        expr: rdt_broker_connected == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Broker disconnected"
+          description: "{{ $labels.broker }} broker has been disconnected for over 1 minute"
+
+      # Broker Failover Active
+      - alert: BrokerFailoverActive
+        expr: rdt_broker_active_role != "primary"
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Broker failover is active"
+          description: "Currently using {{ $labels.role }} broker instead of primary"
+
+      # Broker High Latency
+      - alert: BrokerHighLatency
+        expr: rdt_broker_request_duration_seconds > 2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Broker API latency is high"
+          description: "{{ $labels.broker }} latency is {{ $value | printf \"%.2f\" }}s"
+
+  - name: ml_alerts
+    rules:
+      # Model Drift Detected
+      - alert: ModelDriftDetected
+        expr: rdt_model_drift_severity >= 3
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ML model drift detected"
+          description: "Model {{ $labels.model }} has drift severity {{ $value }}"
+
+      # Model Prediction Failures
+      - alert: ModelPredictionFailures
+        expr: rate(rdt_model_prediction_errors_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ML model prediction failures"
+          description: "Model {{ $labels.model }} experiencing prediction failures"
+
+      # Model Accuracy Degraded
+      - alert: ModelAccuracyDegraded
+        expr: rdt_model_accuracy < 0.6
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ML model accuracy degraded"
+          description: "Model {{ $labels.model }} accuracy is {{ $value | printf \"%.2f\" }}"
+
+  - name: alert_system_alerts
+    rules:
+      # Alert Delivery Failures
+      - alert: AlertDeliveryFailures
+        expr: rate(rdt_alert_delivery_failures_total[5m]) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alert delivery failures"
+          description: "{{ $labels.channel }} channel is failing to deliver alerts"
+
+      # Alert Queue Backed Up
+      - alert: AlertQueueBackedUp
+        expr: rdt_alert_queue_size > 100
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alert queue is backed up"
+          description: "{{ $value }} alerts waiting in queue"
+
+  - name: event_system_alerts
+    rules:
+      # Unprocessed Events Building Up
+      - alert: UnprocessedEventsBacklog
+        expr: rdt_events_unprocessed_count > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Unprocessed events building up"
+          description: "{{ $value }} events pending processing"
+
+      # Event Processing Failures
+      - alert: EventProcessingFailures
+        expr: rate(rdt_events_failed_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Event processing failures"
+          description: "Events are failing to process"
+
+  - name: system_alerts
+    rules:
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes / 1024 / 1024 > 1024
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Process using {{ $value | printf \"%.0f\" }}MB of memory"
+
+      # Instance Down
+      - alert: InstanceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Instance {{ $labels.job }} is down"
+          description: "{{ $labels.instance }} has been down for more than 1 minute"

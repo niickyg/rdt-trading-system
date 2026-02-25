@@ -13,6 +13,50 @@ from risk.models import (
 )
 from risk.position_sizer import PositionSizer
 
+# VIX-based regime filter (optional)
+try:
+    from scanner.vix_filter import VIXFilter
+    VIX_FILTER_AVAILABLE = True
+except ImportError:
+    VIX_FILTER_AVAILABLE = False
+
+
+# Sector mapping for position concentration limits
+# Maps symbols to sectors for sector-level risk checks
+SECTOR_MAP: Dict[str, str] = {
+    # Tech
+    'AAPL': 'tech', 'MSFT': 'tech', 'GOOGL': 'tech', 'GOOG': 'tech',
+    'AMZN': 'tech', 'NVDA': 'tech', 'META': 'tech', 'TSLA': 'tech',
+    'AMD': 'tech', 'AVGO': 'tech', 'QCOM': 'tech', 'INTC': 'tech',
+    'MU': 'tech', 'CRM': 'tech', 'ADBE': 'tech', 'ORCL': 'tech',
+    'NFLX': 'tech',
+    # Finance
+    'JPM': 'finance', 'BAC': 'finance', 'GS': 'finance', 'MS': 'finance',
+    'WFC': 'finance', 'C': 'finance', 'V': 'finance', 'MA': 'finance',
+    'AXP': 'finance', 'SCHW': 'finance', 'BLK': 'finance',
+    # Healthcare
+    'UNH': 'healthcare', 'JNJ': 'healthcare', 'PFE': 'healthcare',
+    'ABBV': 'healthcare', 'MRK': 'healthcare', 'LLY': 'healthcare',
+    'TMO': 'healthcare', 'ABT': 'healthcare', 'BMY': 'healthcare',
+    # Consumer
+    'WMT': 'consumer', 'HD': 'consumer', 'COST': 'consumer',
+    'MCD': 'consumer', 'SBUX': 'consumer', 'NKE': 'consumer',
+    'TGT': 'consumer', 'LOW': 'consumer',
+    # Consumer Goods
+    'PG': 'consumer', 'KO': 'consumer', 'PEP': 'consumer',
+    'GIS': 'consumer',
+    # Industrial
+    'BA': 'industrial', 'CAT': 'industrial', 'GE': 'industrial',
+    'HON': 'industrial', 'UPS': 'industrial', 'MMM': 'industrial',
+    'DE': 'industrial',
+    # Energy
+    'XOM': 'energy', 'CVX': 'energy', 'COP': 'energy', 'SLB': 'energy',
+    'FCX': 'energy', 'NEM': 'energy',
+}
+
+# Maximum positions allowed in the same sector
+MAX_SECTOR_POSITIONS = 3
+
 
 class RiskManager:
     """
@@ -23,6 +67,7 @@ class RiskManager:
     - Track daily P&L and exposure
     - Monitor drawdown
     - Enforce PDT rules
+    - Enforce sector concentration limits
     - Generate risk reports
     """
 
@@ -44,8 +89,9 @@ class RiskManager:
         self.limits = risk_limits or RiskLimits()
         self.position_sizer = PositionSizer(self.limits)
 
-        # Daily tracking
+        # Daily tracking - use fixed start-of-day balance for loss limit (Fix 6)
         self.daily_start_balance = account_size
+        self._start_of_day_balance = account_size
         self.daily_pnl = 0.0
         self.daily_trades = 0
         self.daily_wins = 0
@@ -68,11 +114,21 @@ class RiskManager:
         self.trading_halted = False
         self.halt_reason = ""
 
+        # VIX regime filter (optional)
+        self._vix_filter: Optional[VIXFilter] = None
+        if VIX_FILTER_AVAILABLE:
+            try:
+                self._vix_filter = VIXFilter()
+                logger.info("VIX regime filter enabled in risk manager")
+            except Exception as e:
+                logger.warning(f"Failed to initialize VIX filter in risk manager: {e}")
+
         logger.info(f"RiskManager initialized: ${account_size:,.2f}")
 
     def reset_daily(self):
         """Reset daily tracking (call at market open)"""
         self.daily_start_balance = self.current_balance
+        self._start_of_day_balance = self.current_balance  # Fix 6: frozen SOD balance
         self.daily_pnl = 0.0
         self.daily_trades = 0
         self.daily_wins = 0
@@ -133,6 +189,36 @@ class RiskManager:
         Returns:
             TradeRisk with all check results
         """
+        # Guard against zero or negative balance
+        if self.current_balance <= 0:
+            trade_risk = TradeRisk(
+                symbol=symbol,
+                direction=direction,
+                entry_price=entry_price,
+                stop_price=stop_price,
+                target_price=target_price,
+                shares=shares,
+                position_value=entry_price * shares,
+                risk_amount=abs(entry_price - stop_price) * shares,
+                reward_amount=abs(target_price - entry_price) * shares,
+                risk_reward_ratio=0,
+                risk_percent_of_account=0,
+                position_percent_of_account=0,
+                atr=atr,
+                atr_percent=(atr / entry_price) * 100 if entry_price > 0 else 0
+            )
+            failed_check = RiskCheckResult(
+                passed=False,
+                violation_type=RiskViolationType.INSUFFICIENT_BUYING_POWER,
+                message="Zero or negative account balance",
+                current_value=self.current_balance,
+                limit_value=0,
+                risk_level=RiskLevel.CRITICAL
+            )
+            trade_risk.checks_failed.append(failed_check)
+            self.violations.append(failed_check)
+            return trade_risk
+
         position_value = entry_price * shares
         risk_amount = abs(entry_price - stop_price) * shares
         reward_amount = abs(target_price - entry_price) * shares
@@ -149,19 +235,42 @@ class RiskManager:
             risk_amount=risk_amount,
             reward_amount=reward_amount,
             risk_reward_ratio=rr_ratio,
-            risk_percent_of_account=(risk_amount / self.current_balance) * 100,
-            position_percent_of_account=(position_value / self.current_balance) * 100,
+            risk_percent_of_account=(risk_amount / self.current_balance) * 100 if self.current_balance > 0 else 0,
+            position_percent_of_account=(position_value / self.current_balance) * 100 if self.current_balance > 0 else 0,
             atr=atr,
-            atr_percent=(atr / entry_price) * 100
+            atr_percent=(atr / entry_price) * 100 if entry_price > 0 else 0
         )
+
+        # Apply VIX regime adjustment to position size
+        vix_adjusted_position_value = position_value
+        if self._vix_filter is not None:
+            try:
+                vix_regime = self._vix_filter.get_vix_regime()
+                vix_check = self._check_vix_regime(direction, vix_regime)
+                if not vix_check.passed:
+                    # VIX regime blocks this trade entirely
+                    trade_risk.checks_failed.append(vix_check)
+                    self.violations.append(vix_check)
+                    return trade_risk
+                # Adjust position value by VIX multiplier for size checks
+                vix_mult = vix_regime.get('position_size_multiplier', 1.0)
+                if vix_mult < 1.0:
+                    vix_adjusted_position_value = position_value * vix_mult
+                    logger.debug(
+                        f"VIX regime '{vix_regime['level']}': position value "
+                        f"adjusted ${position_value:,.0f} -> ${vix_adjusted_position_value:,.0f}"
+                    )
+            except Exception as e:
+                logger.warning(f"VIX regime check failed in risk manager: {e}")
 
         # Run all risk checks
         checks = [
-            self._check_position_size(position_value),
+            self._check_position_size(vix_adjusted_position_value),
             self._check_risk_per_trade(risk_amount),
             self._check_risk_reward(rr_ratio),
             self._check_daily_loss(),
             self._check_max_positions(),
+            self._check_sector_concentration(symbol),
             self._check_buying_power(position_value),
             self._check_drawdown(),
             self._check_trading_halted(),
@@ -218,7 +327,8 @@ class RiskManager:
 
     def _check_daily_loss(self) -> RiskCheckResult:
         """Check if daily loss limit has been hit"""
-        max_loss = self.current_balance * self.limits.max_daily_loss
+        # Fix 6: Use frozen start-of-day balance, not current balance
+        max_loss = self._start_of_day_balance * self.limits.max_daily_loss
         current_loss = abs(min(0, self.daily_pnl))
         passed = current_loss < max_loss
 
@@ -243,6 +353,25 @@ class RiskManager:
             message=f"Open positions: {current} / {max_pos} max",
             current_value=current,
             limit_value=max_pos,
+            risk_level=RiskLevel.MEDIUM if not passed else RiskLevel.LOW
+        )
+
+    def _check_sector_concentration(self, symbol: str) -> RiskCheckResult:
+        """Check if adding this position would exceed sector concentration limit"""
+        sector = SECTOR_MAP.get(symbol, 'other')
+        # Count existing positions in the same sector
+        same_sector_count = sum(
+            1 for sym in self.open_positions
+            if SECTOR_MAP.get(sym, 'other') == sector
+        )
+        passed = same_sector_count < MAX_SECTOR_POSITIONS
+
+        return RiskCheckResult(
+            passed=passed,
+            violation_type=RiskViolationType.MAX_SECTOR_EXPOSURE if not passed else None,
+            message=f"Sector '{sector}' positions: {same_sector_count} / {MAX_SECTOR_POSITIONS} max",
+            current_value=same_sector_count,
+            limit_value=MAX_SECTOR_POSITIONS,
             risk_level=RiskLevel.MEDIUM if not passed else RiskLevel.LOW
         )
 
@@ -285,9 +414,56 @@ class RiskManager:
             risk_level=RiskLevel.CRITICAL if self.trading_halted else RiskLevel.LOW
         )
 
+    def _check_vix_regime(self, direction: str, vix_regime: Dict) -> RiskCheckResult:
+        """Check if the VIX regime allows this trade direction."""
+        level = vix_regime.get('level', 'normal')
+        vix_value = vix_regime.get('vix_value')
+        allow_longs = vix_regime.get('allow_longs', True)
+        allow_shorts = vix_regime.get('allow_shorts', True)
+
+        # Extreme VIX: block longs entirely
+        if level == 'extreme' and direction.lower() == 'long':
+            return RiskCheckResult(
+                passed=False,
+                violation_type=RiskViolationType.MAX_DAILY_LOSS,  # closest available type
+                message=f"VIX EXTREME ({vix_value:.1f}): long trades blocked",
+                current_value=vix_value if vix_value else 0,
+                limit_value=35.0,
+                risk_level=RiskLevel.CRITICAL
+            )
+
+        if direction.lower() == 'long' and not allow_longs:
+            return RiskCheckResult(
+                passed=False,
+                violation_type=RiskViolationType.MAX_DAILY_LOSS,
+                message=f"VIX {level.upper()} ({vix_value}): longs not allowed",
+                current_value=vix_value if vix_value else 0,
+                limit_value=35.0,
+                risk_level=RiskLevel.HIGH
+            )
+
+        if direction.lower() == 'short' and not allow_shorts:
+            return RiskCheckResult(
+                passed=False,
+                violation_type=RiskViolationType.MAX_DAILY_LOSS,
+                message=f"VIX {level.upper()} ({vix_value}): shorts not allowed",
+                current_value=vix_value if vix_value else 0,
+                limit_value=35.0,
+                risk_level=RiskLevel.HIGH
+            )
+
+        return RiskCheckResult(
+            passed=True,
+            message=f"VIX regime: {level} (VIX={vix_value})",
+            current_value=vix_value if vix_value else 0,
+            limit_value=35.0,
+            risk_level=RiskLevel.LOW
+        )
+
     def check_daily_loss_limit(self) -> bool:
         """Quick check if daily loss limit exceeded"""
-        max_loss = self.current_balance * self.limits.max_daily_loss
+        # Fix 6: Use frozen start-of-day balance, not current balance
+        max_loss = self._start_of_day_balance * self.limits.max_daily_loss
         return self.daily_pnl < -max_loss
 
     def check_pdt_rule(self, is_day_trade: bool) -> RiskCheckResult:

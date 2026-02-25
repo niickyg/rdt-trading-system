@@ -1,0 +1,25 @@
+{
+  "cv_xgb_auc_mean": 0.5396756840673329,
+  "cv_xgb_auc_std": 0.035605646650130586,
+  "cv_rf_auc_mean": 0.5457969984211972,
+  "cv_rf_auc_std": 0.03684033200446492,
+  "cv_ensemble_auc_mean": 0.5428124826608173,
+  "cv_ensemble_auc_std": 0.03880520695211681,
+  "train_accuracy": 0.6960657155209684,
+  "train_auc": 0.9925461420884762,
+  "train_precision": 0.0,
+  "train_recall": 0.0,
+  "train_f1": 0.0,
+  "train_log_loss": 0.5767599946755974,
+  "meta_weights": {
+    "xgboost": 0.13982739762866433,
+    "random_forest": 0.4699535582371319
+  },
+  "n_samples": 4626,
+  "n_features": 22,
+  "class_distribution": {
+    "0": 3220.0,
+    "1": 1406.0
+  },
+  "timestamp": "2026-02-05T20:08:19.371102"
+}

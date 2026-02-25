@@ -1,0 +1,17 @@
+# Dashboard Provisioning Configuration for RDT Trading System
+# Automatically loads dashboards from the specified folder
+
+apiVersion: 1
+
+providers:
+  - name: 'RDT Trading System'
+    orgId: 1
+    folder: 'RDT Trading'
+    folderUid: 'rdt-trading'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

@@ -94,8 +94,18 @@ class RRSCalculator:
         # This is simplified - in reality, you'd use beta or historical correlation
         expected_pc = spy_pc  # Assuming beta of 1.0 for simplicity
 
-        # RRS calculation
-        rrs = (stock_pc - expected_pc) / stock_atr
+        # Normalize ATR to percentage of price for unit consistency
+        stock_atr_pct = (stock_atr / stock_df['close']) * 100
+
+        # Guard against zero/NaN ATR
+        stock_atr_pct = stock_atr_pct.replace(0, np.nan)
+
+        # RRS calculation (now dimensionless: percent / percent)
+        rrs = (stock_pc - expected_pc) / stock_atr_pct
+
+        # Guard against inf/NaN propagation from division
+        rrs = rrs.replace([np.inf, -np.inf], np.nan)
+        rrs = rrs.fillna(0)
 
         # Create result DataFrame
         result = pd.DataFrame({
@@ -135,11 +145,11 @@ class RRSCalculator:
         # Expected price change
         expected_pc = spy_pc
 
-        # RRS
-        if stock_atr > 0:
-            rrs = (stock_pc - expected_pc) / stock_atr
-        else:
-            rrs = 0
+        # Normalize ATR to percentage
+        if stock_atr <= 0 or pd.isna(stock_atr) or stock_data['current_price'] <= 0:
+            return None
+        atr_pct = (stock_atr / stock_data['current_price']) * 100
+        rrs = (stock_pc - expected_pc) / atr_pct
 
         # Determine strength/weakness
         if rrs > 2.0:

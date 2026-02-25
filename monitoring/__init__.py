@@ -1,11 +1,146 @@
 """
 Monitoring Module
-Real-time system monitoring and dashboards
+Real-time system monitoring, dashboards, and Prometheus metrics
 """
 
 from monitoring.dashboard import TradingDashboard, DashboardState
+from monitoring.metrics import (
+    # Core metrics
+    rdt_signals_generated_total,
+    rdt_trades_executed_total,
+    rdt_positions_open,
+    rdt_portfolio_value,
+    rdt_daily_pnl,
+    rdt_unrealized_pnl,
+    rdt_total_exposure,
+    rdt_scanner_duration_seconds,
+    rdt_scanner_symbols_count,
+    rdt_scans_completed_total,
+    rdt_api_requests_total,
+    rdt_api_request_duration_seconds,
+    rdt_model_predictions_total,
+    rdt_model_prediction_confidence,
+    rdt_model_inference_duration_seconds,
+    rdt_alert_sent_total,
+    rdt_broker_orders_total,
+    rdt_broker_cash_balance,
+    rdt_broker_buying_power,
+    rdt_websocket_connections,
+    rdt_websocket_room_clients,
+    rdt_websocket_messages_total,
+    rdt_system_uptime_seconds,
+    rdt_market_status,
+    rdt_system_errors_total,
+    # A/B Testing metrics
+    rdt_ab_predictions_total,
+    rdt_ab_outcomes_total,
+    rdt_ab_win_rate,
+    rdt_ab_avg_pnl,
+    rdt_ab_accuracy,
+    rdt_ab_thompson_probability,
+    rdt_ab_active_experiments,
+    rdt_ab_sample_count,
+    rdt_ab_confidence,
+    # Helper functions
+    get_metrics,
+    get_metrics_content_type,
+    record_signal,
+    record_trade,
+    record_api_request,
+    record_alert,
+    record_broker_order,
+    record_model_prediction,
+    record_websocket_message,
+    update_portfolio_metrics,
+    update_broker_metrics,
+    update_websocket_metrics,
+    record_scanner_duration,
+    record_system_error,
+    set_market_status,
+    # A/B Testing helper functions
+    record_ab_prediction,
+    record_ab_outcome,
+    update_ab_experiment_metrics,
+    update_ab_thompson_probabilities,
+    set_active_experiments_count,
+    # Decorators
+    track_scanner_duration,
+    track_model_prediction,
+    # Middleware
+    MetricsMiddleware,
+    create_metrics_middleware,
+    # Registry
+    metrics_registry,
+)
 
 __all__ = [
+    # Dashboard
     "TradingDashboard",
-    "DashboardState"
+    "DashboardState",
+    # Metrics
+    "rdt_signals_generated_total",
+    "rdt_trades_executed_total",
+    "rdt_positions_open",
+    "rdt_portfolio_value",
+    "rdt_daily_pnl",
+    "rdt_unrealized_pnl",
+    "rdt_total_exposure",
+    "rdt_scanner_duration_seconds",
+    "rdt_scanner_symbols_count",
+    "rdt_scans_completed_total",
+    "rdt_api_requests_total",
+    "rdt_api_request_duration_seconds",
+    "rdt_model_predictions_total",
+    "rdt_model_prediction_confidence",
+    "rdt_model_inference_duration_seconds",
+    "rdt_alert_sent_total",
+    "rdt_broker_orders_total",
+    "rdt_broker_cash_balance",
+    "rdt_broker_buying_power",
+    "rdt_websocket_connections",
+    "rdt_websocket_room_clients",
+    "rdt_websocket_messages_total",
+    "rdt_system_uptime_seconds",
+    "rdt_market_status",
+    "rdt_system_errors_total",
+    # A/B Testing metrics
+    "rdt_ab_predictions_total",
+    "rdt_ab_outcomes_total",
+    "rdt_ab_win_rate",
+    "rdt_ab_avg_pnl",
+    "rdt_ab_accuracy",
+    "rdt_ab_thompson_probability",
+    "rdt_ab_active_experiments",
+    "rdt_ab_sample_count",
+    "rdt_ab_confidence",
+    # Helper functions
+    "get_metrics",
+    "get_metrics_content_type",
+    "record_signal",
+    "record_trade",
+    "record_api_request",
+    "record_alert",
+    "record_broker_order",
+    "record_model_prediction",
+    "record_websocket_message",
+    "update_portfolio_metrics",
+    "update_broker_metrics",
+    "update_websocket_metrics",
+    "record_scanner_duration",
+    "record_system_error",
+    "set_market_status",
+    # A/B Testing helper functions
+    "record_ab_prediction",
+    "record_ab_outcome",
+    "update_ab_experiment_metrics",
+    "update_ab_thompson_probabilities",
+    "set_active_experiments_count",
+    # Decorators
+    "track_scanner_duration",
+    "track_model_prediction",
+    # Middleware
+    "MetricsMiddleware",
+    "create_metrics_middleware",
+    # Registry
+    "metrics_registry",
 ]

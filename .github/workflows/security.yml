@@ -1,0 +1,397 @@
+name: Security Scan
+
+on:
+  schedule:
+    # Run weekly on Sundays at 2:00 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      create_issues:
+        description: 'Create GitHub issues for vulnerabilities'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+
+    outputs:
+      vulnerabilities_found: ${{ steps.safety.outputs.vulnerabilities_found }}
+      pip_audit_found: ${{ steps.pip-audit.outputs.vulnerabilities_found }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install safety pip-audit
+
+      - name: Run Safety check
+        id: safety
+        continue-on-error: true
+        run: |
+          echo "Running Safety dependency vulnerability scan..."
+
+          # Generate requirements file with all installed packages
+          pip install -r requirements.txt || true
+          pip freeze > installed-requirements.txt
+
+          # Run safety check and capture output
+          if safety check -r installed-requirements.txt --full-report --output json > safety-report.json 2>&1; then
+            echo "No vulnerabilities found by Safety"
+            echo "vulnerabilities_found=false" >> $GITHUB_OUTPUT
+          else
+            echo "Vulnerabilities found by Safety"
+            echo "vulnerabilities_found=true" >> $GITHUB_OUTPUT
+          fi
+
+          # Also generate human-readable report
+          safety check -r installed-requirements.txt --full-report > safety-report.txt 2>&1 || true
+          cat safety-report.txt
+
+      - name: Run pip-audit
+        id: pip-audit
+        continue-on-error: true
+        run: |
+          echo "Running pip-audit vulnerability scan..."
+
+          if pip-audit -r requirements.txt --format json --output pip-audit-report.json 2>&1; then
+            echo "No vulnerabilities found by pip-audit"
+            echo "vulnerabilities_found=false" >> $GITHUB_OUTPUT
+          else
+            echo "Vulnerabilities found by pip-audit"
+            echo "vulnerabilities_found=true" >> $GITHUB_OUTPUT
+          fi
+
+          # Also generate human-readable report
+          pip-audit -r requirements.txt > pip-audit-report.txt 2>&1 || true
+          cat pip-audit-report.txt
+
+      - name: Upload Safety report
+        uses: actions/upload-artifact@v4
+        with:
+          name: safety-vulnerability-report
+          path: |
+            safety-report.json
+            safety-report.txt
+          retention-days: 90
+
+      - name: Upload pip-audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-vulnerability-report
+          path: |
+            pip-audit-report.json
+            pip-audit-report.txt
+          retention-days: 90
+
+  code-security-scan:
+    name: Code Security Scan
+    runs-on: ubuntu-latest
+
+    outputs:
+      bandit_issues: ${{ steps.bandit.outputs.issues_found }}
+      secrets_found: ${{ steps.secrets.outputs.secrets_found }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit detect-secrets semgrep
+
+      - name: Run Bandit security scan
+        id: bandit
+        continue-on-error: true
+        run: |
+          echo "Running Bandit security scan..."
+
+          if bandit -r . \
+            -x ./tests,./data,./.venv,./htmlcov,./.git \
+            -f json \
+            -o bandit-security-report.json \
+            --severity-level low \
+            --confidence-level low; then
+            echo "No security issues found by Bandit"
+            echo "issues_found=false" >> $GITHUB_OUTPUT
+          else
+            echo "Security issues found by Bandit"
+            echo "issues_found=true" >> $GITHUB_OUTPUT
+          fi
+
+          # Generate readable report
+          bandit -r . \
+            -x ./tests,./data,./.venv,./htmlcov,./.git \
+            -f txt \
+            -o bandit-security-report.txt \
+            --severity-level low \
+            --confidence-level low || true
+
+          cat bandit-security-report.txt
+
+      - name: Run detect-secrets scan
+        id: secrets
+        continue-on-error: true
+        run: |
+          echo "Running detect-secrets scan..."
+
+          # Initialize baseline if not exists
+          if [ ! -f .secrets.baseline ]; then
+            detect-secrets scan --all-files > .secrets.baseline
+          fi
+
+          # Scan for new secrets
+          if detect-secrets scan --all-files --baseline .secrets.baseline > secrets-scan.json 2>&1; then
+            echo "No new secrets detected"
+            echo "secrets_found=false" >> $GITHUB_OUTPUT
+          else
+            echo "Potential secrets detected"
+            echo "secrets_found=true" >> $GITHUB_OUTPUT
+          fi
+
+          cat secrets-scan.json || true
+
+      - name: Run Semgrep scan
+        continue-on-error: true
+        run: |
+          echo "Running Semgrep security scan..."
+
+          semgrep scan \
+            --config auto \
+            --json \
+            --output semgrep-report.json \
+            --exclude tests \
+            --exclude data \
+            --exclude .venv \
+            . || true
+
+          # Generate readable report
+          semgrep scan \
+            --config auto \
+            --exclude tests \
+            --exclude data \
+            --exclude .venv \
+            . > semgrep-report.txt 2>&1 || true
+
+          cat semgrep-report.txt
+
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-security-report
+          path: |
+            bandit-security-report.json
+            bandit-security-report.txt
+          retention-days: 90
+
+      - name: Upload secrets scan report
+        uses: actions/upload-artifact@v4
+        with:
+          name: secrets-scan-report
+          path: secrets-scan.json
+          retention-days: 90
+
+      - name: Upload Semgrep report
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-security-report
+          path: |
+            semgrep-report.json
+            semgrep-report.txt
+          retention-days: 90
+
+  docker-security-scan:
+    name: Docker Image Security Scan
+    runs-on: ubuntu-latest
+
+    outputs:
+      vulnerabilities_found: ${{ steps.trivy.outputs.vulnerabilities_found }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image for scanning
+        run: |
+          docker build -t rdt-trading-system:scan .
+
+      - name: Run Trivy vulnerability scanner
+        id: trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'rdt-trading-system:scan'
+          format: 'json'
+          output: 'trivy-report.json'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          exit-code: '0'
+
+      - name: Check Trivy results
+        run: |
+          if [ -s trivy-report.json ]; then
+            VULN_COUNT=$(cat trivy-report.json | python3 -c "import sys, json; data = json.load(sys.stdin); print(sum(len(r.get('Vulnerabilities', [])) for r in data.get('Results', [])))" 2>/dev/null || echo "0")
+            echo "Found $VULN_COUNT vulnerabilities"
+            if [ "$VULN_COUNT" -gt "0" ]; then
+              echo "vulnerabilities_found=true" >> $GITHUB_OUTPUT
+            else
+              echo "vulnerabilities_found=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "vulnerabilities_found=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run Trivy (table format for logs)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'rdt-trading-system:scan'
+          format: 'table'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          exit-code: '0'
+
+      - name: Run Dockle linter
+        uses: erzz/dockle-action@v1
+        with:
+          image: 'rdt-trading-system:scan'
+          failure-threshold: high
+          exit-code: 0
+          report-format: json
+          report-name: dockle-report
+
+      - name: Upload Trivy report
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-vulnerability-report
+          path: trivy-report.json
+          retention-days: 90
+
+      - name: Upload Dockle report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dockle-lint-report
+          path: dockle-report.json
+          retention-days: 90
+
+  create-vulnerability-issues:
+    name: Create Vulnerability Issues
+    runs-on: ubuntu-latest
+    needs: [dependency-scan, code-security-scan, docker-security-scan]
+    if: |
+      always() &&
+      (github.event.inputs.create_issues == 'true' || github.event.inputs.create_issues == null) &&
+      (needs.dependency-scan.outputs.vulnerabilities_found == 'true' ||
+       needs.dependency-scan.outputs.pip_audit_found == 'true' ||
+       needs.code-security-scan.outputs.bandit_issues == 'true' ||
+       needs.code-security-scan.outputs.secrets_found == 'true' ||
+       needs.docker-security-scan.outputs.vulnerabilities_found == 'true')
+
+    steps:
+      - name: Download all reports
+        uses: actions/download-artifact@v4
+        with:
+          path: reports
+
+      - name: Create vulnerability summary issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            let issueBody = `## Weekly Security Scan Report
+
+            **Scan Date:** ${new Date().toISOString()}
+            **Workflow Run:** [#${context.runId}](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+
+            ### Summary
+
+            | Scan Type | Status |
+            |-----------|--------|
+            | Dependency Vulnerabilities (Safety) | ${'${{ needs.dependency-scan.outputs.vulnerabilities_found }}' === 'true' ? ':warning: Issues Found' : ':white_check_mark: Clean'} |
+            | Dependency Vulnerabilities (pip-audit) | ${'${{ needs.dependency-scan.outputs.pip_audit_found }}' === 'true' ? ':warning: Issues Found' : ':white_check_mark: Clean'} |
+            | Code Security (Bandit) | ${'${{ needs.code-security-scan.outputs.bandit_issues }}' === 'true' ? ':warning: Issues Found' : ':white_check_mark: Clean'} |
+            | Secrets Detection | ${'${{ needs.code-security-scan.outputs.secrets_found }}' === 'true' ? ':rotating_light: Secrets Found' : ':white_check_mark: Clean'} |
+            | Docker Image Vulnerabilities | ${'${{ needs.docker-security-scan.outputs.vulnerabilities_found }}' === 'true' ? ':warning: Issues Found' : ':white_check_mark: Clean'} |
+
+            ### Recommended Actions
+
+            1. Review the detailed scan reports attached to this workflow run
+            2. Prioritize fixing CRITICAL and HIGH severity vulnerabilities
+            3. Update dependencies with known vulnerabilities
+            4. Remove or rotate any detected secrets
+            5. Consider implementing additional security controls
+
+            ### Reports
+
+            Download detailed reports from the [workflow artifacts](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}).
+
+            ---
+            *This issue was automatically created by the weekly security scan workflow.*
+            `;
+
+            // Check for existing open security scan issue
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'security-scan',
+              state: 'open'
+            });
+
+            if (issues.data.length > 0) {
+              // Update existing issue
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues.data[0].number,
+                body: issueBody
+              });
+              console.log(`Updated existing issue #${issues.data[0].number}`);
+            } else {
+              // Create new issue
+              const issue = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `Security Scan Report - ${new Date().toISOString().split('T')[0]}`,
+                body: issueBody,
+                labels: ['security-scan', 'security', 'automated']
+              });
+              console.log(`Created new issue #${issue.data.number}`);
+            }
+
+  security-summary:
+    name: Security Scan Summary
+    runs-on: ubuntu-latest
+    needs: [dependency-scan, code-security-scan, docker-security-scan]
+    if: always()
+
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Scan | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Safety Check | ${{ needs.dependency-scan.outputs.vulnerabilities_found == 'true' && 'Vulnerabilities Found' || 'Clean' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| pip-audit | ${{ needs.dependency-scan.outputs.pip_audit_found == 'true' && 'Vulnerabilities Found' || 'Clean' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Bandit | ${{ needs.code-security-scan.outputs.bandit_issues == 'true' && 'Issues Found' || 'Clean' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Secrets Detection | ${{ needs.code-security-scan.outputs.secrets_found == 'true' && 'Secrets Found' || 'Clean' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Docker Trivy | ${{ needs.docker-security-scan.outputs.vulnerabilities_found == 'true' && 'Vulnerabilities Found' || 'Clean' }} |" >> $GITHUB_STEP_SUMMARY

@@ -119,16 +119,16 @@ class StrategyResult:
     max_drawdown_pct: float
 
     # Risk metrics
-    sharpe_ratio: float
+    sharpe_ratio: float = 0.0
     sortino_ratio: float = 0.0
     calmar_ratio: float = 0.0
 
     # Efficiency metrics
-    win_rate: float
-    profit_factor: float
-    avg_win: float
-    avg_loss: float
-    avg_holding_days: float
+    win_rate: float = 0.0
+    profit_factor: float = 0.0
+    avg_win: float = 0.0
+    avg_loss: float = 0.0
+    avg_holding_days: float = 0.0
 
     # Trade list
     trades: List[Dict] = field(default_factory=list)

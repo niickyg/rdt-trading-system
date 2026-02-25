@@ -1,0 +1,94 @@
+# Optional dependencies for RDT Trading System
+# Install individual groups as needed — do NOT install all at once.
+# These are NOT included in requirements.txt or requirements-web.txt.
+#
+# Usage: pip install <package>  (or pip install -r requirements-optional.txt)
+
+# =============================================================================
+# GPU / Deep Learning Acceleration
+# =============================================================================
+# tensorflow-gpu is now merged into tensorflow>=2.12 via platform detection.
+# For explicit GPU support, install the CUDA toolkit separately and let TF
+# auto-detect. No separate package needed with tensorflow>=2.12.
+#
+# XGBoost GPU support — install xgboost with GPU extras if CUDA is available.
+# The base xgboost package (in requirements-web.txt) already supports GPU
+# acceleration; no separate install needed.
+#
+# If using Apple Silicon (MPS backend):
+# tensorflow-metal  # Uncomment and install: pip install tensorflow-metal
+
+# =============================================================================
+# Technical Indicators (system library required)
+# =============================================================================
+
+# TA-Lib — requires the native C library installed first:
+#   Ubuntu/Debian: sudo apt-get install libta-lib-dev
+#   macOS:         brew install ta-lib
+#   Then:          pip install ta-lib>=0.4.28
+# ta-lib>=0.4.28
+
+# pandas-ta — pure-Python alternative to TA-Lib, no system deps required.
+# Disabled due to Python version compatibility issues with some Python 3.11+
+# environments. Can be re-enabled once upstream fixes are released.
+# Use the project's custom indicator implementation instead (ml/indicators/).
+# pandas-ta>=0.3.14b0
+
+# =============================================================================
+# Profiling and Performance Analysis
+# =============================================================================
+# Install when you need to diagnose CPU or memory bottlenecks.
+# Not needed in production.
+
+# py-spy: sampling profiler — attaches to a running process, no code changes.
+#   Usage: py-spy top --pid <pid>  or  py-spy record -o profile.svg -- python script.py
+py-spy>=0.3.14
+
+# memory-profiler: line-by-line memory usage via @profile decorator.
+#   Usage: python -m memory_profiler script.py
+memory-profiler>=0.61.0
+
+# line-profiler: line-by-line CPU timing via @profile decorator.
+#   Usage: kernprof -l -v script.py
+line-profiler>=4.1.0
+
+# scalene: combined CPU + GPU + memory profiler, very low overhead.
+#   Usage: scalene script.py
+scalene>=1.5.0
+
+# =============================================================================
+# Jupyter / Notebook Environment
+# =============================================================================
+# Install when doing exploratory analysis or model development in notebooks.
+# Not needed for the web dashboard or scanner to run.
+
+jupyter>=1.0.0
+jupyterlab>=4.0.0
+nbstripout>=0.6.1  # Strip notebook outputs before git commits
+
+# =============================================================================
+# Load Testing
+# =============================================================================
+# Install when benchmarking the API under concurrent load.
+
+locust>=2.20.0
+
+# =============================================================================
+# NOTES ON PACKAGES IN requirements.txt
+# =============================================================================
+# The following packages in requirements.txt are worth noting:
+#
+# - psycopg2-binary: Only required when using a PostgreSQL backend.
+#   SQLite (via aiosqlite) is used by default. Safe to omit in SQLite-only deploys.
+#
+# - graphene / graphql-core: Only required if the GraphQL API endpoint is used
+#   (api/graphql/). Not needed for the REST API or web dashboard alone.
+#
+# - twilio / plyer: Only required if alert notifications are configured.
+#   The system runs without them; alerts will be silently skipped if unconfigured.
+#
+# - APScheduler: Required only for scheduled background tasks (e.g., auto-scan).
+#   Not needed if all scans are triggered manually.
+#
+# - asyncio-throttle: Small utility; only needed if async rate-limiting is used.
+#   Currently used in async API call wrappers.

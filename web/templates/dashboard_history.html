@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+
+{% block title %}Trade History - RDT Trading{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dashboard-layout {
+        display: grid;
+        grid-template-columns: 240px 1fr;
+        min-height: calc(100vh - 60px);
+    }
+    .sidebar {
+        background: var(--primary);
+        padding: 20px;
+        position: sticky;
+        top: 60px;
+        height: calc(100vh - 60px);
+    }
+    .sidebar-nav { list-style: none; }
+    .sidebar-nav li { margin-bottom: 5px; }
+    .sidebar-nav a {
+        display: block;
+        padding: 12px 15px;
+        color: rgba(255,255,255,0.7);
+        border-radius: 5px;
+        transition: all 0.3s;
+    }
+    .sidebar-nav a:hover, .sidebar-nav a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        text-decoration: none;
+    }
+    .sidebar-section {
+        color: rgba(255,255,255,0.5);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        margin: 20px 0 10px;
+        padding-left: 15px;
+    }
+    .main-content { padding: 25px; }
+
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 25px;
+    }
+    .page-title { font-size: 1.5rem; font-weight: 600; }
+
+    .filters-bar {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+
+    .history-stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 15px;
+        margin-bottom: 25px;
+    }
+
+    .history-table-container {
+        overflow-x: auto;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--text-light);
+    }
+
+    @media (max-width: 1024px) {
+        .dashboard-layout { grid-template-columns: 1fr; }
+        .sidebar { display: none; }
+        .history-stats { grid-template-columns: repeat(2, 1fr); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+    <aside class="sidebar">
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard">Overview</a></li>
+            <li><a href="/dashboard/signals">Active Signals</a></li>
+            <li><a href="/dashboard/positions">Positions</a></li>
+            <li><a href="/dashboard/history" class="active">History</a></li>
+        </ul>
+        <div class="sidebar-section">Analysis</div>
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard/scanner">Live Scanner</a></li>
+            <li><a href="/dashboard/backtest">Backtest</a></li>
+            <li><a href="/performance">Performance</a></li>
+        </ul>
+        <div class="sidebar-section">Settings</div>
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard/alerts">Alerts</a></li>
+            <li><a href="/dashboard/settings">Settings</a></li>
+            <li><a href="/api/v1/health" target="_blank">API Status</a></li>
+        </ul>
+    </aside>
+
+    <main class="main-content">
+        <div class="page-header">
+            <h1 class="page-title">Trade History</h1>
+            <button class="btn btn-secondary" onclick="exportHistory()">Export CSV</button>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-bar">
+            <select class="form-control" style="width: auto;" id="filter-period">
+                <option value="7">Last 7 days</option>
+                <option value="30" selected>Last 30 days</option>
+                <option value="90">Last 90 days</option>
+                <option value="365">Last year</option>
+            </select>
+            <select class="form-control" style="width: auto;" id="filter-result">
+                <option value="all">All Trades</option>
+                <option value="win">Wins Only</option>
+                <option value="loss">Losses Only</option>
+            </select>
+            <select class="form-control" style="width: auto;" id="filter-direction">
+                <option value="all">All Directions</option>
+                <option value="long">Long Only</option>
+                <option value="short">Short Only</option>
+            </select>
+        </div>
+
+        <!-- Stats Summary -->
+        <div class="history-stats">
+            <div class="stat-card">
+                <div class="stat-label">Total Trades</div>
+                <div class="stat-value" id="total-trades">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Win Rate</div>
+                <div class="stat-value" id="win-rate">0%</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total P&L</div>
+                <div class="stat-value" id="total-pnl">$0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Avg Trade</div>
+                <div class="stat-value" id="avg-trade">$0</div>
+            </div>
+        </div>
+
+        <!-- History Table -->
+        <div class="card">
+            <div class="history-table-container">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Direction</th>
+                            <th>Entry Date</th>
+                            <th>Entry Price</th>
+                            <th>Exit Date</th>
+                            <th>Exit Price</th>
+                            <th>Shares</th>
+                            <th>P&L</th>
+                            <th>Result</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-body">
+                        <tr>
+                            <td colspan="9" class="text-center text-muted" style="padding: 40px;">
+                                Loading trade history...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let historyData = [
+        { symbol: 'NVDA', direction: 'long', entry_date: '2024-01-10', entry_price: 472.50, exit_date: '2024-01-14', exit_price: 495.30, shares: 20, pnl: 456.00, pnl_pct: 4.83 },
+        { symbol: 'AAPL', direction: 'long', entry_date: '2024-01-08', entry_price: 185.20, exit_date: '2024-01-11', exit_price: 182.50, shares: 50, pnl: -135.00, pnl_pct: -1.46 },
+        { symbol: 'TSLA', direction: 'long', entry_date: '2024-01-05', entry_price: 238.00, exit_date: '2024-01-09', exit_price: 245.80, shares: 15, pnl: 117.00, pnl_pct: 3.28 },
+        { symbol: 'META', direction: 'long', entry_date: '2024-01-03', entry_price: 495.00, exit_date: '2024-01-08', exit_price: 512.40, shares: 10, pnl: 174.00, pnl_pct: 3.52 },
+        { symbol: 'AMD', direction: 'long', entry_date: '2024-01-02', entry_price: 148.30, exit_date: '2024-01-05', exit_price: 145.60, shares: 30, pnl: -81.00, pnl_pct: -1.82 }
+    ];
+
+    function renderHistory() {
+        const tbody = document.getElementById('history-body');
+        let wins = 0, totalPnl = 0;
+
+        historyData.forEach(t => {
+            if (t.pnl > 0) wins++;
+            totalPnl += t.pnl;
+        });
+
+        document.getElementById('total-trades').textContent = historyData.length;
+        document.getElementById('win-rate').textContent = ((wins / historyData.length) * 100).toFixed(1) + '%';
+        document.getElementById('total-pnl').textContent = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2);
+        document.getElementById('avg-trade').textContent = (totalPnl >= 0 ? '+' : '') + '$' + (totalPnl / historyData.length).toFixed(2);
+
+        let html = '';
+        historyData.forEach(t => {
+            const isWin = t.pnl > 0;
+            html += `
+                <tr>
+                    <td><strong>${t.symbol}</strong></td>
+                    <td><span class="badge badge-${t.direction}">${t.direction.toUpperCase()}</span></td>
+                    <td>${t.entry_date}</td>
+                    <td>$${t.entry_price.toFixed(2)}</td>
+                    <td>${t.exit_date}</td>
+                    <td>$${t.exit_price.toFixed(2)}</td>
+                    <td>${t.shares}</td>
+                    <td class="${isWin ? 'text-success' : 'text-danger'}">${isWin ? '+' : ''}$${t.pnl.toFixed(2)} (${isWin ? '+' : ''}${t.pnl_pct.toFixed(2)}%)</td>
+                    <td><span class="badge badge-${isWin ? 'success' : 'danger'}">${isWin ? 'WIN' : 'LOSS'}</span></td>
+                </tr>
+            `;
+        });
+        tbody.innerHTML = html;
+    }
+
+    function exportHistory() {
+        alert('Export functionality - would generate CSV download');
+    }
+
+    renderHistory();
+</script>
+{% endblock %}

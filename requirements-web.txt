@@ -1,0 +1,72 @@
+# Web Dashboard Requirements (minimal for dashboard only)
+# Core dependencies
+requests==2.32.5
+pandas>=2.2.3
+numpy>=1.26.4,<2.0.0  # Cap below 2.0 to avoid NumPy 2.x API breaks in downstream packages
+python-dotenv==1.0.1
+
+# Configuration
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Market data
+yfinance==0.2.66  # Pinned to latest 0.2.x; 1.x is a new major with breaking API changes
+
+# ML (for predictions and ensemble models)
+scikit-learn>=1.6.1
+joblib>=1.4.2
+matplotlib>=3.9.4
+xgboost>=2.0.0
+
+# Alerts and notifications
+twilio>=8.10.0
+plyer>=2.1.0
+
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+psycopg2-binary>=2.9.9
+
+# Scheduling
+schedule>=1.2.0
+APScheduler>=3.10.0
+
+# Logging
+loguru>=0.7.0
+
+# Data serialization
+pyarrow>=15.0.2
+
+# Web Dashboard
+flask>=3.0.0
+flask-cors>=4.0.0
+flask-login>=0.6.3
+flask-wtf>=1.2.0
+email-validator>=2.1.0
+werkzeug>=3.0.0
+
+# WebSocket support
+flask-socketio>=5.3.0
+python-socketio>=5.10.0
+eventlet>=0.35.0
+
+# GraphQL support
+graphene>=3.3.0
+graphql-core>=3.2.0
+
+# HTTP
+aiohttp
+
+# Distributed Tracing (OpenTelemetry - all pinned together for version coherence)
+# NOTE: opentelemetry-exporter-jaeger is abandoned at 1.21.0 (no newer releases).
+# All OTel packages must stay version-locked together. To upgrade, replace
+# opentelemetry-exporter-jaeger with opentelemetry-exporter-otlp and bump all
+# packages to a consistent newer version (api/sdk 1.27.0 + instrumentation 0.48b0).
+opentelemetry-api==1.21.0
+opentelemetry-sdk==1.21.0
+opentelemetry-instrumentation-flask==0.42b0
+opentelemetry-exporter-jaeger==1.21.0
+opentelemetry-instrumentation-requests==0.42b0
+opentelemetry-instrumentation-sqlalchemy==0.42b0
+opentelemetry-propagator-jaeger==1.21.0
+opentelemetry-semantic-conventions==0.42b0

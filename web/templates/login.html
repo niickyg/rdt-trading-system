@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - RDT Trading System</title>
+    <style>
+        :root {
+            --primary: #1a1a2e;
+            --secondary: #16213e;
+            --accent: #4CAF50;
+            --accent-hover: #45a049;
+            --danger: #e74c3c;
+            --warning: #f39c12;
+            --success: #27ae60;
+            --text: #333;
+            --text-light: #666;
+            --bg: #f0f2f5;
+            --card: #ffffff;
+            --border: #e0e0e0;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text);
+            line-height: 1.6;
+        }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        .login-container {
+            width: 100%;
+            max-width: 400px;
+            padding: 20px;
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .login-logo {
+            font-size: 2rem;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 10px;
+        }
+        .login-subtitle {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.95rem;
+        }
+
+        .login-card {
+            background: var(--card);
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            padding: 35px;
+        }
+
+        .login-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 25px;
+            color: var(--text);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: var(--text);
+        }
+        .form-control {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            font-size: 1rem;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent);
+        }
+        .checkbox-group label {
+            color: var(--text-light);
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .alert {
+            padding: 12px 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+        }
+        .alert-danger {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .login-footer {
+            text-align: center;
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+        }
+        .login-footer a {
+            color: var(--accent);
+            font-weight: 500;
+        }
+
+        .back-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .back-link a {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.9rem;
+        }
+        .back-link a:hover {
+            color: white;
+        }
+
+        /* Security badge */
+        .security-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.8rem;
+        }
+        .security-badge svg {
+            width: 14px;
+            height: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <div class="login-logo">RDT Trading</div>
+            <div class="login-subtitle">Professional Trading Signal Dashboard</div>
+        </div>
+
+        <div class="login-card">
+            <h1 class="login-title">Sign In</h1>
+
+            {% if error %}
+            <div class="alert alert-danger">
+                {{ error }}
+            </div>
+            {% endif %}
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">
+                        {{ message }}
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form method="POST" action="{{ url_for('auth.login') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="form-group">
+                    <label class="form-label" for="username">Username</label>
+                    <input type="text" id="username" name="username" class="form-control"
+                           placeholder="Enter your username" required autofocus
+                           autocomplete="username" maxlength="64">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="password">Password</label>
+                    <input type="password" id="password" name="password" class="form-control"
+                           placeholder="Enter your password" required
+                           autocomplete="current-password" maxlength="128">
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="remember" name="remember">
+                    <label for="remember">Remember me for 30 days</label>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Sign In</button>
+            </form>
+
+            <div class="login-footer">
+                <a href="/">Back to Home</a>
+            </div>
+        </div>
+
+        <div class="back-link">
+            <a href="/pricing">View Pricing Plans</a>
+        </div>
+
+        <div class="security-badge">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
+            </svg>
+            <span>Secure Login</span>
+        </div>
+    </div>
+</body>
+</html>

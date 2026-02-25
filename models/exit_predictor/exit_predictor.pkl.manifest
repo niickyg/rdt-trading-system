@@ -1,0 +1,6 @@
+{
+  "checksum": "ba791fcb8fc22182eaafbba3adcaff4ec18e66524aaf537ff927ad25ba1e5811",
+  "algorithm": "sha256",
+  "model_path": "exit_predictor.pkl",
+  "file_size": 457111
+}

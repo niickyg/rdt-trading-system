@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+    <!-- RDT Trading System - Main Icon -->
+
+    <!-- Background -->
+    <rect width="512" height="512" rx="64" fill="#1a1a2e"/>
+
+    <!-- Inner circle for depth -->
+    <circle cx="256" cy="256" r="180" fill="#16213e"/>
+
+    <!-- Trading chart representation -->
+    <g transform="translate(100, 130)">
+        <!-- Grid lines -->
+        <line x1="0" y1="200" x2="312" y2="200" stroke="#ffffff" stroke-width="3" opacity="0.3"/>
+        <line x1="0" y1="150" x2="312" y2="150" stroke="#ffffff" stroke-width="2" opacity="0.2"/>
+        <line x1="0" y1="100" x2="312" y2="100" stroke="#ffffff" stroke-width="2" opacity="0.2"/>
+        <line x1="0" y1="50" x2="312" y2="50" stroke="#ffffff" stroke-width="2" opacity="0.2"/>
+
+        <!-- Upward trending candlesticks/bars -->
+        <rect x="30" y="140" width="24" height="60" rx="4" fill="#e74c3c"/>
+        <rect x="80" y="120" width="24" height="80" rx="4" fill="#4CAF50"/>
+        <rect x="130" y="100" width="24" height="100" rx="4" fill="#4CAF50"/>
+        <rect x="180" y="70" width="24" height="130" rx="4" fill="#4CAF50"/>
+        <rect x="230" y="40" width="24" height="160" rx="4" fill="#4CAF50"/>
+
+        <!-- Trend line -->
+        <polyline points="42,130 92,110 142,90 192,60 242,30"
+                  fill="none"
+                  stroke="#ffffff"
+                  stroke-width="4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  opacity="0.8"/>
+
+        <!-- Arrow indicator -->
+        <polygon points="242,30 252,45 262,30 252,35" fill="#4CAF50"/>
+    </g>
+
+    <!-- RDT Text -->
+    <text x="256" y="420" text-anchor="middle" font-family="Arial, sans-serif" font-weight="bold" font-size="48" fill="#ffffff">RDT</text>
+</svg>

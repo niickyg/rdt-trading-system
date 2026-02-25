@@ -3,8 +3,12 @@ Curated Watchlists for RDT Trading System
 Organized by liquidity, sector, and trading characteristics
 """
 
-from typing import List, Dict
+import json
+import os
+from datetime import datetime
+from typing import List, Dict, Optional
 from dataclasses import dataclass
+from loguru import logger
 
 
 @dataclass
@@ -176,6 +180,89 @@ INTERNATIONAL_ADRS = [
 
 
 # =============================================================================
+# DYNAMIC S&P 500 WATCHLIST
+# =============================================================================
+
+_SP500_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "watchlists")
+_SP500_CACHE_FILE = os.path.join(_SP500_CACHE_DIR, "sp500_constituents.json")
+_SP500_CACHE_MAX_AGE_DAYS = 7
+
+
+def fetch_sp500_from_wikipedia() -> List[str]:
+    """Fetch S&P 500 constituents from Wikipedia"""
+    import pandas as pd
+    import urllib.request
+    from io import StringIO
+
+    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req) as resp:
+        html = resp.read().decode("utf-8")
+    tables = pd.read_html(StringIO(html))
+    df = tables[0]
+    symbols = df["Symbol"].tolist()
+    # Clean symbols: BRK.B -> BRK-B (yfinance format)
+    symbols = [s.replace(".", "-") for s in symbols]
+    return sorted(symbols)
+
+
+def _load_sp500_cache() -> Optional[Dict]:
+    """Load cached S&P 500 constituents"""
+    try:
+        with open(_SP500_CACHE_FILE, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+
+def _save_sp500_cache(symbols: List[str]):
+    """Save S&P 500 constituents to cache"""
+    os.makedirs(_SP500_CACHE_DIR, exist_ok=True)
+    data = {
+        "symbols": symbols,
+        "timestamp": datetime.now().isoformat(),
+        "count": len(symbols),
+    }
+    with open(_SP500_CACHE_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def get_sp500_watchlist() -> List[str]:
+    """
+    Get S&P 500 constituents with caching.
+
+    Returns cached list if <7 days old, otherwise fetches fresh.
+    Falls back to expired cache or get_full_watchlist() on failure.
+    """
+    cache = _load_sp500_cache()
+
+    if cache:
+        cached_time = datetime.fromisoformat(cache["timestamp"])
+        age_days = (datetime.now() - cached_time).days
+        if age_days < _SP500_CACHE_MAX_AGE_DAYS:
+            logger.info(f"Using cached S&P 500 list ({cache['count']} symbols, {age_days}d old)")
+            return cache["symbols"]
+
+    # Try to fetch fresh
+    try:
+        symbols = fetch_sp500_from_wikipedia()
+        _save_sp500_cache(symbols)
+        logger.info(f"Fetched fresh S&P 500 list: {len(symbols)} symbols")
+        return symbols
+    except Exception as e:
+        logger.warning(f"Failed to fetch S&P 500 from Wikipedia: {e}")
+
+        # Fall back to expired cache
+        if cache:
+            logger.info(f"Using expired S&P 500 cache ({cache['count']} symbols)")
+            return cache["symbols"]
+
+        # Last resort fallback
+        logger.warning("No S&P 500 cache available, falling back to full watchlist")
+        return get_full_watchlist()
+
+
+# =============================================================================
 # COMBINED WATCHLISTS
 # =============================================================================
 
@@ -231,6 +318,7 @@ def get_watchlist_by_name(name: str) -> List[str]:
     watchlist_map = {
         'core': get_core_watchlist,
         'full': get_full_watchlist,
+        'sp500': get_sp500_watchlist,
         'aggressive': get_aggressive_watchlist,
         'etfs': get_etf_watchlist,
         'dividends': lambda: DIVIDEND_ARISTOCRATS.copy(),
@@ -262,6 +350,13 @@ def get_all_watchlists_metadata() -> Dict[str, WatchlistMetadata]:
             avg_volume_requirement=1_000_000,
             sector_focus='Diversified',
             count=len(get_full_watchlist())
+        ),
+        'sp500': WatchlistMetadata(
+            name='S&P 500',
+            description='All ~503 S&P 500 constituents (dynamic from Wikipedia)',
+            avg_volume_requirement=500_000,
+            sector_focus='Diversified',
+            count=503
         ),
         'technology': WatchlistMetadata(
             name='Technology',

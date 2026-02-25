@@ -1,0 +1,6 @@
+{
+  "checksum": "d9fdc19fdf768a8499655b94794c02f77b324db4a26558e4ec44c1fb19cf60df",
+  "algorithm": "sha256",
+  "model_path": "signal_decay.pkl",
+  "file_size": 223920
+}

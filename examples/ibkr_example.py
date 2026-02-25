@@ -104,7 +104,7 @@ def example_options_trading():
     print("Example 3: Options Trading")
     print("="*60)
     print("Note: Options require using ib_insync directly")
-    print("See: /home/user0/rdt-trading-system/brokers/ibkr/client.py")
+    print("See: brokers/ibkr/client.py")
 
     # This would require extending the AbstractBroker interface
     # For now, use ib_insync directly for options:

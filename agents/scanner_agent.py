@@ -4,13 +4,30 @@ Scans market for RRS trading signals
 """
 
 import asyncio
+import time
 from datetime import datetime
 from typing import Dict, List, Optional
 from loguru import logger
 
 from agents.base import ScheduledAgent, AgentState
 from agents.events import Event, EventType
-from shared.indicators.rrs import RRSCalculator, check_daily_strength, check_daily_weakness
+from shared.indicators.rrs import RRSCalculator, check_daily_strength_relaxed, check_daily_weakness_relaxed
+
+# Import distributed tracing
+try:
+    from tracing import trace_async, get_tracer, get_current_span
+    TRACING_AVAILABLE = True
+except ImportError:
+    TRACING_AVAILABLE = False
+    # Create no-op decorators
+    def trace_async(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+    def get_tracer():
+        return None
+    def get_current_span():
+        return None
 
 
 class ScannerAgent(ScheduledAgent):
@@ -83,8 +100,14 @@ class ScannerAgent(ScheduledAgent):
         """Run the market scan"""
         await self.scan_market()
 
+    @trace_async("scanner.scan_market", capture_args=["self"], attributes={"component": "scanner"})
     async def scan_market(self):
-        """Scan all watchlist symbols for signals"""
+        """Scan all watchlist symbols for signals using batch fetch"""
+        # Add span attributes for tracing
+        span = get_current_span()
+        if span:
+            span.set_attribute("scanner.watchlist_size", len(self.watchlist))
+
         await self.publish(EventType.SCAN_STARTED, {
             "watchlist_size": len(self.watchlist),
             "timestamp": datetime.now().isoformat()
@@ -95,28 +118,49 @@ class ScannerAgent(ScheduledAgent):
         strong_rw = []
 
         try:
-            # Get SPY data first (benchmark)
-            spy_data = await self._get_spy_data()
-            if not spy_data:
+            scan_start = time.monotonic()
+
+            # Get SPY data first (benchmark) via batch API
+            spy_batch = await self.data_provider.get_batch_stock_data(["SPY"])
+            spy_raw = spy_batch.get("SPY")
+            if not spy_raw:
                 logger.error("Failed to get SPY data, skipping scan")
+                if span:
+                    span.set_attribute("scanner.error", "failed_to_get_spy_data")
                 return
 
-            # Scan each symbol
+            spy_data = {
+                "current_price": spy_raw.get("current_price"),
+                "previous_close": spy_raw.get("previous_close"),
+                "daily_data": spy_raw.get("daily_data"),
+            }
+
+            # Batch fetch all watchlist symbols at once
+            fetch_start = time.monotonic()
+            batch_data = await self.data_provider.get_batch_stock_data(self.watchlist)
+            fetch_elapsed = time.monotonic() - fetch_start
+            logger.info(f"Batch fetch: {len(batch_data)}/{len(self.watchlist)} symbols in {fetch_elapsed:.1f}s")
+
+            # Process locally — no API calls, no sleeps
+            scanned_count = 0
+            error_count = 0
             for symbol in self.watchlist:
+                stock_data = batch_data.get(symbol)
+                if not stock_data:
+                    continue
+
                 try:
-                    signal = await self._scan_symbol(symbol, spy_data)
+                    signal = self._process_symbol(symbol, stock_data, spy_data)
+                    scanned_count += 1
                     if signal:
                         if signal["direction"] == "long":
                             strong_rs.append(signal)
                         else:
                             strong_rw.append(signal)
-
                 except Exception as e:
-                    logger.debug(f"Error scanning {symbol}: {e}")
+                    logger.debug(f"Error processing {symbol}: {e}")
+                    error_count += 1
                     continue
-
-                # Small delay to avoid rate limiting
-                await asyncio.sleep(0.1)
 
             # Sort by RRS strength
             strong_rs.sort(key=lambda x: x["rrs"], reverse=True)
@@ -130,9 +174,21 @@ class ScannerAgent(ScheduledAgent):
                 await self._publish_signal(signal)
 
             # Update metrics
+            scan_elapsed = time.monotonic() - scan_start
             self.last_scan_time = datetime.now()
             self.metrics.custom_metrics["scans_completed"] += 1
             self.metrics.custom_metrics["last_scan"] = self.last_scan_time.isoformat()
+            self.metrics.custom_metrics["last_scan_duration_s"] = round(scan_elapsed, 1)
+            self.metrics.custom_metrics["last_scan_symbols_fetched"] = len(batch_data)
+
+            # Add scan results to span
+            if span:
+                span.set_attribute("scanner.symbols_scanned", scanned_count)
+                span.set_attribute("scanner.errors", error_count)
+                span.set_attribute("scanner.strong_rs_count", len(strong_rs))
+                span.set_attribute("scanner.strong_rw_count", len(strong_rw))
+                span.set_attribute("scanner.signals_published", min(5, len(strong_rs)) + min(5, len(strong_rw)))
+                span.set_attribute("scanner.scan_duration_s", round(scan_elapsed, 1))
 
             await self.publish(EventType.SCAN_COMPLETED, {
                 "strong_rs_count": len(strong_rs),
@@ -140,41 +196,33 @@ class ScannerAgent(ScheduledAgent):
                 "timestamp": datetime.now().isoformat()
             })
 
-            logger.info(f"Scan complete: {len(strong_rs)} RS, {len(strong_rw)} RW")
+            logger.info(
+                f"Scan complete: {scanned_count} symbols, "
+                f"{len(strong_rs)} RS, {len(strong_rw)} RW in {scan_elapsed:.1f}s"
+            )
 
         except Exception as e:
             logger.error(f"Scan error: {e}")
+            if span:
+                span.set_attribute("scanner.error", str(e))
 
-    async def _get_spy_data(self) -> Optional[Dict]:
-        """Get SPY benchmark data"""
-        try:
-            # This would use the data provider
-            # For now, returning mock structure
-            data = await self.data_provider.get_stock_data("SPY")
-            if data is None:
-                return None
+    def _process_symbol(self, symbol: str, stock_data: Dict, spy_data: Dict) -> Optional[Dict]:
+        """
+        Process a single symbol using pre-fetched data (no API calls).
 
-            return {
-                "current_price": data.get("current_price"),
-                "previous_close": data.get("previous_close"),
-                "daily_data": data.get("daily_data")
-            }
-        except Exception as e:
-            logger.error(f"Error fetching SPY data: {e}")
-            return None
+        Args:
+            symbol: Ticker symbol
+            stock_data: Pre-fetched stock data dict
+            spy_data: Pre-fetched SPY benchmark data dict
 
-    async def _scan_symbol(self, symbol: str, spy_data: Dict) -> Optional[Dict]:
-        """Scan a single symbol for signals"""
+        Returns:
+            Signal dict if criteria met, None otherwise
+        """
         # Check cooldown
         if symbol in self.signal_cooldown:
             elapsed = (datetime.now() - self.signal_cooldown[symbol]).total_seconds()
             if elapsed < self.cooldown_minutes * 60:
                 return None
-
-        # Get stock data
-        stock_data = await self.data_provider.get_stock_data(symbol)
-        if not stock_data:
-            return None
 
         # Check filters
         if stock_data.get("volume", 0) < 500000:
@@ -206,8 +254,8 @@ class ScannerAgent(ScheduledAgent):
         if daily_data is None:
             return None
 
-        daily_strength = check_daily_strength(daily_data)
-        daily_weakness = check_daily_weakness(daily_data)
+        daily_strength = check_daily_strength_relaxed(daily_data)
+        daily_weakness = check_daily_weakness_relaxed(daily_data)
 
         # Determine direction
         direction = None

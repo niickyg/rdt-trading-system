@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Features - RDT Trading{% endblock %}
+{% block content %}
+<div class="container" style="max-width: 900px; padding: 60px 20px;">
+    <h1 class="text-center mb-2">RRS Trading Strategy</h1>
+    <p class="text-center text-muted mb-2">Understanding Real Relative Strength</p>
+
+    <div class="card">
+        <h3>What is Real Relative Strength (RRS)?</h3>
+        <p>RRS measures a stock's performance relative to the overall market (SPY), normalized by volatility. This identifies stocks that are genuinely outperforming or underperforming the market.</p>
+        <div style="background: var(--bg); padding: 15px; border-radius: 5px; margin: 15px 0;">
+            <code>RRS = (Stock % Change - SPY % Change) / Stock ATR</code>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Entry Criteria</h3>
+        <ul style="padding-left: 20px;">
+            <li>RRS value exceeds threshold (typically > 2.0)</li>
+            <li>Daily chart confirms strength (above key EMAs)</li>
+            <li>ML model confidence > 72%</li>
+            <li>Favorable market regime</li>
+            <li>No negative news or upcoming earnings</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h3>Risk Management</h3>
+        <ul style="padding-left: 20px;">
+            <li>Stop loss: 1x ATR below entry</li>
+            <li>Profit target: 2x ATR above entry</li>
+            <li>Position sizing: 2% account risk per trade</li>
+            <li>Maximum concurrent positions: 5</li>
+        </ul>
+    </div>
+
+    <div class="text-center mt-2">
+        <a href="/pricing" class="btn btn-primary">View Pricing</a>
+        <a href="/performance" class="btn btn-secondary">See Performance</a>
+    </div>
+</div>
+{% endblock %}

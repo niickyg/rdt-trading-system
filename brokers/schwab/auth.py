@@ -208,62 +208,142 @@ class SchwabAuth:
             logger.error(f"Token exchange error: {e}")
             return False
 
-    def refresh_access_token(self) -> bool:
-        """Refresh the access token using refresh token"""
+    def refresh_access_token(self, max_retries: int = 3) -> bool:
+        """
+        Refresh the access token using refresh token with retry logic.
+
+        Uses exponential backoff with jitter for retries on transient failures.
+
+        Args:
+            max_retries: Maximum number of retry attempts
+
+        Returns:
+            True if refresh successful, False otherwise
+        """
+        import random
+
         if not self._token or not self._token.refresh_token:
             logger.error("No refresh token available")
             return False
 
-        try:
-            import base64
+        import base64
+        credentials = base64.b64encode(
+            f"{self.app_key}:{self.app_secret}".encode()
+        ).decode()
 
-            credentials = base64.b64encode(
-                f"{self.app_key}:{self.app_secret}".encode()
-            ).decode()
+        headers = {
+            "Authorization": f"Basic {credentials}",
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
 
-            headers = {
-                "Authorization": f"Basic {credentials}",
-                "Content-Type": "application/x-www-form-urlencoded"
-            }
+        data = {
+            "grant_type": "refresh_token",
+            "refresh_token": self._token.refresh_token
+        }
 
-            data = {
-                "grant_type": "refresh_token",
-                "refresh_token": self._token.refresh_token
-            }
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    self.TOKEN_URL,
+                    headers=headers,
+                    data=data,
+                    timeout=30
+                )
 
-            response = requests.post(
-                self.TOKEN_URL,
-                headers=headers,
-                data=data,
-                timeout=30
-            )
+                if response.status_code == 200:
+                    token_data = response.json()
+                    self._token = TokenData(
+                        access_token=token_data["access_token"],
+                        refresh_token=token_data.get("refresh_token", self._token.refresh_token),
+                        expires_at=datetime.now() + timedelta(seconds=token_data["expires_in"]),
+                        token_type=token_data.get("token_type", "Bearer"),
+                        scope=token_data.get("scope", "")
+                    )
 
-            if response.status_code != 200:
+                    self._save_token()
+                    logger.info("Successfully refreshed access token")
+                    return True
+
+                # Non-retriable errors (auth failures)
+                if response.status_code in (400, 401, 403):
+                    logger.error(
+                        f"Token refresh failed with non-retriable error: "
+                        f"{response.status_code} - {response.text}"
+                    )
+                    # Refresh token may be invalid, need re-authorization
+                    self._token = None
+                    return False
+
+                # Retriable server errors
+                if response.status_code >= 500:
+                    last_error = f"Server error {response.status_code}"
+                    if attempt < max_retries - 1:
+                        delay = min(2 ** attempt, 30) + random.uniform(0, 1)
+                        logger.warning(
+                            f"Token refresh attempt {attempt + 1}/{max_retries} failed: "
+                            f"{response.status_code}. Retrying in {delay:.1f}s"
+                        )
+                        time.sleep(delay)
+                        continue
+
                 logger.error(f"Token refresh failed: {response.status_code}")
-                # Refresh token may be invalid, need re-authorization
-                self._token = None
                 return False
 
-            token_data = response.json()
-            self._token = TokenData(
-                access_token=token_data["access_token"],
-                refresh_token=token_data.get("refresh_token", self._token.refresh_token),
-                expires_at=datetime.now() + timedelta(seconds=token_data["expires_in"]),
-                token_type=token_data.get("token_type", "Bearer"),
-                scope=token_data.get("scope", "")
-            )
+            except requests.exceptions.Timeout:
+                last_error = "Request timeout"
+                if attempt < max_retries - 1:
+                    delay = min(2 ** attempt, 30) + random.uniform(0, 1)
+                    logger.warning(
+                        f"Token refresh timeout (attempt {attempt + 1}/{max_retries}). "
+                        f"Retrying in {delay:.1f}s"
+                    )
+                    time.sleep(delay)
+                    continue
+            except requests.exceptions.ConnectionError as e:
+                last_error = f"Connection error: {e}"
+                if attempt < max_retries - 1:
+                    delay = min(2 ** attempt, 30) + random.uniform(0, 1)
+                    logger.warning(
+                        f"Token refresh connection error (attempt {attempt + 1}/{max_retries}). "
+                        f"Retrying in {delay:.1f}s"
+                    )
+                    time.sleep(delay)
+                    continue
+            except Exception as e:
+                logger.error(f"Token refresh error: {e}")
+                return False
 
-            self._save_token()
-            logger.info("Successfully refreshed access token")
-            return True
+        logger.error(f"Token refresh failed after {max_retries} attempts: {last_error}")
+        return False
 
-        except Exception as e:
-            logger.error(f"Token refresh error: {e}")
+    def should_refresh_proactively(self, buffer_minutes: int = 10) -> bool:
+        """
+        Check if token should be proactively refreshed.
+
+        Proactive refresh helps prevent request failures due to token expiry
+        during long-running operations.
+
+        Args:
+            buffer_minutes: Minutes before expiry to trigger proactive refresh
+
+        Returns:
+            True if token should be refreshed proactively
+        """
+        if self._token is None:
             return False
 
-    def get_valid_token(self) -> Optional[str]:
+        return datetime.now() >= (self._token.expires_at - timedelta(minutes=buffer_minutes))
+
+    def get_valid_token(self, proactive_refresh: bool = True) -> Optional[str]:
         """
-        Get a valid access token, refreshing if necessary
+        Get a valid access token, refreshing if necessary.
+
+        Supports proactive refresh to refresh tokens before they expire,
+        preventing failures during long-running operations.
+
+        Args:
+            proactive_refresh: If True, refresh token proactively 10 min before expiry
 
         Returns:
             Valid access token or None if authentication required
@@ -272,11 +352,21 @@ class SchwabAuth:
             logger.warning("No token available - authorization required")
             return None
 
+        # Check for expired token (includes 5 min buffer via is_expired)
         if self._token.is_expired():
             logger.info("Token expired, refreshing...")
             if not self.refresh_access_token():
                 logger.warning("Token refresh failed - re-authorization required")
                 return None
+        # Proactive refresh: refresh before token expires to prevent failures
+        elif proactive_refresh and self.should_refresh_proactively():
+            minutes_left = (self._token.expires_at - datetime.now()).total_seconds() / 60
+            logger.info(
+                f"Proactively refreshing token ({minutes_left:.1f} min until expiry)"
+            )
+            # Don't fail if proactive refresh fails - token is still valid
+            if not self.refresh_access_token():
+                logger.warning("Proactive token refresh failed, will retry on next request")
 
         return self._token.access_token
 

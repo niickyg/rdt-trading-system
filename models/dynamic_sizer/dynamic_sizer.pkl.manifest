@@ -1,0 +1,6 @@
+{
+  "checksum": "2b59b326b7409140b0531389a4a0ee0821ea2ab660c9677212b10389a5745c0e",
+  "algorithm": "sha256",
+  "model_path": "dynamic_sizer.pkl",
+  "file_size": 5910
+}

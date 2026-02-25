@@ -1,0 +1,1158 @@
+{% extends "base.html" %}
+
+{% block title %}Live Scanner - RDT Trading{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dashboard-layout {
+        display: grid;
+        grid-template-columns: 240px 1fr;
+        min-height: calc(100vh - 60px);
+    }
+    .sidebar {
+        background: var(--primary);
+        padding: 20px;
+        position: sticky;
+        top: 60px;
+        height: calc(100vh - 60px);
+    }
+    .sidebar-nav { list-style: none; }
+    .sidebar-nav li { margin-bottom: 5px; }
+    .sidebar-nav a {
+        display: block;
+        padding: 12px 15px;
+        color: rgba(255,255,255,0.7);
+        border-radius: 5px;
+        transition: all 0.3s;
+    }
+    .sidebar-nav a:hover, .sidebar-nav a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        text-decoration: none;
+    }
+    .sidebar-section {
+        color: rgba(255,255,255,0.5);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        margin: 20px 0 10px;
+        padding-left: 15px;
+    }
+    .main-content { padding: 25px; }
+
+    /* Scanner specific styles */
+    .scanner-header {
+        background: var(--card);
+        padding: 20px 25px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-radius: 10px;
+        margin-bottom: 25px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .scanner-info { display: flex; align-items: center; gap: 30px; }
+    .scanner-status {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .scanner-status-label { color: var(--text-light); font-size: 0.85rem; }
+    .scanner-status-value { font-weight: 600; }
+    .scanner-controls { display: flex; gap: 10px; align-items: center; }
+
+    .auto-refresh-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text-light);
+        font-size: 0.85rem;
+    }
+    .auto-refresh-toggle input {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+    }
+
+    /* Benchmark card */
+    .benchmark-card {
+        background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%);
+        color: white;
+        padding: 20px 25px;
+        border-radius: 10px;
+        margin-bottom: 25px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .benchmark-main { display: flex; align-items: center; gap: 20px; }
+    .benchmark-symbol {
+        font-size: 1.5rem;
+        font-weight: bold;
+    }
+    .benchmark-price {
+        font-size: 1.3rem;
+        font-weight: 600;
+    }
+    .benchmark-change {
+        font-size: 0.95rem;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-weight: 500;
+    }
+    .benchmark-change.positive { background: rgba(39, 174, 96, 0.2); color: #4cd964; }
+    .benchmark-change.negative { background: rgba(231, 76, 60, 0.2); color: #ff6b6b; }
+    .benchmark-details {
+        display: flex;
+        gap: 30px;
+    }
+    .benchmark-detail {
+        text-align: center;
+    }
+    .benchmark-detail-label {
+        font-size: 0.75rem;
+        opacity: 0.7;
+        margin-bottom: 4px;
+    }
+    .benchmark-detail-value {
+        font-weight: 600;
+    }
+
+    /* Results tables */
+    .scanner-results {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 25px;
+    }
+    .results-card {
+        background: var(--card);
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        overflow: hidden;
+    }
+    .results-header {
+        padding: 15px 20px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .results-title {
+        font-weight: 600;
+        font-size: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .results-title .indicator {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+    }
+    .results-title .indicator.rs { background: var(--success); }
+    .results-title .indicator.rw { background: var(--danger); }
+    .results-count {
+        font-size: 0.85rem;
+        color: var(--text-light);
+    }
+    .results-body {
+        max-height: 500px;
+        overflow-y: auto;
+    }
+
+    /* Stock row in scanner */
+    .stock-row {
+        display: flex;
+        align-items: center;
+        padding: 12px 20px;
+        border-bottom: 1px solid var(--border);
+        transition: background 0.2s;
+    }
+    .stock-row:last-child { border-bottom: none; }
+    .stock-row:hover { background: var(--bg); }
+    .stock-symbol {
+        font-weight: 600;
+        width: 80px;
+        font-size: 0.95rem;
+    }
+    .stock-rrs {
+        width: 100px;
+        text-align: center;
+    }
+    .stock-rrs-value {
+        font-weight: 600;
+        font-size: 1rem;
+    }
+    .stock-rrs-value.strong { color: var(--success); }
+    .stock-rrs-value.weak { color: var(--danger); }
+    .stock-change {
+        flex: 1;
+        display: flex;
+        gap: 20px;
+        justify-content: flex-end;
+    }
+    .stock-change-item {
+        text-align: right;
+        min-width: 80px;
+    }
+    .stock-change-label {
+        font-size: 0.7rem;
+        color: var(--text-light);
+        text-transform: uppercase;
+    }
+    .stock-change-value {
+        font-weight: 500;
+        font-size: 0.9rem;
+    }
+    .stock-change-value.positive { color: var(--success); }
+    .stock-change-value.negative { color: var(--danger); }
+
+    /* Loading and empty states */
+    .loading-state, .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        color: var(--text-light);
+    }
+    .loading-state .spinner {
+        width: 40px;
+        height: 40px;
+        margin-bottom: 15px;
+    }
+
+    /* Scan button states */
+    .btn-scan {
+        min-width: 120px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+    .btn-scan .spinner {
+        width: 16px;
+        height: 16px;
+        border-width: 2px;
+    }
+    .btn-scan:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
+    /* Summary stats */
+    .scan-summary {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 20px;
+        margin-bottom: 25px;
+    }
+    .summary-stat {
+        background: var(--card);
+        padding: 15px 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .summary-stat-label {
+        font-size: 0.8rem;
+        color: var(--text-light);
+        margin-bottom: 5px;
+    }
+    .summary-stat-value {
+        font-size: 1.4rem;
+        font-weight: bold;
+    }
+
+    /* MTF Alignment Indicator */
+    .mtf-alignment {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: 10px;
+    }
+    .mtf-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .mtf-badge.aligned {
+        background: rgba(39, 174, 96, 0.15);
+        color: var(--success);
+    }
+    .mtf-badge.not-aligned {
+        background: rgba(108, 117, 125, 0.15);
+        color: var(--text-light);
+    }
+    .mtf-badge .icon {
+        width: 10px;
+        height: 10px;
+    }
+
+    /* Timeframe Trend Dots */
+    .tf-trends {
+        display: flex;
+        gap: 3px;
+        align-items: center;
+    }
+    .tf-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        position: relative;
+    }
+    .tf-dot.bullish { background: var(--success); }
+    .tf-dot.bearish { background: var(--danger); }
+    .tf-dot.neutral { background: var(--text-light); opacity: 0.5; }
+    .tf-dot::after {
+        content: attr(data-tf);
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 0.6rem;
+        color: var(--text-light);
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 0.2s;
+        padding-bottom: 2px;
+    }
+    .tf-dot:hover::after {
+        opacity: 1;
+    }
+
+    /* Entry Timing Score */
+    .entry-timing {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 70px;
+    }
+    .entry-timing-bar {
+        width: 40px;
+        height: 6px;
+        background: var(--border);
+        border-radius: 3px;
+        overflow: hidden;
+    }
+    .entry-timing-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 0.3s ease;
+    }
+    .entry-timing-fill.high { background: var(--success); }
+    .entry-timing-fill.medium { background: var(--warning); }
+    .entry-timing-fill.low { background: var(--text-light); }
+    .entry-timing-score {
+        font-size: 0.75rem;
+        font-weight: 600;
+        min-width: 24px;
+    }
+
+    /* MTF Details Row */
+    .stock-row-details {
+        display: none;
+        padding: 10px 20px;
+        background: var(--bg);
+        border-bottom: 1px solid var(--border);
+        font-size: 0.85rem;
+    }
+    .stock-row.expanded + .stock-row-details {
+        display: block;
+    }
+    .mtf-detail-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 15px;
+    }
+    .mtf-tf-card {
+        text-align: center;
+        padding: 8px;
+        background: var(--card);
+        border-radius: 6px;
+    }
+    .mtf-tf-label {
+        font-size: 0.7rem;
+        color: var(--text-light);
+        text-transform: uppercase;
+        margin-bottom: 4px;
+    }
+    .mtf-tf-trend {
+        font-weight: 600;
+        font-size: 0.8rem;
+    }
+    .mtf-tf-trend.bullish { color: var(--success); }
+    .mtf-tf-trend.bearish { color: var(--danger); }
+    .mtf-tf-trend.neutral { color: var(--text-light); }
+
+    /* Key Levels */
+    .key-levels {
+        display: flex;
+        gap: 20px;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid var(--border);
+    }
+    .key-level-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .key-level-label {
+        font-size: 0.7rem;
+        color: var(--text-light);
+        text-transform: uppercase;
+    }
+    .key-level-values {
+        display: flex;
+        gap: 6px;
+    }
+    .key-level-value {
+        font-size: 0.8rem;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: 500;
+    }
+    .key-level-value.support {
+        background: rgba(39, 174, 96, 0.1);
+        color: var(--success);
+    }
+    .key-level-value.resistance {
+        background: rgba(231, 76, 60, 0.1);
+        color: var(--danger);
+    }
+
+    @media (max-width: 1024px) {
+        .dashboard-layout { grid-template-columns: 1fr; }
+        .sidebar { display: none; }
+        .scanner-results { grid-template-columns: 1fr; }
+        .scan-summary { grid-template-columns: repeat(2, 1fr); }
+        .mtf-detail-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+    <aside class="sidebar">
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard">Overview</a></li>
+            <li><a href="/dashboard/signals">Active Signals</a></li>
+            <li><a href="/dashboard/positions">Positions</a></li>
+            <li><a href="/dashboard/history">History</a></li>
+        </ul>
+        <div class="sidebar-section">Analysis</div>
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard/scanner" class="active">Live Scanner</a></li>
+            <li><a href="/dashboard/backtest">Backtest</a></li>
+            <li><a href="/performance">Performance</a></li>
+        </ul>
+        <div class="sidebar-section">Settings</div>
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard/alerts">Alerts</a></li>
+            <li><a href="/dashboard/settings">Settings</a></li>
+            <li><a href="/api/v1/health" target="_blank">API Status</a></li>
+        </ul>
+    </aside>
+
+    <main class="main-content">
+        <!-- Scanner Header -->
+        <div class="scanner-header">
+            <div class="scanner-info">
+                <div class="scanner-status">
+                    <span class="status-dot" id="scanner-status-dot"></span>
+                    <div>
+                        <div class="scanner-status-label">Scanner Status</div>
+                        <div class="scanner-status-value" id="scanner-status">Ready</div>
+                    </div>
+                </div>
+                <div class="scanner-status">
+                    <div>
+                        <div class="scanner-status-label">Last Scan</div>
+                        <div class="scanner-status-value" id="last-scan-time">Never</div>
+                    </div>
+                </div>
+                <div class="scanner-status">
+                    <div>
+                        <div class="scanner-status-label">Symbols Scanned</div>
+                        <div class="scanner-status-value" id="symbols-count">0</div>
+                    </div>
+                </div>
+            </div>
+            <div class="scanner-controls">
+                <label class="auto-refresh-toggle">
+                    <input type="checkbox" id="auto-refresh" checked>
+                    Auto-refresh (60s)
+                </label>
+                <button class="btn btn-primary btn-scan" id="scan-btn" onclick="runScan()">
+                    <span id="scan-btn-text">Run Scan</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- SPY Benchmark -->
+        <div class="benchmark-card">
+            <div class="benchmark-main">
+                <div class="benchmark-symbol">SPY</div>
+                <div class="benchmark-price">$<span id="spy-price">---</span></div>
+                <div class="benchmark-change" id="spy-change">---%</div>
+            </div>
+            <div class="benchmark-details">
+                <div class="benchmark-detail">
+                    <div class="benchmark-detail-label">Day High</div>
+                    <div class="benchmark-detail-value" id="spy-high">---</div>
+                </div>
+                <div class="benchmark-detail">
+                    <div class="benchmark-detail-label">Day Low</div>
+                    <div class="benchmark-detail-value" id="spy-low">---</div>
+                </div>
+                <div class="benchmark-detail">
+                    <div class="benchmark-detail-label">Volume</div>
+                    <div class="benchmark-detail-value" id="spy-volume">---</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scan Summary Stats -->
+        <div class="scan-summary">
+            <div class="summary-stat">
+                <div class="summary-stat-label">Strong RS Stocks</div>
+                <div class="summary-stat-value text-success" id="strong-rs-count">0</div>
+            </div>
+            <div class="summary-stat">
+                <div class="summary-stat-label">Strong RW Stocks</div>
+                <div class="summary-stat-value text-danger" id="strong-rw-count">0</div>
+            </div>
+            <div class="summary-stat">
+                <div class="summary-stat-label">Avg RS Score</div>
+                <div class="summary-stat-value" id="avg-rs-score">---</div>
+            </div>
+            <div class="summary-stat">
+                <div class="summary-stat-label">Avg RW Score</div>
+                <div class="summary-stat-value" id="avg-rw-score">---</div>
+            </div>
+        </div>
+
+        <!-- Scanner Results -->
+        <div class="scanner-results">
+            <!-- Strong RS (Relative Strength) -->
+            <div class="results-card">
+                <div class="results-header">
+                    <div class="results-title">
+                        <span class="indicator rs"></span>
+                        Strong RS (Relative Strength vs SPY)
+                    </div>
+                    <span class="results-count" id="rs-results-count">0 stocks</span>
+                </div>
+                <div class="results-body" id="rs-results">
+                    <div class="empty-state">
+                        <p>Run a scan to see strong RS stocks</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Strong RW (Relative Weakness) -->
+            <div class="results-card">
+                <div class="results-header">
+                    <div class="results-title">
+                        <span class="indicator rw"></span>
+                        Strong RW (Relative Weakness vs SPY)
+                    </div>
+                    <span class="results-count" id="rw-results-count">0 stocks</span>
+                </div>
+                <div class="results-body" id="rw-results">
+                    <div class="empty-state">
+                        <p>Run a scan to see strong RW stocks</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/websocket.js') }}"></script>
+<script>
+    // Scanner state
+    let scannerState = {
+        isScanning: false,
+        lastScan: null,
+        results: {
+            strongest: [],
+            weakest: [],
+            all_results: []
+        },
+        autoRefreshEnabled: true,
+        autoRefreshInterval: null
+    };
+
+    // WebSocket connection
+    let scannerSocket = null;
+
+    // Initialize scanner
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeScanner();
+        initWebSocket();
+    });
+
+    function initializeScanner() {
+        // Set initial status
+        updateScannerStatus('ready');
+
+        // Load auto-refresh preference
+        const autoRefreshCheckbox = document.getElementById('auto-refresh');
+        autoRefreshCheckbox.addEventListener('change', function() {
+            scannerState.autoRefreshEnabled = this.checked;
+            if (this.checked) {
+                startAutoRefresh();
+            } else {
+                stopAutoRefresh();
+            }
+        });
+
+        // Start auto-refresh
+        startAutoRefresh();
+
+        // Fetch initial SPY data
+        fetchSpyData();
+    }
+
+    // Initialize WebSocket for real-time scanner updates
+    function initWebSocket() {
+        try {
+            scannerSocket = new RDTWebSocket({
+                debug: false
+            });
+
+            scannerSocket.on('connect', function() {
+                console.log('Scanner WebSocket connected');
+                scannerSocket.subscribe(['scanner', 'signals']);
+            });
+
+            // Handle scanner updates
+            scannerSocket.on('scanner', function(data) {
+                console.log('Scanner update via WebSocket:', data);
+                handleScannerUpdate(data.data || data);
+            });
+
+            // Handle new signals
+            scannerSocket.on('signal', function(data) {
+                console.log('New signal via WebSocket:', data);
+                handleNewSignal(data.data || data);
+            });
+
+        } catch (error) {
+            console.error('WebSocket initialization error:', error);
+        }
+    }
+
+    // Handle scanner updates from WebSocket
+    function handleScannerUpdate(scanner) {
+        switch (scanner.status) {
+            case 'started':
+                scannerState.isScanning = true;
+                updateScannerStatus('scanning');
+                showLoadingState('rs-results');
+                showLoadingState('rw-results');
+                break;
+
+            case 'progress':
+                // Update progress indicator
+                if (scanner.current_symbol) {
+                    document.getElementById('scanner-status').textContent =
+                        `Scanning ${scanner.current_symbol}... (${scanner.progress}%)`;
+                }
+                document.getElementById('symbols-count').textContent =
+                    `${scanner.symbols_scanned}/${scanner.total_symbols}`;
+                break;
+
+            case 'completed':
+                scannerState.isScanning = false;
+                scannerState.lastScan = new Date();
+
+                // Update results
+                if (scanner.strong_rs) {
+                    renderStockList('rs-results', scanner.strong_rs, 'strong');
+                    document.getElementById('strong-rs-count').textContent = scanner.strong_rs_count || scanner.strong_rs.length;
+                    document.getElementById('rs-results-count').textContent = `${scanner.strong_rs_count || scanner.strong_rs.length} stocks`;
+                }
+
+                if (scanner.strong_rw) {
+                    renderStockList('rw-results', scanner.strong_rw, 'weak');
+                    document.getElementById('strong-rw-count').textContent = scanner.strong_rw_count || scanner.strong_rw.length;
+                    document.getElementById('rw-results-count').textContent = `${scanner.strong_rw_count || scanner.strong_rw.length} stocks`;
+                }
+
+                updateScannerStatus('ready');
+                updateLastScanTime();
+
+                // Update duration if available
+                if (scanner.duration_seconds) {
+                    console.log(`Scan completed in ${scanner.duration_seconds}s`);
+                }
+                break;
+
+            case 'error':
+                scannerState.isScanning = false;
+                updateScannerStatus('error');
+                showErrorState('rs-results', scanner.message || 'Scan failed');
+                showErrorState('rw-results', scanner.message || 'Scan failed');
+                break;
+        }
+    }
+
+    // Handle new signals from WebSocket
+    function handleNewSignal(signal) {
+        // Add to appropriate list based on direction
+        if (signal.direction === 'long') {
+            // Add to RS list
+            const rsContainer = document.getElementById('rs-results');
+            const emptyState = rsContainer.querySelector('.empty-state');
+            if (emptyState) emptyState.remove();
+
+            const stockHtml = createStockRowHtml(signal, 'strong');
+            rsContainer.insertAdjacentHTML('afterbegin', stockHtml);
+
+            // Highlight new row
+            const newRow = rsContainer.firstElementChild;
+            if (newRow) {
+                newRow.style.animation = 'highlightNew 2s ease';
+            }
+
+            // Update count
+            const rsCount = rsContainer.querySelectorAll('.stock-row').length;
+            document.getElementById('rs-results-count').textContent = `${rsCount} stocks`;
+        } else {
+            // Add to RW list
+            const rwContainer = document.getElementById('rw-results');
+            const emptyState = rwContainer.querySelector('.empty-state');
+            if (emptyState) emptyState.remove();
+
+            const stockHtml = createStockRowHtml(signal, 'weak');
+            rwContainer.insertAdjacentHTML('afterbegin', stockHtml);
+
+            // Highlight new row
+            const newRow = rwContainer.firstElementChild;
+            if (newRow) {
+                newRow.style.animation = 'highlightNew 2s ease';
+            }
+
+            // Update count
+            const rwCount = rwContainer.querySelectorAll('.stock-row').length;
+            document.getElementById('rw-results-count').textContent = `${rwCount} stocks`;
+        }
+    }
+
+    // Create stock row HTML (for WebSocket updates)
+    function createStockRowHtml(stock, type) {
+        const rrsClass = type === 'strong' ? 'strong' : 'weak';
+        const stockChange = stock.stock_change_pct || stock.stock_pct_change || 0;
+        const spyChange = stock.spy_change_pct || stock.spy_pct_change || 0;
+        const stockChangeClass = stockChange >= 0 ? 'positive' : 'negative';
+        const spyChangeClass = spyChange >= 0 ? 'positive' : 'negative';
+
+        // MTF data
+        const tfAlignment = stock.timeframe_alignment || false;
+        const trendByTf = stock.trend_by_timeframe || {};
+        const entryTiming = stock.entry_timing_score || 50;
+
+        // Build timeframe dots
+        const tfOrder = ['5m', '15m', '1h', '4h', '1d'];
+        let tfDotsHtml = '';
+        tfOrder.forEach(tf => {
+            const trend = trendByTf[tf] || 'neutral';
+            tfDotsHtml += `<span class="tf-dot ${trend}" data-tf="${tf}" title="${tf}: ${trend}"></span>`;
+        });
+
+        // Entry timing class
+        let timingClass = 'low';
+        if (entryTiming >= 70) timingClass = 'high';
+        else if (entryTiming >= 50) timingClass = 'medium';
+
+        // MTF badge
+        const alignmentBadge = tfAlignment
+            ? `<span class="mtf-badge aligned"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>Aligned</span>`
+            : `<span class="mtf-badge not-aligned">Mixed</span>`;
+
+        // RRS boost indicator
+        const boostIndicator = stock.rrs_boosted
+            ? `<span style="font-size:0.65rem;color:var(--text-light);margin-left:4px;">(+boost)</span>`
+            : '';
+
+        return `
+            <div class="stock-row">
+                <div class="stock-symbol">${stock.symbol || 'N/A'}</div>
+                <div class="stock-rrs">
+                    <div class="stock-rrs-value ${rrsClass}">${(stock.rrs || 0).toFixed(2)}${boostIndicator}</div>
+                </div>
+                <div class="mtf-alignment">
+                    ${alignmentBadge}
+                    <div class="tf-trends" title="Trend by timeframe">
+                        ${tfDotsHtml}
+                    </div>
+                </div>
+                <div class="entry-timing" title="Entry Timing Score: ${entryTiming}">
+                    <div class="entry-timing-bar">
+                        <div class="entry-timing-fill ${timingClass}" style="width: ${entryTiming}%"></div>
+                    </div>
+                    <span class="entry-timing-score">${entryTiming}</span>
+                </div>
+                <div class="stock-change">
+                    <div class="stock-change-item">
+                        <div class="stock-change-label">Stock</div>
+                        <div class="stock-change-value ${stockChangeClass}">
+                            ${stockChange >= 0 ? '+' : ''}${stockChange.toFixed(2)}%
+                        </div>
+                    </div>
+                    <div class="stock-change-item">
+                        <div class="stock-change-label">vs SPY</div>
+                        <div class="stock-change-value ${spyChangeClass}">
+                            ${spyChange >= 0 ? '+' : ''}${spyChange.toFixed(2)}%
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function startAutoRefresh() {
+        if (scannerState.autoRefreshInterval) {
+            clearInterval(scannerState.autoRefreshInterval);
+        }
+        scannerState.autoRefreshInterval = setInterval(function() {
+            if (scannerState.autoRefreshEnabled && !scannerState.isScanning) {
+                runScan();
+            }
+        }, 60000); // 60 seconds
+    }
+
+    function stopAutoRefresh() {
+        if (scannerState.autoRefreshInterval) {
+            clearInterval(scannerState.autoRefreshInterval);
+            scannerState.autoRefreshInterval = null;
+        }
+    }
+
+    function updateScannerStatus(status) {
+        const dot = document.getElementById('scanner-status-dot');
+        const text = document.getElementById('scanner-status');
+
+        switch(status) {
+            case 'scanning':
+                dot.className = 'status-dot warning';
+                text.textContent = 'Scanning...';
+                break;
+            case 'ready':
+                dot.className = 'status-dot online';
+                text.textContent = 'Ready';
+                break;
+            case 'error':
+                dot.className = 'status-dot offline';
+                text.textContent = 'Error';
+                break;
+            default:
+                dot.className = 'status-dot';
+                text.textContent = status;
+        }
+    }
+
+    async function runScan() {
+        if (scannerState.isScanning) return;
+
+        scannerState.isScanning = true;
+        const scanBtn = document.getElementById('scan-btn');
+        const scanBtnText = document.getElementById('scan-btn-text');
+
+        // Update UI for scanning state
+        scanBtn.disabled = true;
+        scanBtnText.innerHTML = '<span class="spinner"></span> Scanning...';
+        updateScannerStatus('scanning');
+
+        // Show loading in results
+        showLoadingState('rs-results');
+        showLoadingState('rw-results');
+
+        try {
+            const response = await fetch('/api/v1/rrs/scan', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': getApiKey()
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Scan failed: ${response.status}`);
+            }
+
+            const data = await response.json();
+            scannerState.results = data;
+            scannerState.lastScan = new Date(data.timestamp);
+
+            // Update UI with results
+            updateScanResults(data);
+            updateLastScanTime();
+            updateScannerStatus('ready');
+
+        } catch (error) {
+            console.error('Scan error:', error);
+            updateScannerStatus('error');
+            showErrorState('rs-results', error.message);
+            showErrorState('rw-results', error.message);
+        } finally {
+            scannerState.isScanning = false;
+            scanBtn.disabled = false;
+            scanBtnText.textContent = 'Run Scan';
+        }
+    }
+
+    function updateScanResults(data) {
+        const strongest = data.strongest || [];
+        const weakest = data.weakest || [];
+        const allResults = data.all_results || [];
+
+        // Update counts
+        document.getElementById('symbols-count').textContent = data.count || 0;
+        document.getElementById('strong-rs-count').textContent = strongest.length;
+        document.getElementById('strong-rw-count').textContent = weakest.length;
+        document.getElementById('rs-results-count').textContent = `${strongest.length} stocks`;
+        document.getElementById('rw-results-count').textContent = `${weakest.length} stocks`;
+
+        // Calculate averages
+        if (strongest.length > 0) {
+            const avgRS = strongest.reduce((sum, s) => sum + (s.rrs || 0), 0) / strongest.length;
+            document.getElementById('avg-rs-score').textContent = avgRS.toFixed(2);
+        }
+        if (weakest.length > 0) {
+            const avgRW = weakest.reduce((sum, s) => sum + Math.abs(s.rrs || 0), 0) / weakest.length;
+            document.getElementById('avg-rw-score').textContent = avgRW.toFixed(2);
+        }
+
+        // Render RS results
+        renderStockList('rs-results', strongest, 'strong');
+
+        // Render RW results
+        renderStockList('rw-results', weakest, 'weak');
+    }
+
+    function renderStockList(containerId, stocks, type) {
+        const container = document.getElementById(containerId);
+
+        if (!stocks || stocks.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <p>No ${type === 'strong' ? 'strong RS' : 'strong RW'} stocks found</p>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '';
+        stocks.forEach((stock, index) => {
+            const rrsValue = stock.rrs || 0;
+            const rrsClass = type === 'strong' ? 'strong' : 'weak';
+            const stockChange = stock.stock_pct_change || stock.stock_change_pct || 0;
+            const spyChange = stock.spy_pct_change || stock.spy_change_pct || 0;
+            const stockChangeClass = stockChange >= 0 ? 'positive' : 'negative';
+            const spyChangeClass = spyChange >= 0 ? 'positive' : 'negative';
+
+            // MTF data
+            const tfAlignment = stock.timeframe_alignment || false;
+            const trendByTf = stock.trend_by_timeframe || {};
+            const entryTiming = stock.entry_timing_score || 50;
+            const keyLevels = stock.key_levels || {};
+            const rowId = `${containerId}-row-${index}`;
+
+            // Build timeframe dots
+            const tfOrder = ['5m', '15m', '1h', '4h', '1d'];
+            let tfDotsHtml = '';
+            tfOrder.forEach(tf => {
+                const trend = trendByTf[tf] || 'neutral';
+                tfDotsHtml += `<span class="tf-dot ${trend}" data-tf="${tf}" title="${tf}: ${trend}"></span>`;
+            });
+
+            // Entry timing class
+            let timingClass = 'low';
+            if (entryTiming >= 70) timingClass = 'high';
+            else if (entryTiming >= 50) timingClass = 'medium';
+
+            // MTF badge
+            const alignmentBadge = tfAlignment
+                ? `<span class="mtf-badge aligned"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>Aligned</span>`
+                : `<span class="mtf-badge not-aligned">Mixed</span>`;
+
+            // RRS boost indicator
+            const boostIndicator = stock.rrs_boosted
+                ? `<span style="font-size:0.65rem;color:var(--text-light);margin-left:4px;">(+boost)</span>`
+                : '';
+
+            html += `
+                <div class="stock-row" id="${rowId}" onclick="toggleMtfDetails('${rowId}')">
+                    <div class="stock-symbol">${stock.symbol || 'N/A'}</div>
+                    <div class="stock-rrs">
+                        <div class="stock-rrs-value ${rrsClass}">${rrsValue.toFixed(2)}${boostIndicator}</div>
+                    </div>
+                    <div class="mtf-alignment">
+                        ${alignmentBadge}
+                        <div class="tf-trends" title="Trend by timeframe">
+                            ${tfDotsHtml}
+                        </div>
+                    </div>
+                    <div class="entry-timing" title="Entry Timing Score: ${entryTiming}">
+                        <div class="entry-timing-bar">
+                            <div class="entry-timing-fill ${timingClass}" style="width: ${entryTiming}%"></div>
+                        </div>
+                        <span class="entry-timing-score">${entryTiming}</span>
+                    </div>
+                    <div class="stock-change">
+                        <div class="stock-change-item">
+                            <div class="stock-change-label">Stock</div>
+                            <div class="stock-change-value ${stockChangeClass}">
+                                ${stockChange >= 0 ? '+' : ''}${stockChange.toFixed(2)}%
+                            </div>
+                        </div>
+                        <div class="stock-change-item">
+                            <div class="stock-change-label">vs SPY</div>
+                            <div class="stock-change-value ${spyChangeClass}">
+                                ${spyChange >= 0 ? '+' : ''}${spyChange.toFixed(2)}%
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="stock-row-details" id="${rowId}-details">
+                    <div class="mtf-detail-grid">
+                        ${tfOrder.map(tf => {
+                            const trend = trendByTf[tf] || 'neutral';
+                            return `
+                                <div class="mtf-tf-card">
+                                    <div class="mtf-tf-label">${tf}</div>
+                                    <div class="mtf-tf-trend ${trend}">${trend.charAt(0).toUpperCase() + trend.slice(1)}</div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                    ${renderKeyLevels(keyLevels)}
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+    }
+
+    function renderKeyLevels(keyLevels) {
+        if (!keyLevels || (!keyLevels.support?.length && !keyLevels.resistance?.length)) {
+            return '';
+        }
+
+        let html = '<div class="key-levels">';
+
+        if (keyLevels.support && keyLevels.support.length > 0) {
+            html += `
+                <div class="key-level-group">
+                    <span class="key-level-label">Support:</span>
+                    <div class="key-level-values">
+                        ${keyLevels.support.slice(0, 3).map(level =>
+                            `<span class="key-level-value support">$${level.toFixed(2)}</span>`
+                        ).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        if (keyLevels.resistance && keyLevels.resistance.length > 0) {
+            html += `
+                <div class="key-level-group">
+                    <span class="key-level-label">Resistance:</span>
+                    <div class="key-level-values">
+                        ${keyLevels.resistance.slice(0, 3).map(level =>
+                            `<span class="key-level-value resistance">$${level.toFixed(2)}</span>`
+                        ).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        html += '</div>';
+        return html;
+    }
+
+    function toggleMtfDetails(rowId) {
+        const row = document.getElementById(rowId);
+        if (row) {
+            row.classList.toggle('expanded');
+        }
+    }
+
+    function showLoadingState(containerId) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = `
+            <div class="loading-state">
+                <div class="spinner"></div>
+                <p>Scanning stocks...</p>
+            </div>
+        `;
+    }
+
+    function showErrorState(containerId, message) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = `
+            <div class="empty-state">
+                <p class="text-danger">Error: ${message}</p>
+                <p class="text-muted mt-1">Please try again or check your API key</p>
+            </div>
+        `;
+    }
+
+    function updateLastScanTime() {
+        const lastScanEl = document.getElementById('last-scan-time');
+        if (scannerState.lastScan) {
+            lastScanEl.textContent = scannerState.lastScan.toLocaleTimeString();
+        }
+    }
+
+    async function fetchSpyData() {
+        try {
+            // Fetch SPY data from the RRS endpoint
+            const response = await fetch('/api/v1/rrs/SPY', {
+                headers: {
+                    'X-API-Key': getApiKey()
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                updateSpyDisplay(data);
+            }
+        } catch (error) {
+            console.error('Error fetching SPY data:', error);
+        }
+    }
+
+    function updateSpyDisplay(data) {
+        const priceEl = document.getElementById('spy-price');
+        const changeEl = document.getElementById('spy-change');
+
+        if (data.spy_pct_change !== undefined) {
+            const change = data.spy_pct_change;
+            changeEl.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+            changeEl.className = `benchmark-change ${change >= 0 ? 'positive' : 'negative'}`;
+        }
+
+        // These would come from actual market data
+        // For now showing placeholders that would be populated by real data
+    }
+
+    function getApiKey() {
+        // In production, this would come from user session/localStorage
+        // For demo purposes, return empty or get from a stored value
+        return localStorage.getItem('rdt_api_key') || '';
+    }
+
+    // Refresh SPY data periodically
+    setInterval(fetchSpyData, 30000);
+</script>
+{% endblock %}

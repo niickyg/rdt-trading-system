@@ -1,0 +1,102 @@
+# Flake8 configuration for RDT Trading System
+# This file works in conjunction with pyproject.toml settings
+
+[flake8]
+# Line length should match Black
+max-line-length = 100
+
+# Complexity threshold
+max-complexity = 15
+
+# Select which errors to check
+select = B,C,E,F,W,T4,B9,N,S
+
+# Ignore certain errors
+ignore =
+    # E203: whitespace before ':' (conflicts with Black)
+    E203,
+    # E266: too many leading '#' for block comment
+    E266,
+    # E501: line too long (handled by Black)
+    E501,
+    # W503: line break before binary operator (conflicts with Black)
+    W503,
+    # W504: line break after binary operator
+    W504,
+    # E402: module level import not at top of file
+    E402,
+    # D100: Missing docstring in public module
+    D100,
+    # D101: Missing docstring in public class
+    D101,
+    # D102: Missing docstring in public method
+    D102,
+    # D103: Missing docstring in public function
+    D103,
+    # D104: Missing docstring in public package
+    D104,
+    # D105: Missing docstring in magic method
+    D105,
+    # D107: Missing docstring in __init__
+    D107,
+    # D200: One-line docstring should fit on one line with quotes
+    D200,
+    # D205: 1 blank line required between summary line and description
+    D205,
+    # D400: First line should end with a period
+    D400,
+    # D401: First line should be in imperative mood
+    D401,
+    # N812: lowercase imported as non lowercase
+    N812,
+
+# Exclude directories
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    .eggs,
+    *.egg,
+    build,
+    dist,
+    data,
+    migrations,
+    .tox,
+    .mypy_cache,
+    .pytest_cache,
+    htmlcov,
+    *.pyc,
+
+# Per-file ignores
+per-file-ignores =
+    # Tests can use assert and have longer lines
+    tests/*:S101,E501,D
+    # __init__.py files may have unused imports
+    __init__.py:F401,D
+    # Config files may have different patterns
+    config/*:E501
+    # Migration files auto-generated
+    migrations/*:E501,D
+
+# Docstring convention
+docstring-convention = google
+
+# Show source code for each error
+show-source = true
+
+# Show statistics at the end
+statistics = true
+
+# Count errors
+count = true
+
+# Format output
+format = default
+
+# Enable extensions
+enable-extensions = G
+
+# Import order style (for flake8-import-order if used)
+import-order-style = google
+application-import-names = scanner,automation,shared,alerts,config,agents,portfolio,risk,backtesting,monitoring,brokers

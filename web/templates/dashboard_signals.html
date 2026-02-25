@@ -1,0 +1,982 @@
+{% extends "base.html" %}
+
+{% block title %}Active Signals - RDT Trading{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dashboard-layout {
+        display: grid;
+        grid-template-columns: 240px 1fr;
+        min-height: calc(100vh - 60px);
+    }
+    .sidebar {
+        background: var(--primary);
+        padding: 20px;
+        position: sticky;
+        top: 60px;
+        height: calc(100vh - 60px);
+    }
+    .sidebar-nav { list-style: none; }
+    .sidebar-nav li { margin-bottom: 5px; }
+    .sidebar-nav a {
+        display: block;
+        padding: 12px 15px;
+        color: rgba(255,255,255,0.7);
+        border-radius: 5px;
+        transition: all 0.3s;
+    }
+    .sidebar-nav a:hover, .sidebar-nav a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        text-decoration: none;
+    }
+    .sidebar-section {
+        color: rgba(255,255,255,0.5);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        margin: 20px 0 10px;
+        padding-left: 15px;
+    }
+    .main-content { padding: 25px; }
+
+    /* Page Header */
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 25px;
+    }
+    .page-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+    }
+    .page-subtitle {
+        color: var(--text-light);
+        font-size: 0.9rem;
+        margin-top: 5px;
+    }
+    .refresh-indicator {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--text-light);
+        font-size: 0.85rem;
+    }
+    .refresh-indicator .spinner {
+        width: 16px;
+        height: 16px;
+    }
+
+    /* Filters Bar */
+    .filters-bar {
+        background: var(--card);
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .filters-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        align-items: flex-end;
+    }
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+    .filter-label {
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: var(--text-light);
+        text-transform: uppercase;
+    }
+    .filter-select {
+        padding: 8px 12px;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        background: white;
+        font-size: 0.9rem;
+        min-width: 150px;
+        cursor: pointer;
+    }
+    .filter-select:focus {
+        outline: none;
+        border-color: var(--accent);
+    }
+    .filter-actions {
+        display: flex;
+        gap: 10px;
+        margin-left: auto;
+    }
+
+    /* Stats Summary */
+    .stats-summary {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    .summary-stat {
+        background: var(--card);
+        padding: 15px 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+    .summary-icon {
+        width: 45px;
+        height: 45px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+    }
+    .summary-icon.total { background: #e3f2fd; color: #1565c0; }
+    .summary-icon.long { background: #e8f5e9; color: #2e7d32; }
+    .summary-icon.short { background: #ffebee; color: #c62828; }
+    .summary-icon.strong { background: #fff3e0; color: #e65100; }
+    .summary-content { flex: 1; }
+    .summary-value { font-size: 1.5rem; font-weight: 600; }
+    .summary-label { font-size: 0.8rem; color: var(--text-light); }
+
+    /* Signals Table */
+    .signals-table-container {
+        background: var(--card);
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        overflow: hidden;
+    }
+    .signals-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .signals-table th {
+        background: var(--bg);
+        padding: 15px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.8rem;
+        color: var(--text-light);
+        text-transform: uppercase;
+        border-bottom: 1px solid var(--border);
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+    }
+    .signals-table th:hover {
+        background: var(--border);
+    }
+    .signals-table th .sort-icon {
+        margin-left: 5px;
+        opacity: 0.5;
+    }
+    .signals-table th.sorted .sort-icon {
+        opacity: 1;
+    }
+    .signals-table td {
+        padding: 15px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: middle;
+    }
+    .signals-table tbody tr {
+        transition: background 0.2s;
+    }
+    .signals-table tbody tr:hover {
+        background: var(--bg);
+    }
+    .signals-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+
+    /* Symbol Column */
+    .symbol-cell {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .symbol-name {
+        font-weight: 600;
+        font-size: 1rem;
+    }
+    .symbol-sector {
+        font-size: 0.75rem;
+        color: var(--text-light);
+    }
+
+    /* Price Cells */
+    .price-cell {
+        font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+        font-size: 0.9rem;
+    }
+    .price-entry { color: var(--text); }
+    .price-stop { color: var(--danger); }
+    .price-target { color: var(--success); }
+
+    /* Metrics */
+    .metric-cell {
+        text-align: center;
+    }
+    .metric-value {
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+    .metric-label {
+        font-size: 0.7rem;
+        color: var(--text-light);
+    }
+
+    /* Confidence Bar */
+    .confidence-bar {
+        width: 80px;
+        height: 6px;
+        background: var(--border);
+        border-radius: 3px;
+        overflow: hidden;
+        margin-top: 4px;
+    }
+    .confidence-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 0.3s;
+    }
+    .confidence-fill.high { background: var(--success); }
+    .confidence-fill.medium { background: var(--warning); }
+    .confidence-fill.low { background: var(--danger); }
+
+    /* Market Regime Badge */
+    .badge-trending { background: #e8f5e9; color: #2e7d32; }
+    .badge-ranging { background: #fff3e0; color: #e65100; }
+    .badge-volatile { background: #ffebee; color: #c62828; }
+    .badge-breakout { background: #e3f2fd; color: #1565c0; }
+
+    /* Timeframe Badge */
+    .badge-short-term { background: #fce4ec; color: #c2185b; }
+    .badge-medium-term { background: #e8eaf6; color: #3f51b5; }
+    .badge-long-term { background: #e0f2f1; color: #00695c; }
+
+    /* Time Column */
+    .time-cell {
+        font-size: 0.85rem;
+        color: var(--text-light);
+    }
+    .time-relative {
+        font-weight: 500;
+        color: var(--text);
+    }
+
+    /* Empty State */
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--text-light);
+    }
+    .empty-icon {
+        font-size: 3rem;
+        margin-bottom: 15px;
+        opacity: 0.5;
+    }
+    .empty-title {
+        font-size: 1.2rem;
+        font-weight: 500;
+        margin-bottom: 10px;
+        color: var(--text);
+    }
+
+    /* Loading State */
+    .loading-overlay {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px;
+        gap: 15px;
+    }
+    .loading-overlay .spinner {
+        width: 30px;
+        height: 30px;
+    }
+
+    /* Table Actions */
+    .table-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px 20px;
+        background: var(--bg);
+        border-top: 1px solid var(--border);
+    }
+    .showing-info {
+        font-size: 0.85rem;
+        color: var(--text-light);
+    }
+    .pagination {
+        display: flex;
+        gap: 5px;
+    }
+    .page-btn {
+        padding: 6px 12px;
+        border: 1px solid var(--border);
+        background: white;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        transition: all 0.2s;
+    }
+    .page-btn:hover {
+        background: var(--bg);
+    }
+    .page-btn.active {
+        background: var(--accent);
+        color: white;
+        border-color: var(--accent);
+    }
+    .page-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    @media (max-width: 1024px) {
+        .dashboard-layout { grid-template-columns: 1fr; }
+        .sidebar { display: none; }
+        .stats-summary { grid-template-columns: repeat(2, 1fr); }
+        .filters-row { flex-direction: column; align-items: stretch; }
+        .filter-actions { margin-left: 0; margin-top: 15px; }
+    }
+    @media (max-width: 768px) {
+        .stats-summary { grid-template-columns: 1fr; }
+        .signals-table { font-size: 0.85rem; }
+        .signals-table th, .signals-table td { padding: 10px 8px; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+    <aside class="sidebar">
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard">Overview</a></li>
+            <li><a href="/dashboard/signals" class="active">Active Signals</a></li>
+            <li><a href="/dashboard/positions">Positions</a></li>
+            <li><a href="/dashboard/history">History</a></li>
+        </ul>
+        <div class="sidebar-section">Analysis</div>
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard/scanner">Live Scanner</a></li>
+            <li><a href="/dashboard/backtest">Backtest</a></li>
+            <li><a href="/performance">Performance</a></li>
+        </ul>
+        <div class="sidebar-section">Settings</div>
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard/alerts">Alerts</a></li>
+            <li><a href="/dashboard/settings">Settings</a></li>
+            <li><a href="/api/v1/health" target="_blank">API Status</a></li>
+        </ul>
+    </aside>
+
+    <main class="main-content">
+        <!-- Page Header -->
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Active Trading Signals</h1>
+                <p class="page-subtitle">Real-time signals generated by the RRS algorithm</p>
+            </div>
+            <div class="refresh-indicator">
+                <span id="last-update">Last updated: --:--:--</span>
+                <div class="spinner" id="refresh-spinner" style="display: none;"></div>
+                <button class="btn btn-primary btn-sm" onclick="refreshSignals()">
+                    Refresh Now
+                </button>
+            </div>
+        </div>
+
+        <!-- Stats Summary -->
+        <div class="stats-summary">
+            <div class="summary-stat">
+                <div class="summary-icon total">
+                    <span>&#x1F4CA;</span>
+                </div>
+                <div class="summary-content">
+                    <div class="summary-value" id="total-signals">0</div>
+                    <div class="summary-label">Total Signals</div>
+                </div>
+            </div>
+            <div class="summary-stat">
+                <div class="summary-icon long">
+                    <span>&#x2191;</span>
+                </div>
+                <div class="summary-content">
+                    <div class="summary-value" id="long-signals">0</div>
+                    <div class="summary-label">Long Signals</div>
+                </div>
+            </div>
+            <div class="summary-stat">
+                <div class="summary-icon short">
+                    <span>&#x2193;</span>
+                </div>
+                <div class="summary-content">
+                    <div class="summary-value" id="short-signals">0</div>
+                    <div class="summary-label">Short Signals</div>
+                </div>
+            </div>
+            <div class="summary-stat">
+                <div class="summary-icon strong">
+                    <span>&#x26A1;</span>
+                </div>
+                <div class="summary-content">
+                    <div class="summary-value" id="strong-signals">0</div>
+                    <div class="summary-label">Strong Signals</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters Bar -->
+        <div class="filters-bar">
+            <div class="filters-row">
+                <div class="filter-group">
+                    <label class="filter-label">Direction</label>
+                    <select class="filter-select" id="filter-direction" onchange="applyFilters()">
+                        <option value="all">All Directions</option>
+                        <option value="long">Long Only</option>
+                        <option value="short">Short Only</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Strength</label>
+                    <select class="filter-select" id="filter-strength" onchange="applyFilters()">
+                        <option value="all">All Strengths</option>
+                        <option value="strong">Strong</option>
+                        <option value="moderate">Moderate</option>
+                        <option value="weak">Weak</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Timeframe</label>
+                    <select class="filter-select" id="filter-timeframe" onchange="applyFilters()">
+                        <option value="all">All Timeframes</option>
+                        <option value="short">Short Term</option>
+                        <option value="medium">Medium Term</option>
+                        <option value="long">Long Term</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Market Regime</label>
+                    <select class="filter-select" id="filter-regime" onchange="applyFilters()">
+                        <option value="all">All Regimes</option>
+                        <option value="trending">Trending</option>
+                        <option value="ranging">Ranging</option>
+                        <option value="volatile">Volatile</option>
+                        <option value="breakout">Breakout</option>
+                    </select>
+                </div>
+                <div class="filter-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="resetFilters()">
+                        Reset Filters
+                    </button>
+                    <button class="btn btn-primary btn-sm" onclick="exportSignals()">
+                        Export CSV
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Signals Table -->
+        <div class="signals-table-container">
+            <table class="signals-table">
+                <thead>
+                    <tr>
+                        <th onclick="sortTable('symbol')">
+                            Symbol <span class="sort-icon">&#x2195;</span>
+                        </th>
+                        <th onclick="sortTable('direction')">
+                            Direction <span class="sort-icon">&#x2195;</span>
+                        </th>
+                        <th onclick="sortTable('entry_price')">
+                            Entry <span class="sort-icon">&#x2195;</span>
+                        </th>
+                        <th onclick="sortTable('stop_price')">
+                            Stop <span class="sort-icon">&#x2195;</span>
+                        </th>
+                        <th onclick="sortTable('target_price')">
+                            Target <span class="sort-icon">&#x2195;</span>
+                        </th>
+                        <th onclick="sortTable('rrs')">
+                            RRS <span class="sort-icon">&#x2195;</span>
+                        </th>
+                        <th onclick="sortTable('live_price')">
+                            Live Price <span class="sort-icon">&#x2195;</span>
+                        </th>
+                        <th onclick="sortTable('pnl_pct')">
+                            P&L <span class="sort-icon">&#x2195;</span>
+                        </th>
+                        <th onclick="sortTable('ml_confidence')">
+                            Confidence <span class="sort-icon">&#x2195;</span>
+                        </th>
+                        <th onclick="sortTable('market_regime')">
+                            Regime <span class="sort-icon">&#x2195;</span>
+                        </th>
+                        <th onclick="sortTable('timeframe')">
+                            Timeframe <span class="sort-icon">&#x2195;</span>
+                        </th>
+                        <th onclick="sortTable('generated_at')">
+                            Generated <span class="sort-icon">&#x2195;</span>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody id="signals-body">
+                    <tr>
+                        <td colspan="12">
+                            <div class="loading-overlay">
+                                <div class="spinner"></div>
+                                <span>Loading signals...</span>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="table-actions">
+                <div class="showing-info" id="showing-info">
+                    Showing 0 of 0 signals
+                </div>
+                <div class="pagination" id="pagination">
+                    <!-- Pagination buttons generated by JS -->
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // State management
+    let allSignals = [];
+    let filteredSignals = [];
+    let currentPage = 1;
+    const pageSize = 20;
+    let sortColumn = 'rrs';
+    let sortDirection = 'desc';
+    let refreshInterval = null;
+
+    // Fetch signals from API
+    async function fetchSignals() {
+        const spinner = document.getElementById('refresh-spinner');
+        spinner.style.display = 'block';
+
+        try {
+            const response = await fetch('/api/v1/signals/current');
+            if (!response.ok) {
+                throw new Error('Failed to fetch signals');
+            }
+            const data = await response.json();
+            allSignals = data.signals || [];
+
+            // Enrich signals with additional computed fields if not present
+            allSignals = allSignals.map(signal => ({
+                ...signal,
+                ml_confidence: signal.ml_confidence || computeConfidence(signal),
+                market_regime: signal.market_regime || deriveRegime(signal),
+                timeframe: signal.timeframe || deriveTimeframe(signal),
+                strength: signal.strength || computeStrength(signal.rrs)
+            }));
+
+            applyFilters();
+            updateStats();
+            updateLastUpdate();
+        } catch (error) {
+            console.error('Error fetching signals:', error);
+            showEmptyState('Unable to load signals. Please try again.');
+        } finally {
+            spinner.style.display = 'none';
+        }
+    }
+
+    // Fetch live quotes for all signal symbols
+    async function fetchQuotes() {
+        if (allSignals.length === 0) return;
+
+        const symbols = [...new Set(allSignals.map(s => s.symbol))];
+        try {
+            const response = await fetch('/api/v1/quotes?symbols=' + symbols.join(','));
+            if (!response.ok) return;
+            const data = await response.json();
+            const quotes = data.quotes || {};
+
+            // Update signals with live prices
+            let updated = false;
+            allSignals.forEach(signal => {
+                if (quotes[signal.symbol]) {
+                    signal.live_price = quotes[signal.symbol].price;
+                    updated = true;
+                }
+            });
+
+            if (updated) {
+                renderTable();
+            }
+        } catch (error) {
+            console.debug('Quote fetch error:', error);
+        }
+    }
+
+    // Derive ML confidence from signal data (entry timing score + RRS strength)
+    function computeConfidence(signal) {
+        const timingScore = (signal.entry_timing_score || 50) / 100;
+        const rrsStrength = Math.min(Math.abs(signal.rrs || 0) / 4, 1);
+        const aligned = signal.timeframe_alignment ? 0.15 : 0;
+        return Math.min(Math.max(timingScore * 0.5 + rrsStrength * 0.35 + aligned, 0.1), 0.99);
+    }
+
+    // Derive market regime from signal's trend data
+    function deriveRegime(signal) {
+        const trends = signal.trend_by_timeframe || {};
+        const values = Object.values(trends);
+        const bullish = values.filter(v => v === 'bullish').length;
+        const bearish = values.filter(v => v === 'bearish').length;
+        const neutral = values.filter(v => v === 'neutral').length;
+        if (bullish >= 3 || bearish >= 3) return 'trending';
+        if (neutral >= 4) return 'ranging';
+        const atrPct = signal.atr && signal.entry_price ? (signal.atr / signal.entry_price) * 100 : 0;
+        if (atrPct > 3) return 'volatile';
+        return 'ranging';
+    }
+
+    // Derive timeframe from alignment direction
+    function deriveTimeframe(signal) {
+        const alignment = signal.alignment_direction || '';
+        if (alignment === 'bullish' || alignment === 'bearish') return 'long';
+        if (signal.timeframe_alignment) return 'medium';
+        return 'short';
+    }
+
+    function computeStrength(rrs) {
+        if (Math.abs(rrs) >= 2) return 'strong';
+        if (Math.abs(rrs) >= 1) return 'moderate';
+        return 'weak';
+    }
+
+    // Update statistics
+    function updateStats() {
+        const total = allSignals.length;
+        const long = allSignals.filter(s => s.direction === 'long').length;
+        const short = allSignals.filter(s => s.direction === 'short').length;
+        const strong = allSignals.filter(s => s.strength === 'strong').length;
+
+        document.getElementById('total-signals').textContent = total;
+        document.getElementById('long-signals').textContent = long;
+        document.getElementById('short-signals').textContent = short;
+        document.getElementById('strong-signals').textContent = strong;
+    }
+
+    // Update last update time
+    function updateLastUpdate() {
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString();
+        document.getElementById('last-update').textContent = `Last updated: ${timeStr}`;
+    }
+
+    // Apply filters
+    function applyFilters() {
+        const direction = document.getElementById('filter-direction').value;
+        const strength = document.getElementById('filter-strength').value;
+        const timeframe = document.getElementById('filter-timeframe').value;
+        const regime = document.getElementById('filter-regime').value;
+
+        filteredSignals = allSignals.filter(signal => {
+            if (direction !== 'all' && signal.direction !== direction) return false;
+            if (strength !== 'all' && signal.strength !== strength) return false;
+            if (timeframe !== 'all' && signal.timeframe !== timeframe) return false;
+            if (regime !== 'all' && signal.market_regime !== regime) return false;
+            return true;
+        });
+
+        sortSignals();
+        currentPage = 1;
+        renderTable();
+        renderPagination();
+    }
+
+    // Reset filters
+    function resetFilters() {
+        document.getElementById('filter-direction').value = 'all';
+        document.getElementById('filter-strength').value = 'all';
+        document.getElementById('filter-timeframe').value = 'all';
+        document.getElementById('filter-regime').value = 'all';
+        applyFilters();
+    }
+
+    // Sort signals
+    function sortSignals() {
+        filteredSignals.sort((a, b) => {
+            let aVal = a[sortColumn];
+            let bVal = b[sortColumn];
+
+            // Handle string comparison
+            if (typeof aVal === 'string') {
+                aVal = aVal.toLowerCase();
+                bVal = bVal.toLowerCase();
+            }
+
+            // Handle date comparison
+            if (sortColumn === 'generated_at') {
+                aVal = new Date(aVal).getTime();
+                bVal = new Date(bVal).getTime();
+            }
+
+            if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+            if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }
+
+    // Sort table by column
+    function sortTable(column) {
+        if (sortColumn === column) {
+            sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            sortColumn = column;
+            sortDirection = 'desc';
+        }
+
+        // Update header styling
+        document.querySelectorAll('.signals-table th').forEach(th => {
+            th.classList.remove('sorted');
+        });
+
+        sortSignals();
+        renderTable();
+    }
+
+    // Render table
+    function renderTable() {
+        const tbody = document.getElementById('signals-body');
+        const start = (currentPage - 1) * pageSize;
+        const end = start + pageSize;
+        const pageSignals = filteredSignals.slice(start, end);
+
+        if (pageSignals.length === 0) {
+            showEmptyState('No signals match your current filters.');
+            return;
+        }
+
+        let html = '';
+        pageSignals.forEach(signal => {
+            const dirBadge = signal.direction === 'long' ? 'badge-long' : 'badge-short';
+            const strengthBadge = `badge-${signal.strength}`;
+            const regimeBadge = `badge-${signal.market_regime}`;
+            const timeframeBadge = `badge-${signal.timeframe}-term`;
+
+            const confidence = (signal.ml_confidence * 100).toFixed(0);
+            const confidenceClass = confidence >= 80 ? 'high' : confidence >= 60 ? 'medium' : 'low';
+
+            const genTime = new Date(signal.generated_at);
+            const timeAgo = getTimeAgo(genTime);
+
+            // Live price and P&L
+            const livePrice = signal.live_price;
+            let livePriceHtml = '<span style="color:var(--text-light)">--</span>';
+            let pnlHtml = '<span style="color:var(--text-light)">--</span>';
+
+            if (livePrice) {
+                livePriceHtml = `$${livePrice.toFixed(2)}`;
+                const pnl = signal.direction === 'long'
+                    ? ((livePrice - signal.entry_price) / signal.entry_price) * 100
+                    : ((signal.entry_price - livePrice) / signal.entry_price) * 100;
+                const pnlColor = pnl >= 0 ? 'var(--success, #22c55e)' : 'var(--danger, #ef4444)';
+                const pnlSign = pnl >= 0 ? '+' : '';
+                pnlHtml = `<span style="color:${pnlColor};font-weight:600">${pnlSign}${pnl.toFixed(2)}%</span>`;
+            }
+
+            html += `
+                <tr>
+                    <td>
+                        <div class="symbol-cell">
+                            <div>
+                                <div class="symbol-name">${signal.symbol}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge ${dirBadge}">${signal.direction.toUpperCase()}</span>
+                    </td>
+                    <td class="price-cell price-entry">$${signal.entry_price.toFixed(2)}</td>
+                    <td class="price-cell price-stop">$${signal.stop_price.toFixed(2)}</td>
+                    <td class="price-cell price-target">$${signal.target_price.toFixed(2)}</td>
+                    <td class="metric-cell">
+                        <div class="metric-value">${signal.rrs.toFixed(2)}</div>
+                    </td>
+                    <td class="price-cell">${livePriceHtml}</td>
+                    <td class="metric-cell">${pnlHtml}</td>
+                    <td class="metric-cell">
+                        <div class="metric-value">${confidence}%</div>
+                        <div class="confidence-bar">
+                            <div class="confidence-fill ${confidenceClass}" style="width: ${confidence}%"></div>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge ${regimeBadge}">${capitalizeFirst(signal.market_regime)}</span>
+                    </td>
+                    <td>
+                        <span class="badge ${timeframeBadge}">${capitalizeFirst(signal.timeframe)}</span>
+                    </td>
+                    <td class="time-cell">
+                        <div class="time-relative">${timeAgo}</div>
+                        <div>${genTime.toLocaleTimeString()}</div>
+                    </td>
+                </tr>
+            `;
+        });
+
+        tbody.innerHTML = html;
+        updateShowingInfo();
+    }
+
+    // Show empty state
+    function showEmptyState(message) {
+        const tbody = document.getElementById('signals-body');
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="12">
+                    <div class="empty-state">
+                        <div class="empty-icon">&#x1F4C9;</div>
+                        <div class="empty-title">No Signals Available</div>
+                        <p>${message}</p>
+                    </div>
+                </td>
+            </tr>
+        `;
+        updateShowingInfo();
+    }
+
+    // Render pagination
+    function renderPagination() {
+        const totalPages = Math.ceil(filteredSignals.length / pageSize);
+        const pagination = document.getElementById('pagination');
+
+        if (totalPages <= 1) {
+            pagination.innerHTML = '';
+            return;
+        }
+
+        let html = '';
+        html += `<button class="page-btn" onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>Prev</button>`;
+
+        for (let i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+                html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+            } else if (i === currentPage - 3 || i === currentPage + 3) {
+                html += `<span style="padding: 6px;">...</span>`;
+            }
+        }
+
+        html += `<button class="page-btn" onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>`;
+
+        pagination.innerHTML = html;
+    }
+
+    // Go to page
+    function goToPage(page) {
+        const totalPages = Math.ceil(filteredSignals.length / pageSize);
+        if (page < 1 || page > totalPages) return;
+        currentPage = page;
+        renderTable();
+        renderPagination();
+    }
+
+    // Update showing info
+    function updateShowingInfo() {
+        const total = filteredSignals.length;
+        const start = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+        const end = Math.min(currentPage * pageSize, total);
+        document.getElementById('showing-info').textContent = `Showing ${start}-${end} of ${total} signals`;
+    }
+
+    // Get time ago string
+    function getTimeAgo(date) {
+        const seconds = Math.floor((new Date() - date) / 1000);
+        if (seconds < 60) return 'Just now';
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return `${minutes}m ago`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${hours}h ago`;
+        const days = Math.floor(hours / 24);
+        return `${days}d ago`;
+    }
+
+    // Capitalize first letter
+    function capitalizeFirst(str) {
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    // Refresh signals
+    function refreshSignals() {
+        fetchSignals();
+    }
+
+    // Export signals to CSV
+    function exportSignals() {
+        if (filteredSignals.length === 0) {
+            alert('No signals to export');
+            return;
+        }
+
+        const headers = ['Symbol', 'Direction', 'Entry Price', 'Stop Price', 'Target Price', 'RRS', 'Live Price', 'P&L %', 'ML Confidence', 'Market Regime', 'Generated At'];
+        const rows = filteredSignals.map(s => {
+            const lp = s.live_price || '';
+            let pnl = '';
+            if (s.live_price) {
+                pnl = s.direction === 'long'
+                    ? (((s.live_price - s.entry_price) / s.entry_price) * 100).toFixed(2)
+                    : (((s.entry_price - s.live_price) / s.entry_price) * 100).toFixed(2);
+            }
+            return [
+                s.symbol,
+                s.direction,
+                s.entry_price.toFixed(2),
+                s.stop_price.toFixed(2),
+                s.target_price.toFixed(2),
+                s.rrs.toFixed(2),
+                lp ? lp.toFixed(2) : '',
+                pnl,
+                (s.ml_confidence * 100).toFixed(0) + '%',
+                s.market_regime,
+                new Date(s.generated_at).toISOString()
+            ];
+        });
+
+        let csv = headers.join(',') + '\n';
+        rows.forEach(row => {
+            csv += row.join(',') + '\n';
+        });
+
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.setAttribute('href', url);
+        a.setAttribute('download', `rdt_signals_${new Date().toISOString().split('T')[0]}.csv`);
+        a.click();
+    }
+
+    // Initialize
+    let quotesInterval = null;
+
+    document.addEventListener('DOMContentLoaded', async function() {
+        await fetchSignals();
+        fetchQuotes();
+
+        // Refresh signals every 30s, quotes every 15s
+        refreshInterval = setInterval(fetchSignals, 30000);
+        quotesInterval = setInterval(fetchQuotes, 15000);
+    });
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', function() {
+        if (refreshInterval) clearInterval(refreshInterval);
+        if (quotesInterval) clearInterval(quotesInterval);
+    });
+</script>
+{% endblock %}

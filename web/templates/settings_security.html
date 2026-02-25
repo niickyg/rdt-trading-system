@@ -1,0 +1,982 @@
+{% extends "base.html" %}
+
+{% block title %}Security Settings - RDT Trading{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dashboard-layout {
+        display: grid;
+        grid-template-columns: 240px 1fr;
+        min-height: calc(100vh - 60px);
+    }
+    .sidebar {
+        background: var(--primary);
+        padding: 20px;
+        position: sticky;
+        top: 60px;
+        height: calc(100vh - 60px);
+    }
+    .sidebar-nav { list-style: none; }
+    .sidebar-nav li { margin-bottom: 5px; }
+    .sidebar-nav a {
+        display: block;
+        padding: 12px 15px;
+        color: rgba(255,255,255,0.7);
+        border-radius: 5px;
+        transition: all 0.3s;
+    }
+    .sidebar-nav a:hover, .sidebar-nav a.active {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        text-decoration: none;
+    }
+    .sidebar-section {
+        color: rgba(255,255,255,0.5);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        margin: 20px 0 10px;
+        padding-left: 15px;
+    }
+    .main-content { padding: 25px; }
+
+    .page-header {
+        margin-bottom: 30px;
+    }
+    .page-title {
+        font-size: 1.8rem;
+        font-weight: 600;
+        margin-bottom: 5px;
+    }
+    .page-subtitle {
+        color: var(--text-light);
+    }
+
+    .settings-section {
+        margin-bottom: 30px;
+    }
+    .settings-section-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+    }
+    @media (max-width: 768px) {
+        .form-row { grid-template-columns: 1fr; }
+    }
+
+    .form-hint {
+        font-size: 0.8rem;
+        color: var(--text-light);
+        margin-top: 5px;
+    }
+
+    /* Session List Styles */
+    .session-list {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .session-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        background: var(--bg);
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        transition: border-color 0.3s;
+    }
+
+    .session-item:hover {
+        border-color: var(--accent);
+    }
+
+    .session-item.current-session {
+        border-color: var(--accent);
+        background: rgba(76, 175, 80, 0.05);
+    }
+
+    .session-info {
+        flex: 1;
+    }
+
+    .session-device {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 8px;
+    }
+
+    .session-device-icon {
+        width: 40px;
+        height: 40px;
+        background: var(--card);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+    }
+
+    .session-device-name {
+        font-weight: 600;
+        font-size: 1rem;
+    }
+
+    .session-current-badge {
+        display: inline-block;
+        background: var(--accent);
+        color: white;
+        font-size: 0.7rem;
+        padding: 2px 8px;
+        border-radius: 10px;
+        margin-left: 10px;
+        text-transform: uppercase;
+        font-weight: 600;
+    }
+
+    .session-details {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 15px;
+        font-size: 0.85rem;
+        color: var(--text-light);
+    }
+
+    .session-detail {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .session-detail-icon {
+        opacity: 0.7;
+    }
+
+    .session-actions {
+        display: flex;
+        gap: 10px;
+    }
+
+    .btn-revoke {
+        background: transparent;
+        border: 1px solid var(--danger);
+        color: var(--danger);
+        padding: 8px 16px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        transition: all 0.3s;
+    }
+
+    .btn-revoke:hover {
+        background: var(--danger);
+        color: white;
+    }
+
+    .btn-revoke:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Toggle Switch */
+    .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 50px;
+        height: 26px;
+    }
+    .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+    .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: var(--border);
+        transition: 0.3s;
+        border-radius: 26px;
+    }
+    .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 20px;
+        width: 20px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: 0.3s;
+        border-radius: 50%;
+    }
+    .toggle-switch input:checked + .toggle-slider {
+        background-color: var(--accent);
+    }
+    .toggle-switch input:checked + .toggle-slider:before {
+        transform: translateX(24px);
+    }
+
+    .toggle-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px 0;
+        border-bottom: 1px solid var(--border);
+    }
+    .toggle-row:last-child {
+        border-bottom: none;
+    }
+    .toggle-info {
+        flex: 1;
+    }
+    .toggle-label {
+        font-weight: 500;
+        margin-bottom: 3px;
+    }
+    .toggle-description {
+        font-size: 0.85rem;
+        color: var(--text-light);
+    }
+
+    /* Password Form */
+    .password-form {
+        max-width: 400px;
+    }
+
+    .password-strength {
+        height: 4px;
+        background: var(--border);
+        border-radius: 2px;
+        margin-top: 8px;
+        overflow: hidden;
+    }
+
+    .password-strength-bar {
+        height: 100%;
+        width: 0;
+        transition: width 0.3s, background 0.3s;
+    }
+
+    .password-strength-bar.weak { width: 25%; background: var(--danger); }
+    .password-strength-bar.fair { width: 50%; background: var(--warning); }
+    .password-strength-bar.good { width: 75%; background: #8bc34a; }
+    .password-strength-bar.strong { width: 100%; background: var(--success); }
+
+    .password-requirements {
+        font-size: 0.8rem;
+        color: var(--text-light);
+        margin-top: 10px;
+    }
+
+    .password-requirements ul {
+        list-style: none;
+        margin-top: 5px;
+    }
+
+    .password-requirements li {
+        padding: 2px 0;
+    }
+
+    .password-requirements li.valid {
+        color: var(--success);
+    }
+
+    .password-requirements li.valid::before {
+        content: '\2713 ';
+    }
+
+    .password-requirements li.invalid::before {
+        content: '\2717 ';
+        color: var(--danger);
+    }
+
+    /* 2FA Section */
+    .twofa-status {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        padding: 20px;
+        background: var(--bg);
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+
+    .twofa-icon {
+        width: 50px;
+        height: 50px;
+        background: var(--card);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+    }
+
+    .twofa-icon.enabled { background: rgba(76, 175, 80, 0.1); color: var(--success); }
+    .twofa-icon.disabled { background: rgba(231, 76, 60, 0.1); color: var(--danger); }
+
+    .twofa-info {
+        flex: 1;
+    }
+
+    .twofa-title {
+        font-weight: 600;
+        margin-bottom: 3px;
+    }
+
+    .twofa-description {
+        font-size: 0.85rem;
+        color: var(--text-light);
+    }
+
+    /* Revoke All Button */
+    .revoke-all-section {
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .revoke-all-info {
+        flex: 1;
+    }
+
+    .revoke-all-title {
+        font-weight: 500;
+        margin-bottom: 3px;
+    }
+
+    .revoke-all-description {
+        font-size: 0.85rem;
+        color: var(--text-light);
+    }
+
+    /* Tabs */
+    .settings-tabs {
+        display: flex;
+        gap: 5px;
+        margin-bottom: 20px;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 10px;
+    }
+
+    .settings-tab {
+        padding: 10px 20px;
+        background: transparent;
+        border: none;
+        border-radius: 5px 5px 0 0;
+        cursor: pointer;
+        font-size: 0.9rem;
+        color: var(--text-light);
+        transition: all 0.3s;
+    }
+
+    .settings-tab:hover {
+        color: var(--text);
+    }
+
+    .settings-tab.active {
+        background: var(--accent);
+        color: white;
+    }
+
+    /* Loading State */
+    .loading-sessions {
+        text-align: center;
+        padding: 40px;
+        color: var(--text-light);
+    }
+
+    .loading-sessions .spinner {
+        margin: 0 auto 15px;
+    }
+
+    /* Empty State */
+    .no-sessions {
+        text-align: center;
+        padding: 40px;
+        color: var(--text-light);
+    }
+
+    @media (max-width: 1024px) {
+        .dashboard-layout { grid-template-columns: 1fr; }
+        .sidebar { display: none; }
+    }
+
+    @media (max-width: 768px) {
+        .session-item {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 15px;
+        }
+
+        .session-actions {
+            width: 100%;
+        }
+
+        .session-actions .btn-revoke {
+            flex: 1;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+    <aside class="sidebar">
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard">Overview</a></li>
+            <li><a href="/dashboard/signals">Active Signals</a></li>
+            <li><a href="/dashboard/positions">Positions</a></li>
+            <li><a href="/dashboard/history">History</a></li>
+        </ul>
+        <div class="sidebar-section">Analysis</div>
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard/scanner">Live Scanner</a></li>
+            <li><a href="/dashboard/backtest">Backtest</a></li>
+            <li><a href="/performance">Performance</a></li>
+        </ul>
+        <div class="sidebar-section">Settings</div>
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard/alerts">Alerts</a></li>
+            <li><a href="/dashboard/settings">General Settings</a></li>
+            <li><a href="/dashboard/settings/security" class="active">Security</a></li>
+            <li><a href="/api/v1/health" target="_blank">API Status</a></li>
+        </ul>
+    </aside>
+
+    <main class="main-content">
+        <div class="page-header">
+            <h1 class="page-title">Security Settings</h1>
+            <p class="page-subtitle">Manage your account security and active sessions</p>
+        </div>
+
+        <!-- Active Sessions -->
+        <div class="card settings-section">
+            <h3 class="settings-section-title">Active Sessions</h3>
+            <p class="text-muted mb-2">These are the devices currently logged into your account. You can revoke access to any session except your current one.</p>
+
+            <div id="sessions-container">
+                <div class="loading-sessions">
+                    <div class="spinner"></div>
+                    <p>Loading sessions...</p>
+                </div>
+            </div>
+
+            <div class="revoke-all-section" id="revoke-all-section" style="display: none;">
+                <div class="revoke-all-info">
+                    <div class="revoke-all-title">Revoke All Other Sessions</div>
+                    <div class="revoke-all-description">Sign out from all other devices. Your current session will remain active.</div>
+                </div>
+                <button type="button" class="btn btn-danger" onclick="revokeAllSessions()">Revoke All</button>
+            </div>
+        </div>
+
+        <!-- Change Password -->
+        <div class="card settings-section">
+            <h3 class="settings-section-title">Change Password</h3>
+            <form id="password-form" class="password-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="form-group">
+                    <label class="form-label" for="current-password">Current Password</label>
+                    <input type="password" id="current-password" name="current_password" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="new-password">New Password</label>
+                    <input type="password" id="new-password" name="new_password" class="form-control" required minlength="8">
+                    <div class="password-strength">
+                        <div class="password-strength-bar" id="password-strength-bar"></div>
+                    </div>
+                    <div class="password-requirements">
+                        Password must contain:
+                        <ul>
+                            <li id="req-length" class="invalid">At least 8 characters</li>
+                            <li id="req-upper" class="invalid">One uppercase letter</li>
+                            <li id="req-lower" class="invalid">One lowercase letter</li>
+                            <li id="req-number" class="invalid">One number</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="confirm-password">Confirm New Password</label>
+                    <input type="password" id="confirm-password" name="confirm_password" class="form-control" required>
+                    <p class="form-hint" id="password-match-hint"></p>
+                </div>
+                <button type="submit" class="btn btn-primary" id="change-password-btn">Change Password</button>
+            </form>
+        </div>
+
+        <!-- Two-Factor Authentication -->
+        <div class="card settings-section">
+            <h3 class="settings-section-title">Two-Factor Authentication</h3>
+
+            <div class="twofa-status">
+                <div class="twofa-icon disabled" id="twofa-icon">
+                    <span>2FA</span>
+                </div>
+                <div class="twofa-info">
+                    <div class="twofa-title" id="twofa-title">Two-Factor Authentication is Disabled</div>
+                    <div class="twofa-description" id="twofa-description">
+                        Add an extra layer of security to your account by requiring a verification code in addition to your password.
+                    </div>
+                </div>
+            </div>
+
+            <div class="toggle-row">
+                <div class="toggle-info">
+                    <div class="toggle-label">Enable Two-Factor Authentication</div>
+                    <div class="toggle-description">Use an authenticator app to generate verification codes</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="twofa-toggle" onchange="toggle2FA(this.checked)">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <p class="text-muted mt-2" style="font-size: 0.85rem;">
+                <strong>Note:</strong> Two-factor authentication setup is coming soon. When enabled, you'll need to enter a code from your authenticator app each time you log in.
+            </p>
+        </div>
+
+        <!-- Session Security Settings -->
+        <div class="card settings-section">
+            <h3 class="settings-section-title">Session Security</h3>
+
+            <div class="toggle-row">
+                <div class="toggle-info">
+                    <div class="toggle-label">Email on New Login</div>
+                    <div class="toggle-description">Receive an email notification when a new device logs into your account</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="email-on-login" checked>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <div class="toggle-row">
+                <div class="toggle-info">
+                    <div class="toggle-label">Suspicious Activity Alerts</div>
+                    <div class="toggle-description">Get notified about unusual login attempts or account activity</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="suspicious-alerts" checked>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <div class="form-group mt-2">
+                <label class="form-label" for="session-timeout">Session Timeout (days)</label>
+                <select id="session-timeout" class="form-control" style="max-width: 200px;">
+                    <option value="7">7 days</option>
+                    <option value="14">14 days</option>
+                    <option value="30" selected>30 days (default)</option>
+                    <option value="60">60 days</option>
+                    <option value="90">90 days</option>
+                </select>
+                <p class="form-hint">Sessions inactive for longer than this will be automatically logged out</p>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Load sessions on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadSessions();
+    });
+
+    // Load active sessions
+    async function loadSessions() {
+        const container = document.getElementById('sessions-container');
+
+        try {
+            const response = await fetch('/api/sessions', {
+                headers: {
+                    'X-CSRFToken': window.getCSRFToken()
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to load sessions');
+            }
+
+            const data = await response.json();
+            renderSessions(data.sessions);
+
+            // Show revoke all button if more than 1 session
+            if (data.sessions.length > 1) {
+                document.getElementById('revoke-all-section').style.display = 'flex';
+            }
+
+        } catch (error) {
+            console.error('Error loading sessions:', error);
+            container.innerHTML = `
+                <div class="alert alert-danger">
+                    Failed to load sessions. Please refresh the page to try again.
+                </div>
+            `;
+        }
+    }
+
+    // Render sessions list
+    function renderSessions(sessions) {
+        const container = document.getElementById('sessions-container');
+
+        if (!sessions || sessions.length === 0) {
+            container.innerHTML = `
+                <div class="no-sessions">
+                    <p>No active sessions found.</p>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '<div class="session-list">';
+
+        sessions.forEach(session => {
+            const deviceIcon = getDeviceIcon(session.device_info.device_type);
+            const browserInfo = `${session.device_info.browser}${session.device_info.browser_version ? ' ' + session.device_info.browser_version : ''}`;
+            const osInfo = session.device_info.os;
+
+            html += `
+                <div class="session-item ${session.is_current ? 'current-session' : ''}" data-session-id="${session.id}">
+                    <div class="session-info">
+                        <div class="session-device">
+                            <div class="session-device-icon">${deviceIcon}</div>
+                            <div>
+                                <div class="session-device-name">
+                                    ${browserInfo} on ${osInfo}
+                                    ${session.is_current ? '<span class="session-current-badge">Current Session</span>' : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="session-details">
+                            <div class="session-detail">
+                                <span class="session-detail-icon">IP:</span>
+                                <span>${session.ip_masked}</span>
+                            </div>
+                            <div class="session-detail">
+                                <span class="session-detail-icon">Last active:</span>
+                                <span>${formatLastActivity(session.last_activity)}</span>
+                            </div>
+                            <div class="session-detail">
+                                <span class="session-detail-icon">Created:</span>
+                                <span>${formatDate(session.created_at)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="session-actions">
+                        ${session.is_current
+                            ? '<button class="btn-revoke" disabled title="Cannot revoke current session">Current</button>'
+                            : `<button class="btn-revoke" onclick="revokeSession(${session.id})">Revoke</button>`
+                        }
+                    </div>
+                </div>
+            `;
+        });
+
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    // Get device icon based on type
+    function getDeviceIcon(deviceType) {
+        switch (deviceType) {
+            case 'Mobile':
+                return '&#128241;'; // Mobile phone emoji
+            case 'Tablet':
+                return '&#128241;'; // Tablet-like emoji
+            default:
+                return '&#128187;'; // Desktop computer emoji
+        }
+    }
+
+    // Format last activity time
+    function formatLastActivity(timestamp) {
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins} minute${diffMins !== 1 ? 's' : ''} ago`;
+        if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+        if (diffDays < 7) return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+
+        return formatDate(timestamp);
+    }
+
+    // Format date
+    function formatDate(timestamp) {
+        const date = new Date(timestamp);
+        return date.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        });
+    }
+
+    // Revoke a specific session
+    async function revokeSession(sessionId) {
+        if (!confirm('Are you sure you want to revoke this session? The device will be logged out.')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/sessions/revoke/${sessionId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': window.getCSRFToken()
+                }
+            });
+
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || 'Failed to revoke session');
+            }
+
+            // Remove the session from the list
+            const sessionItem = document.querySelector(`[data-session-id="${sessionId}"]`);
+            if (sessionItem) {
+                sessionItem.style.opacity = '0';
+                setTimeout(() => {
+                    sessionItem.remove();
+                    // Check if we should hide the revoke all button
+                    const remainingSessions = document.querySelectorAll('.session-item');
+                    if (remainingSessions.length <= 1) {
+                        document.getElementById('revoke-all-section').style.display = 'none';
+                    }
+                }, 300);
+            }
+
+            showNotification('Session revoked successfully', 'success');
+
+        } catch (error) {
+            console.error('Error revoking session:', error);
+            showNotification(error.message || 'Failed to revoke session', 'error');
+        }
+    }
+
+    // Revoke all other sessions
+    async function revokeAllSessions() {
+        if (!confirm('Are you sure you want to revoke all other sessions? All other devices will be logged out.')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/sessions/revoke-all', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': window.getCSRFToken()
+                }
+            });
+
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || 'Failed to revoke sessions');
+            }
+
+            const data = await response.json();
+
+            // Reload sessions to show only current
+            loadSessions();
+
+            showNotification(`${data.revoked_count} session(s) revoked successfully`, 'success');
+
+        } catch (error) {
+            console.error('Error revoking sessions:', error);
+            showNotification(error.message || 'Failed to revoke sessions', 'error');
+        }
+    }
+
+    // Password strength checker
+    const newPasswordInput = document.getElementById('new-password');
+    const confirmPasswordInput = document.getElementById('confirm-password');
+    const strengthBar = document.getElementById('password-strength-bar');
+
+    newPasswordInput.addEventListener('input', function() {
+        const password = this.value;
+        const strength = checkPasswordStrength(password);
+
+        // Update strength bar
+        strengthBar.className = 'password-strength-bar ' + strength.level;
+
+        // Update requirements
+        document.getElementById('req-length').className = password.length >= 8 ? 'valid' : 'invalid';
+        document.getElementById('req-upper').className = /[A-Z]/.test(password) ? 'valid' : 'invalid';
+        document.getElementById('req-lower').className = /[a-z]/.test(password) ? 'valid' : 'invalid';
+        document.getElementById('req-number').className = /\d/.test(password) ? 'valid' : 'invalid';
+
+        checkPasswordMatch();
+    });
+
+    confirmPasswordInput.addEventListener('input', checkPasswordMatch);
+
+    function checkPasswordStrength(password) {
+        let score = 0;
+
+        if (password.length >= 8) score++;
+        if (password.length >= 12) score++;
+        if (/[A-Z]/.test(password)) score++;
+        if (/[a-z]/.test(password)) score++;
+        if (/\d/.test(password)) score++;
+        if (/[^A-Za-z0-9]/.test(password)) score++;
+
+        if (score <= 2) return { level: 'weak', text: 'Weak' };
+        if (score <= 3) return { level: 'fair', text: 'Fair' };
+        if (score <= 4) return { level: 'good', text: 'Good' };
+        return { level: 'strong', text: 'Strong' };
+    }
+
+    function checkPasswordMatch() {
+        const hint = document.getElementById('password-match-hint');
+        const newPass = newPasswordInput.value;
+        const confirmPass = confirmPasswordInput.value;
+
+        if (!confirmPass) {
+            hint.textContent = '';
+            hint.className = 'form-hint';
+        } else if (newPass === confirmPass) {
+            hint.textContent = 'Passwords match';
+            hint.className = 'form-hint text-success';
+        } else {
+            hint.textContent = 'Passwords do not match';
+            hint.className = 'form-hint text-danger';
+        }
+    }
+
+    // Password change form submission
+    document.getElementById('password-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const newPass = newPasswordInput.value;
+        const confirmPass = confirmPasswordInput.value;
+
+        // Validate passwords match
+        if (newPass !== confirmPass) {
+            showNotification('Passwords do not match', 'error');
+            return;
+        }
+
+        // Validate password strength
+        const strength = checkPasswordStrength(newPass);
+        if (strength.level === 'weak') {
+            showNotification('Please choose a stronger password', 'error');
+            return;
+        }
+
+        const btn = document.getElementById('change-password-btn');
+        btn.disabled = true;
+        btn.textContent = 'Changing...';
+
+        try {
+            const formData = new FormData(this);
+
+            const response = await fetch('/api/change-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': window.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    current_password: formData.get('current_password'),
+                    new_password: formData.get('new_password')
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to change password');
+            }
+
+            showNotification('Password changed successfully', 'success');
+            this.reset();
+            strengthBar.className = 'password-strength-bar';
+            document.querySelectorAll('.password-requirements li').forEach(li => li.className = 'invalid');
+
+        } catch (error) {
+            console.error('Error changing password:', error);
+            showNotification(error.message || 'Failed to change password', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Change Password';
+        }
+    });
+
+    // Toggle 2FA (placeholder)
+    function toggle2FA(enabled) {
+        const icon = document.getElementById('twofa-icon');
+        const title = document.getElementById('twofa-title');
+        const description = document.getElementById('twofa-description');
+
+        if (enabled) {
+            // Show coming soon message
+            showNotification('Two-factor authentication setup is coming soon!', 'info');
+            // Reset toggle
+            document.getElementById('twofa-toggle').checked = false;
+        }
+    }
+
+    // Show notification
+    function showNotification(message, type) {
+        // Remove existing notifications
+        const existing = document.querySelector('.notification-toast');
+        if (existing) existing.remove();
+
+        const toast = document.createElement('div');
+        toast.className = `notification-toast alert alert-${type === 'error' ? 'danger' : type === 'info' ? 'info' : 'success'}`;
+        toast.style.cssText = `
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 1000;
+            min-width: 300px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            animation: slideIn 0.3s ease;
+        `;
+        toast.textContent = message;
+
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.animation = 'slideOut 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    // Add animation styles
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
+        }
+    `;
+    document.head.appendChild(style);
+</script>
+{% endblock %}

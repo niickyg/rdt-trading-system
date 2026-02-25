@@ -95,7 +95,7 @@ class RiskMetrics:
 class RiskLimits:
     """Risk limit configuration"""
     # Per-trade limits
-    max_risk_per_trade: float = 0.01  # 1% of account
+    max_risk_per_trade: float = 0.015  # 1.5% of account (was 0.01 / 1%)
     max_position_size: float = 0.10  # 10% of account
     min_risk_reward: float = 2.0  # 2:1 R/R minimum
 
@@ -104,7 +104,7 @@ class RiskLimits:
     max_daily_trades: int = 10  # Maximum trades per day
 
     # Portfolio limits
-    max_open_positions: int = 5
+    max_open_positions: int = 8  # Was 5 — allow more concurrent positions
     max_total_exposure: float = 0.50  # 50% of account
     max_sector_exposure: float = 0.25  # 25% in any sector
     max_correlated_positions: int = 3
