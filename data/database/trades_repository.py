@@ -334,15 +334,11 @@ class TradesRepository:
             return []
 
     def get_position_by_symbol(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Get a position by symbol."""
-        try:
-            with self.db_manager.get_session() as session:
-                position = session.query(Position).filter(Position.symbol == symbol.upper()).first()
-                if position:
-                    return self._position_to_dict(position)
-                return None
-        except Exception as e:
-            logger.error(f"Error getting position for {symbol}: {e}")
+        """Get a position by symbol. Raises on DB error (caller must handle)."""
+        with self.db_manager.get_session() as session:
+            position = session.query(Position).filter(Position.symbol == symbol.upper()).first()
+            if position:
+                return self._position_to_dict(position)
             return None
 
     def update_position(self, position_id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -475,6 +471,10 @@ class TradesRepository:
         except Exception as e:
             logger.error(f"Error getting options positions: {e}")
             return []
+
+    def get_options_positions(self) -> List[Dict[str, Any]]:
+        """Backward-compatible alias used by agents expecting this method name."""
+        return self.get_all_options_positions()
 
     def get_options_position_by_symbol(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get an options position by underlying symbol."""
@@ -808,6 +808,9 @@ class TradesRepository:
                     'price': float(r.price) if r.price else 0,
                     'timestamp': r.timestamp.isoformat() if r.timestamp else None,
                     'rejection_reasons': r.rejection_reasons,
+                    'price_after_1h': r.price_after_1h,
+                    'price_after_4h': r.price_after_4h,
+                    'price_after_1d': r.price_after_1d,
                 } for r in records]
         except Exception as e:
             logger.error(f"Error getting pending rejected signals: {e}")

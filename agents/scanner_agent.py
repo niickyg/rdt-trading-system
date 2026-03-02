@@ -121,7 +121,7 @@ class ScannerAgent(ScheduledAgent):
             scan_start = time.monotonic()
 
             # Get SPY data first (benchmark) via batch API
-            spy_batch = await self.data_provider.get_batch_stock_data(["SPY"])
+            spy_batch = await self.data_provider.get_batch_stock_data(["SPY"]) or {}
             spy_raw = spy_batch.get("SPY")
             if not spy_raw:
                 logger.error("Failed to get SPY data, skipping scan")
@@ -137,9 +137,20 @@ class ScannerAgent(ScheduledAgent):
 
             # Batch fetch all watchlist symbols at once
             fetch_start = time.monotonic()
-            batch_data = await self.data_provider.get_batch_stock_data(self.watchlist)
+            batch_data = await self.data_provider.get_batch_stock_data(self.watchlist) or {}
             fetch_elapsed = time.monotonic() - fetch_start
             logger.info(f"Batch fetch: {len(batch_data)}/{len(self.watchlist)} symbols in {fetch_elapsed:.1f}s")
+
+            if not batch_data:
+                logger.warning("Batch fetch returned no data; skipping this scan cycle")
+                if span:
+                    span.set_attribute("scanner.error", "empty_batch_data")
+                return
+
+            # Abort if market closed during the fetch
+            if self.state != AgentState.RUNNING:
+                logger.warning(f"Scanner: aborting scan — agent state is {self.state.value} (market likely closed during fetch)")
+                return
 
             # Process locally — no API calls, no sleeps
             scanned_count = 0
@@ -165,6 +176,11 @@ class ScannerAgent(ScheduledAgent):
             # Sort by RRS strength
             strong_rs.sort(key=lambda x: x["rrs"], reverse=True)
             strong_rw.sort(key=lambda x: x["rrs"])
+
+            # Abort if market closed during processing
+            if self.state != AgentState.RUNNING:
+                logger.warning(f"Scanner: aborting signal publishing — agent state is {self.state.value}")
+                return
 
             # Publish signals
             for signal in strong_rs[:5]:  # Top 5 RS
