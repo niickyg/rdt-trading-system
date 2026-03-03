@@ -883,6 +883,13 @@ class RealTimeScanner:
             Dict with SPY data or None if extraction fails
         """
         try:
+            if batch_5m is None or batch_daily is None:
+                logger.warning("SCAN_WARN[BATCH_DATA_NONE] SPY extraction skipped due to missing batch data")
+                return None
+            if batch_5m.empty or batch_daily.empty:
+                logger.warning("SCAN_WARN[BATCH_DATA_EMPTY] SPY extraction skipped due to empty batch data")
+                return None
+
             # Extract SPY data from batch (multi-level columns: ticker -> OHLCV)
             if 'SPY' in batch_5m.columns.get_level_values(0):
                 spy_5m = batch_5m['SPY'].dropna(how='all')
@@ -930,9 +937,19 @@ class RealTimeScanner:
             Dict with stock data or None if extraction fails
         """
         try:
+            if batch_5m is None or batch_daily is None:
+                logger.debug(f"SCAN_WARN[BATCH_DATA_NONE] {symbol}: missing batch data")
+                return None
+            if batch_5m.empty or batch_daily.empty:
+                logger.debug(f"SCAN_WARN[BATCH_DATA_EMPTY] {symbol}: empty batch data")
+                return None
+
             # Check if symbol exists in the batch data
             if symbol not in batch_5m.columns.get_level_values(0):
                 logger.debug(f"{symbol} not found in batch data")
+                return None
+            if symbol not in batch_daily.columns.get_level_values(0):
+                logger.debug(f"{symbol} missing in daily batch data")
                 return None
 
             # Extract stock data from multi-level columns
@@ -1167,6 +1184,10 @@ class RealTimeScanner:
             Dict with RRS analysis
         """
         try:
+            if self.spy_data is None:
+                logger.warning(f"No SPY data available, skipping RRS for {symbol}")
+                return None
+
             # Calculate current RRS
             rrs_data = self.rrs_calc.calculate_rrs_current(
                 stock_data={

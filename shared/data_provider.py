@@ -2,10 +2,10 @@
 Data Provider
 Unified interface for market data
 
-Uses yahooquery (async mode) for fast bulk fetching:
-- Daily history loaded once at startup, refreshed once per day (~33s for 503 symbols)
-- Bulk quotes fetched each scan cycle (~26s for 503 symbols)
-- Individual yfinance fallback for single-symbol requests
+- Streaming quotes from IBKR for actively subscribed symbols (~95 at a time)
+- IBKR snapshot quotes for remaining symbols (no Yahoo dependency)
+- Daily history loaded once at startup via yahooquery (~33s for 503 symbols)
+- yfinance fallback only when IBKR is unavailable
 """
 
 # Fix curl_cffi chrome136 impersonation issue in Docker
@@ -37,9 +37,10 @@ class DataProvider:
     Unified market data provider
 
     Supports:
-    - Bulk quotes via yahooquery (async) for fast 500-symbol scans
-    - Daily history caching (loaded once, refreshed daily)
-    - Individual stock fetching via yfinance (fallback)
+    - IBKR streaming quotes (active rotation group, ~95 symbols)
+    - IBKR snapshot quotes (remaining symbols, chunked in batches of 50)
+    - Daily history caching via yahooquery (loaded once, refreshed daily)
+    - yfinance fallback when IBKR is unavailable
     """
 
     MAX_CACHE_SIZE = 600
@@ -73,11 +74,14 @@ class DataProvider:
         self._broker = broker
         logger.info(f"DataProvider: broker set ({type(broker).__name__})")
 
-    async def _run_in_thread(self, func, *args):
+    async def _run_in_thread(self, func, *args, timeout=120):
         """Run a sync function in a separate thread, compatible with ib_insync.
 
         Uses threading.Thread directly instead of loop.run_in_executor to
         avoid deadlocks when ib_insync is managing the event loop.
+
+        Args:
+            timeout: Maximum seconds to wait before abandoning the thread.
         """
         result = [None]
         error = [None]
@@ -92,8 +96,15 @@ class DataProvider:
         thread.start()
 
         # Poll until thread completes, yielding control to the event loop
+        import time as _time
+        start = _time.monotonic()
         while thread.is_alive():
-            await asyncio.sleep(0.5)
+            if _time.monotonic() - start > timeout:
+                logger.warning(
+                    f"DATA_WARN[THREAD_TIMEOUT] _run_in_thread timed out after {timeout}s for {func.__name__}"
+                )
+                return None
+            await asyncio.sleep(0.1)
 
         if error[0] is not None:
             raise error[0]
@@ -269,9 +280,12 @@ class DataProvider:
             history = await self._run_in_thread(
                 self._fetch_bulk_history_sync, uncached
             )
-            self._daily_history.update(history)
+            if history:
+                self._daily_history.update(history)
+                logger.info(f"Daily history loaded: {len(history)} symbols")
+            else:
+                logger.warning("Daily history fetch returned no data")
             self._daily_history_loaded_at = datetime.now()
-            logger.info(f"Daily history loaded: {len(history)} symbols")
         else:
             # Load history for any new symbols not yet in the store
             missing = [s for s in uncached if s not in self._daily_history]
@@ -280,18 +294,66 @@ class DataProvider:
                 history = await self._run_in_thread(
                     self._fetch_bulk_history_sync, missing
                 )
-                self._daily_history.update(history)
+                if history:
+                    self._daily_history.update(history)
 
-        # Step 2: Fetch current quotes — prefer IBKR, fall back to yfinance
-        # NOTE: IBKR quotes run on the main thread (ib_insync is not thread-safe)
+        # Step 2: Fetch current quotes — prefer streaming, then snapshots, then yfinance
+        quotes = {}
         if self._broker and hasattr(self._broker, 'is_connected') and self._broker.is_connected:
-            quotes = self._fetch_ibkr_quotes(uncached)
-            if len(quotes) < len(uncached) * 0.5:
-                logger.warning(f"IBKR returned only {len(quotes)}/{len(uncached)} quotes, supplementing with yfinance")
-                yf_quotes = await self._run_in_thread(self._fetch_bulk_quotes_sync, [s for s in uncached if s not in quotes])
-                quotes.update(yf_quotes)
+            # Try streaming cache first (instant, no API calls)
+            if hasattr(self._broker, 'has_streaming') and self._broker.has_streaming:
+                streaming_quotes = self._broker.get_streaming_quotes(uncached)
+                if not isinstance(streaming_quotes, dict):
+                    logger.warning(
+                        "DATA_WARN[STREAMING_QUOTES_INVALID] Streaming quotes were not a dict; continuing with snapshots"
+                    )
+                    streaming_quotes = {}
+                for sym, q in streaming_quotes.items():
+                    price = q.last if q.last and q.last > 0 else (q.bid if q.bid and q.bid > 0 else 0)
+                    if price > 0:
+                        norm_sym = sym.upper().replace(" ", "-")  # Reverse IBKR normalization
+                        orig_sym = sym if sym in uncached else norm_sym if norm_sym in uncached else sym
+                        quotes[orig_sym] = {
+                            "price": price,
+                            "previous_close": q.prev_close if q.prev_close and q.prev_close > 0 else price,
+                            "volume": q.volume if q.volume else 0,
+                        }
+                logger.info(f"Streaming cache: {len(quotes)}/{len(uncached)} quotes")
+
+                # Trigger rotation for next scan cycle
+                self._broker.rotate_streaming()
+
+            # Fill missing symbols with IBKR snapshots
+            missing = [s for s in uncached if s not in quotes]
+            if missing:
+                logger.info(f"Streaming covered {len(quotes)}/{len(uncached)}, fetching {len(missing)} via IBKR snapshots")
+                ibkr_quotes = await self._run_in_thread(self._fetch_ibkr_quotes, missing)
+                if not isinstance(ibkr_quotes, dict):
+                    logger.warning(
+                        "DATA_WARN[IBKR_QUOTES_TIMEOUT] IBKR snapshot fetch timed out or returned invalid data; using empty result"
+                    )
+                    ibkr_quotes = {}
+                quotes.update(ibkr_quotes)
+
+                # Fallback to yfinance for any still missing (IBKR failures)
+                still_missing = [s for s in missing if s not in ibkr_quotes]
+                if still_missing:
+                    logger.info(f"IBKR snapshots missed {len(still_missing)}, falling back to yfinance")
+                    yf_quotes = await self._run_in_thread(self._fetch_bulk_quotes_sync, still_missing)
+                    if not isinstance(yf_quotes, dict):
+                        logger.warning(
+                            "DATA_WARN[YF_FALLBACK_INVALID] yfinance fallback returned invalid data; using empty result"
+                        )
+                        yf_quotes = {}
+                    quotes.update(yf_quotes)
         else:
+            # No broker connected — use yfinance
             quotes = await self._run_in_thread(self._fetch_bulk_quotes_sync, uncached)
+            if not isinstance(quotes, dict):
+                logger.warning(
+                    "DATA_WARN[YF_QUOTES_INVALID] yfinance quote fetch returned invalid data; using empty result"
+                )
+                quotes = {}
         logger.info(f"Bulk quotes fetched: {len(quotes)} symbols")
 
         # Step 3: Merge quotes + daily history into standard data dict
@@ -334,11 +396,15 @@ class DataProvider:
 
     def _fetch_ibkr_quotes(self, symbols: List[str]) -> Dict[str, Dict]:
         """
-        Fetch current quotes via IBKR delayed snapshots in chunks of 50.
+        Fetch current quotes via IBKR snapshots in chunks of 50.
 
+        Uses live or delayed data depending on IBKR_MARKET_DATA_TYPE config.
         Returns dict mapping symbol -> {price, previous_close, volume}.
         Must be called on the main thread (ib_insync is not thread-safe).
         """
+        if not symbols:
+            return {}
+
         results = {}
         chunk_size = 50
         chunks = [symbols[i:i + chunk_size] for i in range(0, len(symbols), chunk_size)]
@@ -355,16 +421,25 @@ class DataProvider:
         for idx, chunk in enumerate(chunks):
             try:
                 ibkr_quotes = self._broker.get_quotes(chunk)
+                if not isinstance(ibkr_quotes, dict):
+                    logger.warning(
+                        f"DATA_WARN[IBKR_CHUNK_INVALID] IBKR quotes chunk {idx + 1}/{len(chunks)} returned invalid type"
+                    )
+                    continue
                 for sym, quote in ibkr_quotes.items():
-                    if quote.last and quote.last > 0 and quote.prev_close and quote.prev_close > 0:
+                    price = quote.last if quote.last and quote.last > 0 else (quote.bid if quote.bid and quote.bid > 0 else 0)
+                    if price > 0:
                         orig_sym = norm_to_orig.get(sym, sym)
                         results[orig_sym] = {
-                            "price": quote.last,
-                            "previous_close": quote.prev_close,
-                            "volume": quote.volume,
+                            "price": price,
+                            "previous_close": quote.prev_close if quote.prev_close and quote.prev_close > 0 else price,
+                            "volume": quote.volume if quote.volume else 0,
                         }
             except Exception as e:
-                logger.warning(f"IBKR quotes chunk {idx + 1}/{len(chunks)} failed: {e}")
+                code = "IBKR_CHUNK_TIMEOUT" if "timeout" in str(e).lower() else "IBKR_CHUNK_ERROR"
+                logger.warning(
+                    f"DATA_WARN[{code}] IBKR quotes chunk {idx + 1}/{len(chunks)} failed: {e}"
+                )
         logger.info(f"IBKR quotes fetched: {len(results)}/{len(symbols)} symbols")
         return results
 
@@ -491,7 +566,7 @@ class DataProvider:
         Returns dict with 'price', 'volume', 'high', 'low', 'open', 'prev_close'
         or None if the symbol is not in cache.
         """
-        cache_key = f"stock_{symbol.upper()}"
+        cache_key = f"stock_{symbol}"
         data = self._cache.get(cache_key)
         if data is not None:
             return {
