@@ -1,220 +1,377 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title }} - Professional Trading Signals</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            line-height: 1.6;
-            color: #333;
-        }
-        .hero {
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            color: white;
-            padding: 100px 20px;
-            text-align: center;
-        }
-        .hero h1 { font-size: 3rem; margin-bottom: 20px; }
-        .hero p { font-size: 1.3rem; opacity: 0.9; max-width: 600px; margin: 0 auto 30px; }
-        .cta-button {
-            background: #4CAF50;
-            color: white;
-            padding: 15px 40px;
-            font-size: 1.2rem;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            margin: 10px;
-        }
-        .cta-button:hover { background: #45a049; }
-        .cta-button.secondary { background: transparent; border: 2px solid white; }
-        .cta-button.secondary:hover { background: rgba(255,255,255,0.1); }
+{% extends "base.html" %}
 
-        .stats {
-            display: flex;
-            justify-content: center;
-            gap: 60px;
-            margin-top: 50px;
-            flex-wrap: wrap;
-        }
-        .stat { text-align: center; }
-        .stat-value { font-size: 2.5rem; font-weight: bold; color: #4CAF50; }
-        .stat-label { font-size: 0.9rem; opacity: 0.8; }
+{% block title %}RDT Trading System - Automated Trading Signals{% endblock %}
 
-        .features {
-            padding: 80px 20px;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        .features h2 { text-align: center; font-size: 2rem; margin-bottom: 50px; }
-        .feature-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 30px;
-        }
-        .feature-card {
-            background: #f8f9fa;
-            padding: 30px;
-            border-radius: 10px;
-            text-align: center;
-        }
-        .feature-card h3 { margin-bottom: 15px; color: #1a1a2e; }
-        .feature-icon { font-size: 3rem; margin-bottom: 15px; }
+{% block extra_css %}
+<style>
+    .hero {
+        background: linear-gradient(135deg, #0a0e17 0%, #111827 60%, #0f172a 100%);
+        padding: 100px 20px 80px;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+    .hero::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: radial-gradient(ellipse at 50% 0%, rgba(59,130,246,0.08) 0%, transparent 70%);
+        pointer-events: none;
+    }
+    .hero h1 {
+        font-size: 3.2rem;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        margin-bottom: 20px;
+        line-height: 1.1;
+        max-width: 700px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    .hero h1 span { color: #3b82f6; }
+    .hero .subtitle {
+        font-size: 1.2rem;
+        color: #9ca3af;
+        max-width: 600px;
+        margin: 0 auto 35px;
+    }
+    .hero-ctas { display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; }
+    .cta-primary {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        color: white;
+        padding: 16px 36px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+        transition: all 0.2s;
+        box-shadow: 0 4px 14px rgba(37,99,235,0.3);
+    }
+    .cta-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(37,99,235,0.4); color: white; text-decoration: none; }
+    .cta-secondary {
+        padding: 16px 36px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        border: 1px solid #334155;
+        border-radius: 10px;
+        color: #e5e7eb;
+        text-decoration: none;
+        display: inline-block;
+        transition: all 0.2s;
+        background: transparent;
+    }
+    .cta-secondary:hover { background: rgba(255,255,255,0.04); border-color: #475569; color: white; text-decoration: none; }
 
-        .how-it-works {
-            background: #f8f9fa;
-            padding: 80px 20px;
-        }
-        .how-it-works h2 { text-align: center; margin-bottom: 50px; }
-        .steps {
-            display: flex;
-            justify-content: center;
-            gap: 40px;
-            flex-wrap: wrap;
-            max-width: 1000px;
-            margin: 0 auto;
-        }
-        .step {
-            text-align: center;
-            max-width: 250px;
-        }
-        .step-number {
-            width: 50px;
-            height: 50px;
-            background: #4CAF50;
-            color: white;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-            margin: 0 auto 15px;
-        }
+    .social-proof {
+        display: flex;
+        justify-content: center;
+        gap: 60px;
+        padding: 40px 20px;
+        background: #111827;
+        border-top: 1px solid #1e293b;
+        border-bottom: 1px solid #1e293b;
+        flex-wrap: wrap;
+    }
+    .proof-item { text-align: center; }
+    .proof-value { font-size: 2rem; font-weight: 700; color: #22c55e; font-variant-numeric: tabular-nums; }
+    .proof-label { font-size: 0.85rem; color: #6b7280; margin-top: 4px; }
 
-        .pricing-preview {
-            padding: 80px 20px;
-            text-align: center;
-        }
-        .pricing-preview h2 { margin-bottom: 20px; }
-        .pricing-preview p { max-width: 600px; margin: 0 auto 30px; }
+    .section { padding: 80px 20px; max-width: 1200px; margin: 0 auto; }
+    .section-title { text-align: center; font-size: 2rem; font-weight: 700; margin-bottom: 16px; }
+    .section-subtitle { text-align: center; color: #9ca3af; max-width: 600px; margin: 0 auto 50px; font-size: 1rem; }
 
-        footer {
-            background: #1a1a2e;
-            color: white;
-            padding: 40px 20px;
-            text-align: center;
-        }
-        footer a { color: #4CAF50; }
-    </style>
-</head>
-<body>
-    <section class="hero">
-        <h1>RDT Trading Signals</h1>
-        <p>{{ tagline }}</p>
-        <a href="/pricing" class="cta-button">Start Free Trial</a>
-        <a href="/performance" class="cta-button secondary">View Performance</a>
+    .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 24px;
+    }
+    .feature-card {
+        background: #111827;
+        border: 1px solid #1e293b;
+        padding: 30px;
+        border-radius: 14px;
+        transition: all 0.2s;
+    }
+    .feature-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0,0,0,0.3); border-color: rgba(59,130,246,0.15); }
+    .feature-card .icon { font-size: 2.4rem; margin-bottom: 14px; }
+    .feature-card h3 { font-size: 1.1rem; margin-bottom: 10px; }
+    .feature-card p { color: #9ca3af; font-size: 0.9rem; line-height: 1.6; }
 
-        <div class="stats">
-            <div class="stat">
-                <div class="stat-value">215+</div>
-                <div class="stat-label">Signals/Year</div>
+    .strategies-section { background: #111827; border-top: 1px solid #1e293b; border-bottom: 1px solid #1e293b; }
+    .strategy-list {
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        flex-wrap: wrap;
+    }
+    .strategy-item {
+        background: #0a0e17;
+        border: 1px solid #1e293b;
+        border-radius: 10px;
+        padding: 24px;
+        width: 200px;
+        text-align: center;
+        transition: all 0.2s;
+    }
+    .strategy-item:hover { border-color: rgba(59,130,246,0.2); transform: translateY(-2px); }
+    .strat-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 6px;
+    }
+    .strategy-item h4 { font-size: 0.95rem; margin-bottom: 8px; }
+    .strategy-item p { font-size: 0.8rem; color: #6b7280; }
+
+    .steps-grid {
+        display: flex;
+        justify-content: center;
+        gap: 40px;
+        flex-wrap: wrap;
+    }
+    .step { text-align: center; max-width: 220px; }
+    .step-num {
+        width: 48px;
+        height: 48px;
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.3rem;
+        font-weight: 700;
+        margin: 0 auto 14px;
+    }
+    .step h3 { font-size: 1rem; margin-bottom: 8px; }
+    .step p { color: #9ca3af; font-size: 0.88rem; }
+
+    .faq-section { max-width: 750px; margin: 0 auto; }
+    .faq-section details {
+        background: #111827;
+        border: 1px solid #1e293b;
+        border-radius: 10px;
+        margin-bottom: 10px;
+        overflow: hidden;
+    }
+    .faq-section summary {
+        padding: 18px 22px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 0.95rem;
+        list-style: none;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .faq-section summary::after { content: '+'; font-size: 1.2rem; color: #6b7280; }
+    .faq-section details[open] summary::after { content: '\2212'; }
+    .faq-section summary::-webkit-details-marker { display: none; }
+    .faq-section .faq-body { padding: 0 22px 18px; color: #9ca3af; font-size: 0.9rem; line-height: 1.6; }
+
+    .final-cta {
+        text-align: center;
+        padding: 80px 20px;
+        background: linear-gradient(135deg, #111827 0%, #0a0e17 100%);
+        border-top: 1px solid #1e293b;
+    }
+    .final-cta h2 { font-size: 2rem; margin-bottom: 16px; }
+    .final-cta p { color: #9ca3af; max-width: 500px; margin: 0 auto 30px; }
+
+    .landing-footer {
+        background: #0d1117;
+        color: #6b7280;
+        padding: 30px 20px;
+        text-align: center;
+        border-top: 1px solid #1e293b;
+        font-size: 0.82rem;
+    }
+    .landing-footer a { color: #3b82f6; text-decoration: none; }
+
+    @media (max-width: 768px) {
+        .hero h1 { font-size: 2rem; }
+        .hero .subtitle { font-size: 1rem; }
+        .social-proof { gap: 30px; }
+        .proof-value { font-size: 1.5rem; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Hero -->
+<section class="hero">
+    <h1>Find High-Probability Trades <span>Before the Crowd</span></h1>
+    <p class="subtitle">Five ML-powered strategies scan the market 24/7, scoring every signal with machine learning confidence — so you trade only the best setups.</p>
+    <div class="hero-ctas">
+        <a href="/register" class="cta-primary">Start Free Trial</a>
+        <a href="/performance" class="cta-secondary">View Performance</a>
+    </div>
+</section>
+
+<!-- Social Proof Bar -->
+<section class="social-proof">
+    <div class="proof-item">
+        <div class="proof-value">5</div>
+        <div class="proof-label">Trading Strategies</div>
+    </div>
+    <div class="proof-item">
+        <div class="proof-value">{{ total_signals or '1,200+' }}</div>
+        <div class="proof-label">Signals Generated</div>
+    </div>
+    <div class="proof-item">
+        <div class="proof-value">{{ total_trades or '500+' }}</div>
+        <div class="proof-label">Trades Executed</div>
+    </div>
+    <div class="proof-item">
+        <div class="proof-value">24/7</div>
+        <div class="proof-label">Automated Scanning</div>
+    </div>
+    <div class="proof-item">
+        <div class="proof-value">IBKR</div>
+        <div class="proof-label">Direct Execution</div>
+    </div>
+</section>
+
+<!-- Features -->
+<section class="section">
+    <h2 class="section-title">A Complete Trading Platform</h2>
+    <p class="section-subtitle">Everything you need to find, analyze, and execute high-probability trades — fully automated.</p>
+    <div class="feature-grid">
+        <div class="feature-card">
+            <div class="icon">&#128200;</div>
+            <h3>Multi-Strategy Engine</h3>
+            <p>Five distinct strategies — RRS Momentum, RSI(2) Mean Reversion, Trend Breakout, Post-Earnings Drift, and Gap Fill — each with independent capital allocation and risk limits.</p>
+        </div>
+        <div class="feature-card">
+            <div class="icon">&#129302;</div>
+            <h3>ML Confidence Scoring</h3>
+            <p>Per-strategy GradientBoosting models score every signal. Adaptive learning adjusts parameters based on recent performance and market regime.</p>
+        </div>
+        <div class="feature-card">
+            <div class="icon">&#128202;</div>
+            <h3>Options Trading</h3>
+            <p>Full options support — calls, puts, vertical spreads, and iron condors. IV regime detection selects optimal strategies with delta-based strike picking.</p>
+        </div>
+        <div class="feature-card">
+            <div class="icon">&#9201;</div>
+            <h3>Real-Time Scanner</h3>
+            <p>Continuous market scanning with multi-timeframe analysis. Live updates push signals to your dashboard the moment they trigger.</p>
+        </div>
+        <div class="feature-card">
+            <div class="icon">&#128176;</div>
+            <h3>Built-In Risk Management</h3>
+            <p>Per-strategy position limits, daily loss caps, portfolio-wide drawdown controls, and automatic position sizing on every trade.</p>
+        </div>
+        <div class="feature-card">
+            <div class="icon">&#128187;</div>
+            <h3>Professional Dashboard</h3>
+            <p>Dark-themed trading dashboard with live positions, trade journal, strategy analytics, backtesting, and real-time P&L tracking.</p>
+        </div>
+    </div>
+</section>
+
+<!-- Strategies -->
+<section class="strategies-section">
+    <div class="section" style="padding-top:80px;padding-bottom:80px;">
+        <h2 class="section-title">Five Strategies, One System</h2>
+        <p class="section-subtitle">Each strategy targets a different market edge with independent capital allocation and ML-optimized parameters.</p>
+        <div class="strategy-list">
+            <div class="strategy-item">
+                <h4><span class="strat-dot" style="background:#3b82f6"></span>RRS Momentum</h4>
+                <p>Real Relative Strength vs SPY. Catches momentum before the crowd.</p>
             </div>
-            <div class="stat">
-                <div class="stat-value">38%</div>
-                <div class="stat-label">Win Rate</div>
+            <div class="strategy-item">
+                <h4><span class="strat-dot" style="background:#22c55e"></span>RSI(2) Mean Rev</h4>
+                <p>Oversold bounces on strong stocks. Short-term mean reversion plays.</p>
             </div>
-            <div class="stat">
-                <div class="stat-value">1.29</div>
-                <div class="stat-label">Profit Factor</div>
+            <div class="strategy-item">
+                <h4><span class="strat-dot" style="background:#f59e0b"></span>Trend Breakout</h4>
+                <p>Breakouts from consolidation with volume confirmation.</p>
             </div>
-            <div class="stat">
-                <div class="stat-value">2.4%</div>
-                <div class="stat-label">Max Drawdown</div>
+            <div class="strategy-item">
+                <h4><span class="strat-dot" style="background:#a855f7"></span>Post-Earnings</h4>
+                <p>Post-earnings announcement drift. Captures continuation after surprises.</p>
+            </div>
+            <div class="strategy-item">
+                <h4><span class="strat-dot" style="background:#ef4444"></span>Gap Fill</h4>
+                <p>Overnight gap reversals. Fades overextended gap moves intraday.</p>
             </div>
         </div>
-    </section>
+    </div>
+</section>
 
-    <section class="features">
-        <h2>Why RDT Signals?</h2>
-        <div class="feature-grid">
-            <div class="feature-card">
-                <div class="feature-icon">&#128200;</div>
-                <h3>Real Relative Strength</h3>
-                <p>Our proprietary RRS algorithm identifies stocks outperforming SPY in real-time, catching momentum before the crowd.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">&#9201;</div>
-                <h3>Real-Time Alerts</h3>
-                <p>Get notified instantly when high-probability setups emerge. Email, SMS, or API - your choice.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">&#128202;</div>
-                <h3>Backtested Strategy</h3>
-                <p>Every signal follows rules validated across 180+ parameter combinations and 365 days of historical data.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">&#128176;</div>
-                <h3>Risk Management Built-In</h3>
-                <p>Every signal includes entry, stop loss, and target prices. Know your risk before you trade.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">&#128640;</div>
-                <h3>Leveraged ETF Signals</h3>
-                <p>Pro tier includes TQQQ, SOXL, and other leveraged ETF signals for amplified returns.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">&#128187;</div>
-                <h3>Developer API</h3>
-                <p>Full REST API access for Pro users. Build your own trading bots or integrate with existing systems.</p>
-            </div>
+<!-- How It Works -->
+<section class="section">
+    <h2 class="section-title">How It Works</h2>
+    <p class="section-subtitle">From scan to execution in seconds — fully automated.</p>
+    <div class="steps-grid">
+        <div class="step">
+            <div class="step-num">1</div>
+            <h3>Scanner Runs</h3>
+            <p>Automated agents continuously scan 150+ liquid stocks across all five strategies</p>
         </div>
-    </section>
-
-    <section class="how-it-works">
-        <h2>How It Works</h2>
-        <div class="steps">
-            <div class="step">
-                <div class="step-number">1</div>
-                <h3>Subscribe</h3>
-                <p>Choose the plan that fits your trading style</p>
-            </div>
-            <div class="step">
-                <div class="step-number">2</div>
-                <h3>Receive Signals</h3>
-                <p>Get alerts via email, SMS, or API</p>
-            </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <h3>Execute Trades</h3>
-                <p>Enter with confidence using our entry/stop/target levels</p>
-            </div>
-            <div class="step">
-                <div class="step-number">4</div>
-                <h3>Manage Risk</h3>
-                <p>Follow our position sizing and exit rules</p>
-            </div>
+        <div class="step">
+            <div class="step-num">2</div>
+            <h3>ML Scores Signals</h3>
+            <p>Machine learning models assign confidence scores and filter low-probability setups</p>
         </div>
-    </section>
+        <div class="step">
+            <div class="step-num">3</div>
+            <h3>Risk Check</h3>
+            <p>Position sizing, correlation limits, and portfolio-level risk checks validate each trade</p>
+        </div>
+        <div class="step">
+            <div class="step-num">4</div>
+            <h3>Auto-Execute</h3>
+            <p>Approved trades execute directly through IBKR with stop and target orders attached</p>
+        </div>
+    </div>
+</section>
 
-    <section class="pricing-preview">
-        <h2>Simple, Transparent Pricing</h2>
-        <p>Start with a 7-day free trial. Cancel anytime. No long-term commitments.</p>
-        <a href="/pricing" class="cta-button">View Pricing</a>
-    </section>
+<!-- FAQ -->
+<section class="section">
+    <h2 class="section-title">Frequently Asked Questions</h2>
+    <p class="section-subtitle">Common questions about how RDT Trading works.</p>
+    <div class="faq-section">
+        <details>
+            <summary>What strategies does the system use?</summary>
+            <div class="faq-body">RDT runs five independent strategies: RRS Momentum, RSI(2) Mean Reversion, Trend Breakout, Post-Earnings Drift, and Gap Fill. Each has its own capital allocation, risk limits, and ML model that adapts to market conditions.</div>
+        </details>
+        <details>
+            <summary>How does the ML scoring work?</summary>
+            <div class="faq-body">Each strategy has a dedicated GradientBoosting model trained on historical data with walk-forward validation. Models score signals 0-100% confidence based on technical features, market regime, and volatility conditions. Only signals above the confidence threshold are executed.</div>
+        </details>
+        <details>
+            <summary>Do I need an Interactive Brokers account?</summary>
+            <div class="faq-body">For live or paper trading execution, yes. IBKR is the sole data source and execution broker. You can start with paper trading to validate the system before committing real capital.</div>
+        </details>
+        <details>
+            <summary>Can I customize risk settings?</summary>
+            <div class="faq-body">Absolutely. You can adjust per-strategy capital allocation, maximum positions, risk per trade, daily loss limits, and maximum drawdown. The dashboard settings page gives you full control over all risk parameters.</div>
+        </details>
+        <details>
+            <summary>Is this financial advice?</summary>
+            <div class="faq-body">No. RDT Trading is a software tool that generates trading signals based on technical analysis and machine learning models. It is not financial advice. All trading involves risk. Past performance does not guarantee future results.</div>
+        </details>
+        <details>
+            <summary>Can I cancel anytime?</summary>
+            <div class="faq-body">Yes. All plans are month-to-month with no long-term commitments. Cancel anytime from your account settings. We also offer a 30-day money-back guarantee if you're not satisfied.</div>
+        </details>
+    </div>
+</section>
 
-    <footer>
-        <p>RDT Trading Signals - Based on r/RealDayTrading methodology</p>
-        <p><a href="/features">Features</a> | <a href="/pricing">Pricing</a> | <a href="/performance">Performance</a> | <a href="/api/v1/health">API Status</a></p>
-        <p style="margin-top: 20px; font-size: 0.8rem; opacity: 0.7;">
-            Trading involves risk. Past performance does not guarantee future results.
-            Not financial advice. Trade at your own risk.
-        </p>
-    </footer>
-</body>
-</html>
+<!-- Final CTA -->
+<section class="final-cta">
+    <h2>Ready to Trade Smarter?</h2>
+    <p>Start with a free trial. No credit card required. See real signals from day one.</p>
+    <a href="/register" class="cta-primary">Start Free Trial</a>
+</section>
+
+<div class="landing-footer">
+    <p>Trading involves risk. Past performance does not guarantee future results. Not financial advice. Trade at your own risk.</p>
+</div>
+{% endblock %}

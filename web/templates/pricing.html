@@ -1,216 +1,341 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pricing - RDT Trading Signals</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            background: #f8f9fa;
-        }
-        header {
-            background: #1a1a2e;
-            padding: 20px;
-            text-align: center;
-        }
-        header a { color: white; text-decoration: none; font-size: 1.5rem; }
+{% extends "base.html" %}
 
-        .pricing-header {
-            text-align: center;
-            padding: 60px 20px 40px;
-        }
-        .pricing-header h1 { font-size: 2.5rem; margin-bottom: 10px; }
-        .pricing-header p { color: #666; font-size: 1.1rem; }
+{% block title %}Pricing - RDT Trading Signals{% endblock %}
 
-        .pricing-grid {
-            display: flex;
-            justify-content: center;
-            gap: 30px;
-            padding: 0 20px 80px;
-            flex-wrap: wrap;
-        }
+{% block extra_css %}
+<style>
+    .pricing-header {
+        text-align: center;
+        padding: 60px 20px 20px;
+    }
+    .pricing-header h1 { font-size: 2.5rem; font-weight: 800; margin-bottom: 10px; letter-spacing: -0.03em; }
+    .pricing-header p { color: #9ca3af; font-size: 1.1rem; }
 
-        .pricing-card {
-            background: white;
-            border-radius: 10px;
-            padding: 40px 30px;
-            width: 320px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            position: relative;
-        }
-        .pricing-card.popular {
-            border: 3px solid #4CAF50;
-            transform: scale(1.05);
-        }
-        .popular-badge {
-            position: absolute;
-            top: -12px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #4CAF50;
-            color: white;
-            padding: 5px 20px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: bold;
-        }
+    /* Billing Toggle */
+    .billing-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        margin: 30px 0 10px;
+    }
+    .billing-toggle span { font-size: 0.95rem; color: #9ca3af; transition: color 0.2s; }
+    .billing-toggle span.active { color: #e5e7eb; font-weight: 600; }
+    .billing-switch {
+        position: relative;
+        width: 50px;
+        height: 26px;
+        background: #334155;
+        border-radius: 13px;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .billing-switch.annual { background: #3b82f6; }
+    .billing-switch::after {
+        content: '';
+        position: absolute;
+        width: 20px;
+        height: 20px;
+        background: white;
+        border-radius: 50%;
+        top: 3px;
+        left: 3px;
+        transition: transform 0.2s;
+    }
+    .billing-switch.annual::after { transform: translateX(24px); }
+    .save-badge {
+        background: rgba(34,197,94,0.15);
+        color: #4ade80;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 0.78rem;
+        font-weight: 600;
+    }
 
-        .plan-name {
-            font-size: 1.5rem;
-            font-weight: bold;
-            margin-bottom: 10px;
-        }
-        .plan-price {
-            font-size: 3rem;
-            font-weight: bold;
-            color: #1a1a2e;
-        }
-        .plan-price span { font-size: 1rem; color: #666; }
+    .pricing-grid {
+        display: flex;
+        justify-content: center;
+        gap: 24px;
+        padding: 30px 20px 60px;
+        flex-wrap: wrap;
+        max-width: 1100px;
+        margin: 0 auto;
+    }
+    .pricing-card {
+        background: #111827;
+        border: 1px solid #1e293b;
+        border-radius: 14px;
+        padding: 36px 28px;
+        width: 320px;
+        position: relative;
+        transition: all 0.2s;
+    }
+    .pricing-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0,0,0,0.3); }
+    .pricing-card.popular {
+        border: 2px solid #3b82f6;
+        transform: scale(1.04);
+        box-shadow: 0 8px 32px rgba(59,130,246,0.15);
+    }
+    .pricing-card.popular:hover { transform: scale(1.04) translateY(-3px); }
+    .popular-badge {
+        position: absolute;
+        top: -12px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        color: white;
+        padding: 5px 20px;
+        border-radius: 20px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+    }
+    .plan-name { font-size: 1.3rem; font-weight: 700; margin-bottom: 8px; }
+    .plan-price { font-size: 2.8rem; font-weight: 800; margin-bottom: 4px; letter-spacing: -0.02em; }
+    .plan-price .period { font-size: 0.95rem; color: #6b7280; font-weight: 400; }
+    .plan-annual-note { font-size: 0.8rem; color: #6b7280; margin-bottom: 20px; min-height: 1.2em; }
+    .plan-features {
+        list-style: none;
+        margin: 24px 0;
+        padding: 0;
+    }
+    .plan-features li {
+        padding: 9px 0;
+        border-bottom: 1px solid rgba(30,41,59,0.6);
+        display: flex;
+        align-items: center;
+        font-size: 0.9rem;
+    }
+    .plan-features li:last-child { border-bottom: none; }
+    .plan-features li::before {
+        content: '\2713';
+        color: #22c55e;
+        font-weight: 700;
+        margin-right: 10px;
+        flex-shrink: 0;
+    }
+    .plan-button {
+        display: block;
+        width: 100%;
+        padding: 14px;
+        text-align: center;
+        text-decoration: none;
+        border-radius: 10px;
+        font-size: 1rem;
+        font-weight: 600;
+        transition: all 0.2s;
+        border: 1px solid #334155;
+        background: #1f2937;
+        color: white;
+    }
+    .plan-button:hover { background: #334155; color: white; text-decoration: none; }
+    .pricing-card.popular .plan-button {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        border-color: transparent;
+        box-shadow: 0 4px 14px rgba(37,99,235,0.3);
+    }
+    .pricing-card.popular .plan-button:hover { box-shadow: 0 6px 20px rgba(37,99,235,0.4); }
 
-        .plan-features {
-            list-style: none;
-            margin: 30px 0;
-            padding: 0;
-        }
-        .plan-features li {
-            padding: 10px 0;
-            border-bottom: 1px solid #eee;
-            display: flex;
-            align-items: center;
-        }
-        .plan-features li:last-child { border-bottom: none; }
-        .plan-features li::before {
-            content: '\\2713';
-            color: #4CAF50;
-            font-weight: bold;
-            margin-right: 10px;
-        }
+    /* Feature Comparison Table */
+    .comparison-section {
+        max-width: 900px;
+        margin: 0 auto 60px;
+        padding: 0 20px;
+    }
+    .comparison-section h2 { text-align: center; font-size: 1.5rem; margin-bottom: 30px; }
+    .comparison-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.88rem;
+    }
+    .comparison-table th, .comparison-table td {
+        padding: 12px 16px;
+        text-align: center;
+        border-bottom: 1px solid #1e293b;
+    }
+    .comparison-table th:first-child, .comparison-table td:first-child { text-align: left; }
+    .comparison-table th { font-weight: 600; color: #9ca3af; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    .comparison-table td { color: #d1d5db; }
+    .check { color: #22c55e; font-weight: 700; }
+    .dash { color: #4b5563; }
 
-        .plan-button {
-            display: block;
-            width: 100%;
-            padding: 15px;
-            background: #1a1a2e;
-            color: white;
-            text-align: center;
-            text-decoration: none;
-            border-radius: 5px;
-            font-size: 1.1rem;
-            transition: background 0.3s;
-        }
-        .plan-button:hover { background: #2d2d4a; }
-        .pricing-card.popular .plan-button { background: #4CAF50; }
-        .pricing-card.popular .plan-button:hover { background: #45a049; }
+    /* Trust Badges */
+    .trust-badges {
+        display: flex;
+        justify-content: center;
+        gap: 40px;
+        padding: 40px 20px;
+        flex-wrap: wrap;
+    }
+    .trust-badge {
+        text-align: center;
+        max-width: 180px;
+    }
+    .trust-badge .icon { font-size: 1.8rem; margin-bottom: 8px; }
+    .trust-badge .label { font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; }
+    .trust-badge .desc { font-size: 0.78rem; color: #6b7280; }
 
-        .guarantee {
-            text-align: center;
-            padding: 40px 20px;
-            background: white;
-            margin: 0 auto;
-            max-width: 600px;
-            border-radius: 10px;
-        }
-        .guarantee h3 { margin-bottom: 10px; }
+    /* FAQ */
+    .pricing-faq { max-width: 750px; margin: 0 auto 60px; padding: 0 20px; }
+    .pricing-faq h2 { text-align: center; font-size: 1.5rem; margin-bottom: 30px; }
+    .pricing-faq details {
+        background: #111827;
+        border: 1px solid #1e293b;
+        border-radius: 10px;
+        margin-bottom: 10px;
+    }
+    .pricing-faq summary {
+        padding: 16px 20px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 0.93rem;
+        list-style: none;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .pricing-faq summary::after { content: '+'; font-size: 1.2rem; color: #6b7280; }
+    .pricing-faq details[open] summary::after { content: '\2212'; }
+    .pricing-faq summary::-webkit-details-marker { display: none; }
+    .pricing-faq .faq-body { padding: 0 20px 16px; color: #9ca3af; font-size: 0.9rem; line-height: 1.6; }
 
-        .faq {
-            max-width: 800px;
-            margin: 60px auto;
-            padding: 0 20px;
-        }
-        .faq h2 { text-align: center; margin-bottom: 40px; }
-        .faq-item {
-            background: white;
-            margin-bottom: 15px;
-            border-radius: 5px;
-            padding: 20px;
-        }
-        .faq-item h4 { margin-bottom: 10px; color: #1a1a2e; }
+    @media (max-width: 768px) {
+        .pricing-card.popular { transform: none; }
+        .pricing-card.popular:hover { transform: translateY(-3px); }
+        .comparison-table { font-size: 0.8rem; }
+        .comparison-table th, .comparison-table td { padding: 8px; }
+    }
+</style>
+{% endblock %}
 
-        footer {
-            background: #1a1a2e;
-            color: white;
-            padding: 30px;
-            text-align: center;
-        }
-        footer a { color: #4CAF50; }
-    </style>
-</head>
-<body>
-    <header>
-        <a href="/">RDT Trading Signals</a>
-    </header>
+{% block content %}
+<section class="pricing-header">
+    <h1>Simple, Transparent Pricing</h1>
+    <p>Start with a 14-day free trial. Cancel anytime. No long-term commitments.</p>
 
-    <section class="pricing-header">
-        <h1>Simple, Transparent Pricing</h1>
-        <p>Start with a 7-day free trial. Cancel anytime.</p>
-    </section>
-
-    <div class="pricing-grid">
-        {% for plan_id, plan in plans.items() %}
-        <div class="pricing-card {% if plan.get('popular') %}popular{% endif %}">
-            {% if plan.get('popular') %}
-            <div class="popular-badge">MOST POPULAR</div>
-            {% endif %}
-            <div class="plan-name">{{ plan.name }}</div>
-            <div class="plan-price">${{ plan.price }}<span>/month</span></div>
-            <ul class="plan-features">
-                {% for feature in plan.features %}
-                <li>{{ feature }}</li>
-                {% endfor %}
-            </ul>
-            <a href="/checkout/{{ plan_id }}" class="plan-button">Start Free Trial</a>
-        </div>
-        {% endfor %}
+    <div class="billing-toggle">
+        <span id="lbl-monthly" class="active">Monthly</span>
+        <div class="billing-switch" id="billing-switch" onclick="toggleBilling()"></div>
+        <span id="lbl-annual">Annual</span>
+        <span class="save-badge">Save 20%</span>
     </div>
+</section>
 
-    <div class="guarantee">
-        <h3>30-Day Money-Back Guarantee</h3>
-        <p>If you're not satisfied with the signal quality within the first 30 days, we'll refund your payment. No questions asked.</p>
+<div class="pricing-grid">
+    {% for plan_id, plan in plans.items() %}
+    <div class="pricing-card {% if plan.get('popular') %}popular{% endif %}">
+        {% if plan.get('popular') %}
+        <div class="popular-badge">MOST POPULAR</div>
+        {% endif %}
+        <div class="plan-name">{{ plan.name }}</div>
+        <div class="plan-price">
+            <span class="price-display" data-monthly="{{ plan.price }}" data-annual="{{ (plan.price * 0.8)|int }}">${{ plan.price }}</span><span class="period">/mo</span>
+        </div>
+        <div class="plan-annual-note price-note"></div>
+        <ul class="plan-features">
+            {% for feature in plan.features %}
+            <li>{{ feature }}</li>
+            {% endfor %}
+        </ul>
+        {% if plan_id == 'elite' %}
+        <a href="mailto:support@rdttrading.com" class="plan-button">Contact Us</a>
+        {% elif plan.get('popular') %}
+        <a href="/register" class="plan-button">Start 14-Day Trial</a>
+        {% else %}
+        <a href="/register" class="plan-button">Start Free</a>
+        {% endif %}
     </div>
+    {% endfor %}
+</div>
 
-    <section class="faq">
-        <h2>Frequently Asked Questions</h2>
+<!-- Feature Comparison -->
+<div class="comparison-section">
+    <h2>Feature Comparison</h2>
+    <table class="comparison-table">
+        <thead>
+            <tr>
+                <th>Feature</th>
+                <th>Basic</th>
+                <th>Pro</th>
+                <th>Elite</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td>Daily email alerts</td><td class="check">&#10003;</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+            <tr><td>Real-time alerts</td><td class="dash">&mdash;</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+            <tr><td>Signal history</td><td>30 days</td><td>1 year</td><td>Unlimited</td></tr>
+            <tr><td>Custom price alerts</td><td class="check">&#10003;</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+            <tr><td>REST API access</td><td class="dash">&mdash;</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+            <tr><td>WebSocket streaming</td><td class="dash">&mdash;</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+            <tr><td>Custom backtesting</td><td class="dash">&mdash;</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+            <tr><td>Options signals</td><td class="dash">&mdash;</td><td class="dash">&mdash;</td><td class="check">&#10003;</td></tr>
+            <tr><td>Strategy consulting</td><td class="dash">&mdash;</td><td class="dash">&mdash;</td><td>2 hr/mo</td></tr>
+            <tr><td>Support</td><td>Email</td><td>Priority</td><td>1-on-1 calls</td></tr>
+        </tbody>
+    </table>
+</div>
 
-        <div class="faq-item">
-            <h4>What is Real Relative Strength (RRS)?</h4>
-            <p>RRS measures how a stock is performing relative to SPY (the overall market), normalized by volatility. Stocks with high RRS are outperforming the market and showing momentum. Our threshold of 1.75+ identifies strong candidates.</p>
-        </div>
+<!-- Trust Badges -->
+<div class="trust-badges">
+    <div class="trust-badge">
+        <div class="icon">&#128274;</div>
+        <div class="label">30-Day Guarantee</div>
+        <div class="desc">Full refund if you're not satisfied. No questions asked.</div>
+    </div>
+    <div class="trust-badge">
+        <div class="icon">&#10060;</div>
+        <div class="label">Cancel Anytime</div>
+        <div class="desc">No lock-in contracts. Cancel with one click.</div>
+    </div>
+    <div class="trust-badge">
+        <div class="icon">&#128179;</div>
+        <div class="label">No Hidden Fees</div>
+        <div class="desc">What you see is what you pay. Period.</div>
+    </div>
+</div>
 
-        <div class="faq-item">
-            <h4>How many signals do you generate?</h4>
-            <p>On average, we generate 15-20 signals per week across our watchlist of 150+ liquid stocks. Pro tier adds leveraged ETF signals for an additional 5-10 signals per week.</p>
-        </div>
+<!-- FAQ -->
+<div class="pricing-faq">
+    <h2>Frequently Asked Questions</h2>
+    <details>
+        <summary>What's included in the free trial?</summary>
+        <div class="faq-body">All features of your selected plan for 14 days. No credit card required to start. You'll have full access to signals, the dashboard, and all tools included in your tier.</div>
+    </details>
+    <details>
+        <summary>Can I switch plans later?</summary>
+        <div class="faq-body">Yes. Upgrade or downgrade anytime from your account settings. Changes take effect at the start of your next billing cycle, and upgrades are prorated.</div>
+    </details>
+    <details>
+        <summary>Do you guarantee profits?</summary>
+        <div class="faq-body">No. Trading involves risk and past performance doesn't guarantee future results. Our strategies are backtested and ML-optimized, but market conditions change and individual results will vary.</div>
+    </details>
+    <details>
+        <summary>Do I need an Interactive Brokers account?</summary>
+        <div class="faq-body">For automated execution, yes. You can also use the signals manually with any broker. The system provides entry, stop, and target prices for each signal.</div>
+    </details>
+    <details>
+        <summary>What payment methods do you accept?</summary>
+        <div class="faq-body">We accept all major credit cards through Stripe. Annual plans can also be paid via wire transfer for enterprise customers.</div>
+    </details>
+</div>
+{% endblock %}
 
-        <div class="faq-item">
-            <h4>What's included with each signal?</h4>
-            <p>Every signal includes: Entry price, Stop loss (0.75x ATR), Target price (1.5x ATR), RRS value, Daily chart analysis, and position sizing recommendation.</p>
-        </div>
-
-        <div class="faq-item">
-            <h4>Can I use the API to automate trading?</h4>
-            <p>Yes! Pro and Elite subscribers get full REST API access. You can integrate our signals with any trading platform that accepts webhooks or API calls.</p>
-        </div>
-
-        <div class="faq-item">
-            <h4>What's the difference between Basic and Pro?</h4>
-            <p>Basic gets daily email digests with next-day signals. Pro gets real-time alerts within seconds of signal generation, plus API access, longer history, and leveraged ETF signals.</p>
-        </div>
-
-        <div class="faq-item">
-            <h4>Do you guarantee profits?</h4>
-            <p>No. Trading involves risk and past performance doesn't guarantee future results. Our signals are based on backtested strategies with a 38% win rate and 1.29 profit factor, but individual results will vary.</p>
-        </div>
-    </section>
-
-    <footer>
-        <p><a href="/">Home</a> | <a href="/features">Features</a> | <a href="/performance">Performance</a></p>
-        <p style="margin-top: 15px; font-size: 0.8rem; opacity: 0.7;">
-            Trading involves substantial risk. Not financial advice.
-        </p>
-    </footer>
-</body>
-</html>
+{% block extra_js %}
+<script>
+    let isAnnual = false;
+    function toggleBilling() {
+        isAnnual = !isAnnual;
+        document.getElementById('billing-switch').classList.toggle('annual', isAnnual);
+        document.getElementById('lbl-monthly').classList.toggle('active', !isAnnual);
+        document.getElementById('lbl-annual').classList.toggle('active', isAnnual);
+        document.querySelectorAll('.price-display').forEach(function(el) {
+            var monthly = el.getAttribute('data-monthly');
+            var annual = el.getAttribute('data-annual');
+            el.textContent = '$' + (isAnnual ? annual : monthly);
+        });
+        document.querySelectorAll('.price-note').forEach(function(el) {
+            el.textContent = isAnnual ? 'Billed annually' : '';
+        });
+    }
+</script>
+{% endblock %}

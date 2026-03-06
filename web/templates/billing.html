@@ -50,7 +50,7 @@
     .plan-card {
         background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
         color: white;
-        border-radius: 15px;
+        border-radius: 12px;
         padding: 30px;
         margin-bottom: 30px;
     }
@@ -94,7 +94,7 @@
         height: 10px;
         border-radius: 50%;
     }
-    .plan-card .status-dot.active { background: #4CAF50; }
+    .plan-card .status-dot.active { background: #22c55e; }
     .plan-card .status-dot.trialing { background: #2196F3; }
     .plan-card .status-dot.past-due { background: #ff9800; }
     .plan-card .status-dot.canceled { background: #f44336; }
@@ -160,7 +160,7 @@
     }
     .plan-option.current {
         border-color: var(--accent);
-        background: rgba(76, 175, 80, 0.05);
+        background: rgba(59, 130, 246, 0.05);
     }
     .plan-option.popular {
         border-color: var(--accent);
@@ -259,28 +259,28 @@
         font-weight: 600;
     }
     .invoice-status.paid {
-        background: #e8f5e9;
-        color: #2e7d32;
+        background: rgba(34,197,94,0.15);
+        color: #22c55e;
     }
     .invoice-status.failed {
-        background: #ffebee;
-        color: #c62828;
+        background: rgba(239,68,68,0.15);
+        color: #ef4444;
     }
 
     .upcoming-invoice {
-        background: #fff3e0;
-        border: 1px solid #ffe0b2;
+        background: rgba(245,158,11,0.15);
+        border: 1px solid rgba(245,158,11,0.3);
         border-radius: 8px;
         padding: 15px 20px;
         margin-bottom: 20px;
     }
     .upcoming-invoice strong {
-        color: #e65100;
+        color: #f59e0b;
     }
 
     .cancel-warning {
-        background: #fff3e0;
-        border-left: 4px solid #ff9800;
+        background: rgba(245,158,11,0.15);
+        border-left: 4px solid #f59e0b;
         padding: 15px 20px;
         border-radius: 0 8px 8px 0;
         margin-bottom: 20px;
@@ -302,8 +302,8 @@
         display: flex;
     }
     .modal-content {
-        background: white;
-        border-radius: 10px;
+        background: var(--card);
+        border-radius: 12px;
         padding: 30px;
         max-width: 500px;
         width: 90%;
@@ -353,7 +353,7 @@
         <ul class="sidebar-nav">
             <li><a href="/billing" class="active">Billing</a></li>
             <li><a href="/dashboard/settings">Settings</a></li>
-            <li><a href="/logout" style="color: #e74c3c;">Logout</a></li>
+            <li><a href="/logout" style="color: var(--danger);">Logout</a></li>
         </ul>
     </aside>
 

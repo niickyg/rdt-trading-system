@@ -5,7 +5,7 @@
 {% block content %}
 <div class="container" style="max-width: 1000px; padding: 40px 20px;">
     <h1 class="text-center mb-2">Strategy Performance</h1>
-    <p class="text-center text-muted mb-2">Historical performance of the RDT Trading strategy</p>
+    <p class="text-center text-muted mb-2">Historical performance across all trading strategies</p>
 
     <!-- Performance Summary -->
     <div class="grid grid-4 mb-2">
@@ -68,9 +68,9 @@
         </div>
         <div class="grid grid-4" style="gap: 10px;">
             {% for month in monthly_returns %}
-            <div style="background: {% if month.return >= 0 %}#e8f5e9{% else %}#ffebee{% endif %}; padding: 15px; border-radius: 8px; text-align: center;">
+            <div style="background: {% if month.return >= 0 %}rgba(34,197,94,0.1){% else %}rgba(239,68,68,0.1){% endif %}; padding: 15px; border-radius: 8px; text-align: center;">
                 <div style="font-size: 0.85rem; color: var(--text-light);">{{ month.name }}</div>
-                <div style="font-size: 1.2rem; font-weight: bold; color: {% if month.return >= 0 %}#2e7d32{% else %}#c62828{% endif %};">
+                <div style="font-size: 1.2rem; font-weight: bold; color: {% if month.return >= 0 %}var(--success){% else %}var(--danger){% endif %};">
                     {% if month.return >= 0 %}+{% endif %}{{ month.return }}%
                 </div>
                 <div style="font-size: 0.75rem; color: var(--text-light);">{{ month.trades }} trades</div>
@@ -84,34 +84,130 @@
         <div class="card-header">
             <h3 class="card-title">Strategy Overview</h3>
         </div>
+        <p style="color:var(--text-light);margin-bottom:15px;">Results reflect five strategies running simultaneously with independent capital allocation and ML confidence scoring.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:20px;">
+            <div style="padding:10px;border-left:3px solid #3b82f6;background:var(--bg);border-radius:4px;">
+                <strong style="font-size:0.85rem;">RRS Momentum</strong>
+                <div style="font-size:0.75rem;color:var(--text-light);">40% capital allocation</div>
+            </div>
+            <div style="padding:10px;border-left:3px solid #22c55e;background:var(--bg);border-radius:4px;">
+                <strong style="font-size:0.85rem;">RSI(2) Mean Rev</strong>
+                <div style="font-size:0.75rem;color:var(--text-light);">20% capital allocation</div>
+            </div>
+            <div style="padding:10px;border-left:3px solid #f59e0b;background:var(--bg);border-radius:4px;">
+                <strong style="font-size:0.85rem;">Trend Breakout</strong>
+                <div style="font-size:0.75rem;color:var(--text-light);">20% capital allocation</div>
+            </div>
+            <div style="padding:10px;border-left:3px solid #a855f7;background:var(--bg);border-radius:4px;">
+                <strong style="font-size:0.85rem;">Post-Earnings</strong>
+                <div style="font-size:0.75rem;color:var(--text-light);">10% capital allocation</div>
+            </div>
+            <div style="padding:10px;border-left:3px solid #ef4444;background:var(--bg);border-radius:4px;">
+                <strong style="font-size:0.85rem;">Gap Fill</strong>
+                <div style="font-size:0.75rem;color:var(--text-light);">10% capital allocation</div>
+            </div>
+        </div>
         <div class="grid grid-2">
             <div>
-                <h4 style="margin-bottom: 10px;">Entry Criteria</h4>
+                <h4 style="margin-bottom: 10px;">Risk Controls</h4>
                 <ul style="padding-left: 20px; color: var(--text-light);">
-                    <li>Real Relative Strength (RRS) > 2.0</li>
-                    <li>Daily chart showing strength (above key EMAs)</li>
-                    <li>ML confidence > 72%</li>
-                    <li>Favorable market regime</li>
-                    <li>No negative news or upcoming earnings</li>
+                    <li>Per-strategy position limits</li>
+                    <li>ATR-based stop loss and profit targets</li>
+                    <li>ML confidence threshold filtering</li>
+                    <li>VIX regime and market regime gates</li>
+                    <li>Daily loss caps and drawdown limits</li>
                 </ul>
             </div>
             <div>
-                <h4 style="margin-bottom: 10px;">Exit Rules</h4>
+                <h4 style="margin-bottom: 10px;">Execution</h4>
                 <ul style="padding-left: 20px; color: var(--text-light);">
-                    <li>Stop loss: 1x ATR below entry</li>
-                    <li>Profit target: 1x ATR above entry</li>
-                    <li>Time stop: Exit after max holding period</li>
-                    <li>Trailing stop for longer-term trades</li>
+                    <li>Direct IBKR execution with bracket orders</li>
+                    <li>Automatic position sizing per strategy</li>
+                    <li>Options support (calls, puts, spreads)</li>
+                    <li>Trailing stops for trend-following trades</li>
+                    <li>Time-based exits for mean reversion</li>
                 </ul>
             </div>
         </div>
     </div>
 
-    <!-- Disclaimer -->
-    <div class="alert alert-warning">
-        <strong>Disclaimer:</strong> Past performance does not guarantee future results.
-        Trading involves substantial risk of loss. These results are from backtesting and may not
-        reflect actual trading performance. Always do your own research and consider your risk tolerance.
+    <!-- Backtested vs Live Comparison -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Backtested vs. Live Performance</h3>
+        </div>
+        <div style="padding: 10px 0;">
+            <table class="table" style="font-size: 0.9rem;">
+                <thead>
+                    <tr>
+                        <th style="color: var(--text-light);">Metric</th>
+                        <th style="text-align: right; color: var(--text-light);">Backtested</th>
+                        <th style="text-align: right; color: var(--text-light);">Live (Paper)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td>Win Rate</td><td style="text-align:right">62%</td><td style="text-align:right">{{ stats.win_rate }}%</td></tr>
+                    <tr><td>Profit Factor</td><td style="text-align:right">1.85</td><td style="text-align:right">{{ stats.profit_factor }}</td></tr>
+                    <tr><td>Max Drawdown</td><td style="text-align:right">-8.2%</td><td style="text-align:right">{{ stats.max_drawdown }}%</td></tr>
+                    <tr><td>Avg Holding Period</td><td style="text-align:right">3.5 days</td><td style="text-align:right">{{ stats.avg_holding_days }} days</td></tr>
+                    <tr><td>Sharpe Ratio</td><td style="text-align:right">1.92</td><td style="text-align:right">{{ stats.sharpe_ratio }}</td></tr>
+                </tbody>
+            </table>
+            <div style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2); border-radius: 8px; padding: 14px 18px; margin-top: 15px; font-size: 0.85rem; color: #fbbf24;">
+                <strong>Note:</strong> Backtested results reflect idealized conditions. Live results may differ due to slippage, partial fills, data latency, and changing market conditions. Gap between backtested and live performance is normal and expected.
+            </div>
+        </div>
+    </div>
+
+    <!-- Compliance Disclaimers -->
+    <div style="background: rgba(245,158,11,0.06); border: 1px solid rgba(245,158,11,0.15); border-radius: 12px; padding: 28px; margin-bottom: 20px;">
+        <h3 style="font-size: 1.1rem; margin-bottom: 16px; color: #fbbf24; display: flex; align-items: center; gap: 8px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Important Disclaimers
+        </h3>
+        <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 12px; color: var(--text-light); font-size: 0.88rem;">
+            <li style="display: flex; gap: 10px;">
+                <span style="color: #fbbf24; font-weight: 700; flex-shrink: 0;">1.</span>
+                <span><strong style="color: var(--text);">Past performance does not guarantee future results.</strong> Historical and backtested returns are not indicative of future performance. Markets change, and strategies that worked in the past may not work in the future.</span>
+            </li>
+            <li style="display: flex; gap: 10px;">
+                <span style="color: #fbbf24; font-weight: 700; flex-shrink: 0;">2.</span>
+                <span><strong style="color: var(--text);">Paper trading results shown.</strong> Performance metrics displayed here are from paper trading (simulated execution). Real-money trading may produce different results due to slippage, commissions, and market impact.</span>
+            </li>
+            <li style="display: flex; gap: 10px;">
+                <span style="color: #fbbf24; font-weight: 700; flex-shrink: 0;">3.</span>
+                <span><strong style="color: var(--text);">This is not financial advice.</strong> RDT Trading is a software tool. Nothing on this page constitutes a recommendation to buy, sell, or hold any security. Always consult a financial advisor before making investment decisions.</span>
+            </li>
+            <li style="display: flex; gap: 10px;">
+                <span style="color: #fbbf24; font-weight: 700; flex-shrink: 0;">4.</span>
+                <span><strong style="color: var(--text);">Commissions and fees not included.</strong> Return figures do not account for brokerage commissions, exchange fees, or taxes. Actual returns will be lower after accounting for transaction costs.</span>
+            </li>
+        </ul>
+    </div>
+
+    <!-- Methodology -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Methodology</h3>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; padding: 10px 0;">
+            <div>
+                <h4 style="font-size: 0.95rem; margin-bottom: 10px; color: var(--accent);">Walk-Forward Validation</h4>
+                <p style="font-size: 0.85rem; color: var(--text-light); line-height: 1.6;">Models are trained on rolling windows and validated on out-of-sample data. No lookahead bias. Parameters are re-optimized monthly using only data available at the time.</p>
+            </div>
+            <div>
+                <h4 style="font-size: 0.95rem; margin-bottom: 10px; color: var(--accent);">Capital Allocation</h4>
+                <p style="font-size: 0.85rem; color: var(--text-light); line-height: 1.6;">Starting capital: $25,000. Each strategy receives an independent allocation (10-40%). Position sizing is ATR-based with a maximum of 2% risk per trade. No compounding in backtests.</p>
+            </div>
+            <div>
+                <h4 style="font-size: 0.95rem; margin-bottom: 10px; color: var(--accent);">Live Start Date</h4>
+                <p style="font-size: 0.85rem; color: var(--text-light); line-height: 1.6;">Paper trading began February 2026. All live metrics are tracked from this date forward. Backtest period covers 2023-2025 daily data sourced from IBKR historical bars.</p>
+            </div>
+            <div>
+                <h4 style="font-size: 0.95rem; margin-bottom: 10px; color: var(--accent);">Data Source</h4>
+                <p style="font-size: 0.85rem; color: var(--text-light); line-height: 1.6;">All market data is sourced exclusively from Interactive Brokers. Daily OHLCV bars are cached locally and refreshed every 10 minutes during market hours.</p>
+            </div>
+        </div>
     </div>
 
     <div class="text-center mt-2">

@@ -5,15 +5,6 @@
 
 {% block dashboard_css %}
 <style>
-    .page-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 25px;
-    }
-    .page-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 5px; }
-    .page-subtitle { color: var(--text-light); font-size: 0.9rem; }
-
     /* Tabs */
     .options-tabs {
         display: flex;
@@ -50,7 +41,7 @@
     }
     .summary-card {
         background: var(--card);
-        border-radius: 10px;
+        border-radius: 12px;
         padding: 20px;
         border: 1px solid var(--border);
     }
@@ -84,7 +75,7 @@
         border-bottom: 1px solid var(--border);
         white-space: nowrap;
     }
-    .options-table tr:hover { background: rgba(255,255,255,0.02); }
+    .options-table tr:hover { background: var(--bg-hover); }
     .options-table .num { text-align: right; font-family: monospace; }
 
     /* Chain viewer */
@@ -132,7 +123,7 @@
         color: white;
     }
 
-    .itm { background: rgba(46, 204, 113, 0.05); }
+    .itm { background: rgba(34,197,94,0.08); }
     .otm { background: transparent; }
 
     /* IV gauge */
@@ -145,8 +136,8 @@
     .iv-gauge {
         width: 200px;
         height: 20px;
-        background: linear-gradient(to right, #2ecc71, #f39c12, #e74c3c, #8e44ad);
-        border-radius: 10px;
+        background: linear-gradient(to right, #22c55e, #f59e0b, #ef4444, #a855f7);
+        border-radius: 12px;
         position: relative;
     }
     .iv-gauge-marker {
@@ -170,10 +161,10 @@
         font-weight: 600;
         text-transform: uppercase;
     }
-    .regime-low { background: #27ae60; color: white; }
-    .regime-normal { background: #2980b9; color: white; }
-    .regime-high { background: #e67e22; color: white; }
-    .regime-very_high { background: #c0392b; color: white; }
+    .regime-low { background: rgba(34,197,94,0.2); color: #4ade80; }
+    .regime-normal { background: rgba(59,130,246,0.2); color: #60a5fa; }
+    .regime-high { background: rgba(245,158,11,0.2); color: #fbbf24; }
+    .regime-very_high { background: rgba(239,68,68,0.2); color: #f87171; }
 
     /* Risk bars */
     .risk-bar-container {
@@ -197,8 +188,8 @@
         transition: width 0.5s;
     }
 
-    .positive { color: #2ecc71; }
-    .negative { color: #e74c3c; }
+    .positive { color: var(--success); }
+    .negative { color: var(--danger); }
 
     .loading-spinner {
         text-align: center;
@@ -320,7 +311,12 @@
                     </tbody>
                 </table>
                 {% else %}
-                <div class="no-data">No open options positions.</div>
+                <div class="empty-state">
+                    <div class="empty-icon"><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+                    <div class="empty-title">No Open Options Positions</div>
+                    <p>Analyze an options chain to find opportunities.</p>
+                    <a href="#" onclick="document.querySelectorAll('.tab-btn')[1].click(); return false;" class="btn btn-primary btn-sm">Analyze a Chain</a>
+                </div>
                 {% endif %}
             </div>
         </div>
@@ -362,7 +358,10 @@
         <!-- Tab 4: Risk Dashboard -->
         <div id="tab-risk" class="tab-content">
             <div id="risk-container">
-                <div class="loading-spinner">Loading risk data...</div>
+                <div class="no-data">
+                    <strong>Requires live broker connection.</strong><br>
+                    Real-time risk metrics (Greeks, delta exposure) need an active IBKR connection with open options positions.
+                </div>
             </div>
         </div>
 {% endblock %}
@@ -402,6 +401,8 @@
                 document.getElementById('open-positions').textContent = data.total || 0;
                 document.getElementById('options-status').textContent =
                     'Last updated: ' + new Date().toLocaleTimeString();
+                // Re-render positions table with fresh data
+                renderPositions(data.positions || []);
             })
             .catch(err => {
                 console.debug('Options refresh error:', err);
@@ -412,7 +413,7 @@
     function renderPositions(positions) {
         const container = document.getElementById('positions-container');
         if (!positions || positions.length === 0) {
-            container.innerHTML = '<div class="no-data">No open options positions.</div>';
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div><div class="empty-title">No Open Options Positions</div><p>Analyze an options chain to find opportunities.</p></div>';
             return;
         }
 
@@ -450,16 +451,16 @@
 
     window.closePosition = function(symbol) {
         if (!confirm('Close options position for ' + symbol + '?')) return;
-        fetch('/api/options/positions/' + symbol + '/close', {method: 'POST'})
+        dashboardFetch('/api/options/positions/' + symbol + '/close', {method: 'POST'})
             .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(resp => {
                 if (resp.status === 'success') {
                     loadOverview();
                 } else {
-                    alert('Error: ' + (resp.message || 'Failed to close'));
+                    showToast(resp.message || 'Failed to close position', 'error');
                 }
             })
-            .catch(err => alert('Error: ' + err));
+            .catch(err => showToast('Error: ' + err, 'error'));
     };
 
     // ---- Chain Viewer Tab ----
@@ -469,7 +470,7 @@
 
         document.getElementById('chain-container').innerHTML = '<div class="loading-spinner">Loading chain for ' + symbol + '...</div>';
 
-        fetch('/api/options/chain/' + symbol)
+        dashboardFetch('/api/options/chain/' + symbol)
             .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(resp => {
                 if (resp.status !== 'success') {
@@ -478,10 +479,10 @@
                     return;
                 }
 
-                const data = resp.data;
+                const data = resp.data || {};
                 const expirySelect = document.getElementById('chain-expiry');
                 expirySelect.innerHTML = '<option value="">Select Expiration</option>';
-                data.expirations.forEach(exp => {
+                (data.expirations || []).forEach(exp => {
                     const opt = document.createElement('option');
                     opt.value = exp;
                     // Format YYYYMMDD -> YYYY-MM-DD
@@ -490,11 +491,11 @@
                 });
 
                 document.getElementById('chain-container').innerHTML =
-                    '<div class="no-data">Found ' + data.expirations.length + ' expirations and ' + data.strikes.length + ' strikes. Select an expiration and click "Load Greeks".</div>';
+                    '<div class="no-data">Found ' + (data.expirations || []).length + ' expirations and ' + (data.strikes || []).length + ' strikes. Select an expiration and click "Load Greeks".</div>';
             })
             .catch(err => {
                 document.getElementById('chain-container').innerHTML =
-                    '<div class="no-data">Error: ' + err + '</div>';
+                    '<div class="no-data">Error: ' + escapeHtml(String(err)) + '</div>';
             });
     });
 
@@ -502,31 +503,34 @@
         const symbol = document.getElementById('chain-symbol').value.trim().toUpperCase();
         const expiry = document.getElementById('chain-expiry').value;
         if (!symbol || !expiry) {
-            alert('Select a symbol and expiration first.');
+            showToast('Select a symbol and expiration first.', 'warning');
             return;
         }
 
         document.getElementById('chain-container').innerHTML = '<div class="loading-spinner">Loading Greeks for ' + symbol + ' ' + expiry + '...</div>';
 
-        fetch('/api/options/chain/' + symbol + '/' + expiry)
+        dashboardFetch('/api/options/chain/' + symbol + '/' + expiry)
             .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(resp => {
                 if (resp.status !== 'success') {
                     document.getElementById('chain-container').innerHTML =
-                        '<div class="no-data">' + (resp.message || 'Error') + '</div>';
+                        '<div class="no-data">' + escapeHtml(resp.message || 'Error') + '</div>';
                     return;
                 }
                 renderChainGrid(resp.data);
             })
             .catch(err => {
                 document.getElementById('chain-container').innerHTML =
-                    '<div class="no-data">Error: ' + err + '</div>';
+                    '<div class="no-data">Error: ' + escapeHtml(String(err)) + '</div>';
             });
     });
 
     function renderChainGrid(data) {
-        const underlying = data.underlying_price;
-        let html = '<div style="margin-bottom:10px;font-size:0.9rem;">Underlying: <strong>' + data.symbol + '</strong> @ $' + fmt(underlying) + ' | Expiry: ' + data.expiry + '</div>';
+        if (!data) { document.getElementById('chain-container').innerHTML = '<div class="no-data">No chain data available.</div>'; return; }
+        const underlying = data.underlying_price || 0;
+        const calls = data.calls || [];
+        const puts = data.puts || [];
+        let html = '<div style="margin-bottom:10px;font-size:0.9rem;">Underlying: <strong>' + escapeHtml(data.symbol || '') + '</strong> @ $' + fmt(underlying) + ' | Expiry: ' + escapeHtml(data.expiry || '') + '</div>';
 
         html += '<div style="overflow-x:auto;">';
         html += '<table class="options-table"><thead><tr>';
@@ -541,12 +545,17 @@
         html += '</tr></thead><tbody>';
 
         const callMap = {};
-        data.calls.forEach(c => { callMap[c.strike] = c.greeks; });
+        calls.forEach(c => { callMap[c.strike] = c.greeks; });
         const putMap = {};
-        data.puts.forEach(p => { putMap[p.strike] = p.greeks; });
+        puts.forEach(p => { putMap[p.strike] = p.greeks; });
 
         // Collect all unique strikes
-        const strikes = [...new Set([...data.calls.map(c => c.strike), ...data.puts.map(p => p.strike)])].sort((a,b) => a-b);
+        const strikes = [...new Set([...calls.map(c => c.strike), ...puts.map(p => p.strike)])].sort((a,b) => a-b);
+
+        if (strikes.length === 0) {
+            document.getElementById('chain-container').innerHTML = '<div class="no-data">No strikes available for this expiration.</div>';
+            return;
+        }
 
         strikes.forEach(strike => {
             const cg = callMap[strike];
@@ -608,11 +617,11 @@
         const container = document.getElementById('strategy-recommendations');
         container.innerHTML = '<div class="loading-spinner">Loading strategies...</div>';
 
-        fetch('/api/options/strategies/' + symbol)
+        dashboardFetch('/api/options/strategies/' + symbol)
             .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(resp => {
                 if (resp.status !== 'success') {
-                    container.innerHTML = '<div class="no-data">' + (resp.message || 'Error') + '</div>';
+                    container.innerHTML = '<div class="no-data">' + escapeHtml(resp.message || 'Error') + '</div>';
                     return;
                 }
 
@@ -645,7 +654,7 @@
                 container.innerHTML = html;
             })
             .catch(err => {
-                container.innerHTML = '<div class="no-data">Error: ' + err + '</div>';
+                container.innerHTML = '<div class="no-data">Error: ' + escapeHtml(String(err)) + '</div>';
             });
     };
 
@@ -656,19 +665,19 @@
 
         document.getElementById('iv-container').innerHTML = '<div class="loading-spinner">Analyzing IV for ' + symbol + '...</div>';
 
-        fetch('/api/options/iv/' + symbol)
+        dashboardFetch('/api/options/iv/' + symbol)
             .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(resp => {
                 if (resp.status !== 'success') {
                     document.getElementById('iv-container').innerHTML =
-                        '<div class="no-data">' + (resp.message || 'Error') + '</div>';
+                        '<div class="no-data">' + escapeHtml(resp.message || 'Error') + '</div>';
                     return;
                 }
                 renderIVAnalysis(resp.data);
             })
             .catch(err => {
                 document.getElementById('iv-container').innerHTML =
-                    '<div class="no-data">Error: ' + err + '</div>';
+                    '<div class="no-data">Error: ' + escapeHtml(String(err)) + '</div>';
             });
     });
 
@@ -687,7 +696,7 @@
         html += '<div class="iv-stat"><div class="val">' + fmt(data.iv_percentile, 1) + '</div><div class="lbl">IV Percentile</div></div>';
 
         // Regime badge
-        html += '<div class="iv-stat"><div class="regime-badge regime-' + data.regime + '">' + data.regime.replace('_', ' ') + '</div><div class="lbl" style="margin-top:5px;">IV Regime</div></div>';
+        html += '<div class="iv-stat"><div class="regime-badge regime-' + (data.regime || 'unknown') + '">' + (data.regime || 'unknown').replace('_', ' ') + '</div><div class="lbl" style="margin-top:5px;">IV Regime</div></div>';
 
         html += '</div>';
 
@@ -710,7 +719,7 @@
         };
 
         html += '<div class="summary-card" style="margin-top:15px;">';
-        html += '<div class="label">Recommended Approach for ' + data.regime.replace('_', ' ').toUpperCase() + ' IV</div>';
+        html += '<div class="label">Recommended Approach for ' + (data.regime || 'unknown').replace('_', ' ').toUpperCase() + ' IV</div>';
         html += '<div style="font-size:1rem;margin-top:5px;">' + (regimeStrategies[data.regime] || 'N/A') + '</div>';
         html += '</div>';
 
@@ -719,10 +728,21 @@
 
     // ---- Risk Dashboard Tab ----
     function loadRisk() {
-        // Risk calculations require live broker data
-        document.getElementById('risk-container').innerHTML =
-            '<div class="no-data"><strong>Requires live broker connection.</strong><br>' +
-            'Real-time risk metrics (Greeks, delta exposure) need an active IBKR connection.</div>';
+        dashboardFetch('/api/options/risk')
+            .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(resp => {
+                if (resp.status !== 'success') {
+                    document.getElementById('risk-container').innerHTML =
+                        '<div class="no-data">' + escapeHtml(resp.message || 'Could not load risk data. Broker may not be connected.') + '</div>';
+                    return;
+                }
+                renderRisk(resp.data);
+            })
+            .catch(err => {
+                document.getElementById('risk-container').innerHTML =
+                    '<div class="no-data"><strong>Risk data unavailable.</strong><br>' +
+                    'Real-time risk metrics require an active IBKR connection and open options positions.</div>';
+            });
     }
 
     function renderRisk(data) {
@@ -744,7 +764,7 @@
         // Premium at risk bar
         const premRiskPct = (data.premium_risk_pct || 0) * 100;
         const premLimit = (limits.max_premium_risk_pct || 0.1) * 100;
-        const premColor = premRiskPct > premLimit * 0.8 ? '#e74c3c' : premRiskPct > premLimit * 0.5 ? '#f39c12' : '#2ecc71';
+        const premColor = premRiskPct > premLimit * 0.8 ? 'var(--danger)' : premRiskPct > premLimit * 0.5 ? 'var(--warning)' : 'var(--success)';
         html += '<div class="risk-bar-container">';
         html += '<div class="risk-bar-header"><span>Premium at Risk</span><span>' + fmt(premRiskPct, 1) + '% / ' + fmt(premLimit, 0) + '% limit</span></div>';
         html += '<div class="risk-bar"><div class="risk-bar-fill" style="width:' + Math.min(100, premRiskPct / premLimit * 100) + '%;background:' + premColor + ';"></div></div>';
@@ -753,7 +773,7 @@
         // Delta bar
         const absDelta = Math.abs(data.net_portfolio_delta || 0);
         const deltaLimit = limits.max_portfolio_delta || 200;
-        const deltaColor = absDelta > deltaLimit * 0.8 ? '#e74c3c' : absDelta > deltaLimit * 0.5 ? '#f39c12' : '#2ecc71';
+        const deltaColor = absDelta > deltaLimit * 0.8 ? 'var(--danger)' : absDelta > deltaLimit * 0.5 ? 'var(--warning)' : 'var(--success)';
         html += '<div class="risk-bar-container">';
         html += '<div class="risk-bar-header"><span>Portfolio Delta</span><span>' + fmt(absDelta, 0) + ' / ' + fmt(deltaLimit, 0) + ' limit</span></div>';
         html += '<div class="risk-bar"><div class="risk-bar-fill" style="width:' + Math.min(100, absDelta / deltaLimit * 100) + '%;background:' + deltaColor + ';"></div></div>';
@@ -762,7 +782,7 @@
         // Theta bar
         const thetaPct = (data.theta_pct || 0) * 100;
         const thetaLimit = (limits.max_daily_theta_pct || 0.005) * 100;
-        const thetaColor = thetaPct > thetaLimit * 0.8 ? '#e74c3c' : thetaPct > thetaLimit * 0.5 ? '#f39c12' : '#2ecc71';
+        const thetaColor = thetaPct > thetaLimit * 0.8 ? 'var(--danger)' : thetaPct > thetaLimit * 0.5 ? 'var(--warning)' : 'var(--success)';
         html += '<div class="risk-bar-container">';
         html += '<div class="risk-bar-header"><span>Daily Theta</span><span>' + fmt(thetaPct, 3) + '% / ' + fmt(thetaLimit, 2) + '% limit</span></div>';
         html += '<div class="risk-bar"><div class="risk-bar-fill" style="width:' + Math.min(100, thetaPct / thetaLimit * 100) + '%;background:' + thetaColor + ';"></div></div>';
@@ -776,7 +796,7 @@
             html += '<div style="display:flex;gap:10px;flex-wrap:wrap;">';
             expEntries.forEach(([exp, count]) => {
                 const expFmt = exp.substring(0,4) + '-' + exp.substring(4,6) + '-' + exp.substring(6,8);
-                const warn = count >= 3 ? 'background:#e74c3c;color:white;' : '';
+                const warn = count >= 3 ? 'background:rgba(239,68,68,0.2);color:var(--danger);' : '';
                 html += '<div class="summary-card" style="min-width:120px;text-align:center;' + warn + '"><div class="label">Expiry</div><div class="value">' + expFmt + '</div><div style="font-size:0.85rem;">' + count + ' position' + (count > 1 ? 's' : '') + '</div></div>';
             });
             html += '</div>';

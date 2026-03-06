@@ -404,40 +404,110 @@ def create_daily_summary_from_db(
     summary_date: Optional[date] = None
 ) -> DailySummaryData:
     """
-    Create summary data from database records.
-
-    This is a template function showing how to integrate with a database.
-    Customize based on your actual database schema.
+    Create summary data from database records using real SQLAlchemy queries.
 
     Args:
-        db_session: Database session
+        db_session: SQLAlchemy session
         summary_date: Date to summarize (defaults to today)
 
     Returns:
         DailySummaryData: Summary data from database
     """
+    from sqlalchemy import func, and_, cast, Date
+    from data.database.models import Trade, Signal, Position, TradeStatus
+
     summary_date = summary_date or date.today()
     date_str = summary_date.strftime('%Y-%m-%d')
+    day_start = datetime.combine(summary_date, datetime.min.time())
+    day_end = datetime.combine(summary_date, datetime.max.time())
 
-    # Example query structure - customize for your schema
-    # trades = db_session.query(Trade).filter(
-    #     Trade.date == summary_date
-    # ).all()
+    try:
+        # Trades closed today
+        closed_trades = db_session.query(Trade).filter(
+            and_(
+                Trade.status == TradeStatus.CLOSED,
+                Trade.exit_time >= day_start,
+                Trade.exit_time <= day_end
+            )
+        ).all()
 
-    # This is a placeholder - implement based on your data model
-    logger.warning("create_daily_summary_from_db is a template - implement for your schema")
+        total_trades = len(closed_trades)
+        winning_trades = sum(1 for t in closed_trades if (t.pnl or 0) > 0)
+        losing_trades = sum(1 for t in closed_trades if (t.pnl or 0) <= 0)
+        total_pnl = sum(float(t.pnl or 0) for t in closed_trades)
 
-    return DailySummaryData(
-        date=date_str,
-        total_trades=0,
-        winning_trades=0,
-        losing_trades=0,
-        total_pnl=0.0,
-        total_pnl_percent=0.0,
-        portfolio_value=0.0,
-        starting_value=0.0,
-        signals_generated=0
-    )
+        trade_details = []
+        for t in closed_trades:
+            pnl = float(t.pnl or 0)
+            trade_details.append({
+                'symbol': t.symbol,
+                'direction': str(t.direction.value) if t.direction else 'LONG',
+                'pnl': pnl,
+                'pnl_percent': float(t.pnl_percent or 0),
+                'strategy': t.strategy_name or 'unknown',
+                'exit_reason': str(t.exit_reason.value) if t.exit_reason else 'unknown',
+            })
+
+        # Sort for top winners/losers
+        sorted_trades = sorted(trade_details, key=lambda x: x['pnl'], reverse=True)
+        top_winners = sorted_trades[:3] if sorted_trades else []
+        top_losers = sorted_trades[-3:][::-1] if sorted_trades else []
+
+        # Signals generated today
+        signals_count = db_session.query(func.count(Signal.id)).filter(
+            and_(
+                Signal.timestamp >= day_start,
+                Signal.timestamp <= day_end
+            )
+        ).scalar() or 0
+
+        # Open positions
+        open_positions = db_session.query(Position).all()
+        positions_data = []
+        portfolio_value = 0.0
+        for p in open_positions:
+            price = float(p.current_price or p.entry_price or 0)
+            value = price * (p.shares or 0)
+            portfolio_value += value
+            positions_data.append({
+                'symbol': p.symbol,
+                'direction': str(p.direction.value) if p.direction else 'LONG',
+                'shares': p.shares,
+                'entry_price': float(p.entry_price or 0),
+                'current_price': price,
+                'unrealized_pnl': float(p.unrealized_pnl or 0),
+                'strategy': p.strategy_name or 'unknown',
+            })
+
+        # P&L by strategy
+        strategy_pnl = {}
+        for t in trade_details:
+            strat = t['strategy']
+            strategy_pnl[strat] = strategy_pnl.get(strat, 0) + t['pnl']
+
+        return DailySummaryData(
+            date=date_str,
+            total_trades=total_trades,
+            winning_trades=winning_trades,
+            losing_trades=losing_trades,
+            total_pnl=total_pnl,
+            total_pnl_percent=(total_pnl / 25000.0) * 100 if total_pnl else 0.0,
+            portfolio_value=portfolio_value,
+            starting_value=25000.0,
+            signals_generated=signals_count,
+            trades=trade_details,
+            top_winners=top_winners,
+            top_losers=top_losers,
+            positions=positions_data,
+            metadata={'strategy_pnl': strategy_pnl},
+        )
+
+    except Exception as e:
+        logger.error(f"Error creating daily summary from DB: {e}")
+        return DailySummaryData(
+            date=date_str,
+            metadata={'error': str(e)}
+        )
 
 
 # Convenience function for quick setup

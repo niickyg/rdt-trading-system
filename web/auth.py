@@ -371,6 +371,35 @@ def logout():
     return response
 
 
+@auth_bp.route('/register', methods=['GET', 'POST'])
+def register():
+    """Handle user registration"""
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+
+    from web.forms import RegistrationForm
+    form = RegistrationForm()
+
+    if request.method == 'POST' and form.validate_on_submit():
+        try:
+            user = create_user(
+                username=form.username.data.strip(),
+                password=form.password.data,
+                email=form.email.data.strip()
+            )
+            login_user(user, remember=True)
+            logger.info(f"New user registered and logged in: {user.username}")
+            flash('Welcome! Your account has been created.', 'success')
+            return redirect(url_for('dashboard'))
+        except ValueError as e:
+            flash(str(e), 'danger')
+        except Exception as e:
+            logger.error(f"Registration error: {e}")
+            flash('Registration failed. Please try again.', 'danger')
+
+    return render_template('register.html', form=form)
+
+
 # =============================================================================
 # UTILITY FUNCTIONS
 # =============================================================================

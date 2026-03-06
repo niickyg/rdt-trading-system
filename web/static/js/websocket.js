@@ -516,7 +516,7 @@ class RDTDashboardSocket {
                 position: fixed;
                 bottom: 20px;
                 right: 20px;
-                background: ${connected ? '#27ae60' : '#e74c3c'};
+                background: ${connected ? '#22c55e' : '#ef4444'};
                 color: white;
                 padding: 8px 15px;
                 border-radius: 20px;
@@ -561,7 +561,7 @@ class RDTDashboardSocket {
                 document.head.appendChild(style);
             }
         } else {
-            indicator.style.background = connected ? '#27ae60' : '#e74c3c';
+            indicator.style.background = connected ? '#22c55e' : '#ef4444';
             const dot = document.getElementById('ws-global-dot');
             const text = document.getElementById('ws-global-text');
             if (dot) dot.style.animation = connected ? 'pulse 2s infinite' : 'none';
@@ -776,7 +776,7 @@ class RDTDashboardSocket {
         metaDiv.className = 'signal-meta';
         const rrsDiv = document.createElement('div');
         rrsDiv.className = 'signal-rrs';
-        rrsDiv.textContent = 'RRS: ' + (signal.rrs || 0).toFixed(2);
+        rrsDiv.textContent = (signal.strategy_name ? signal.strategy_name.replace(/_/g, ' ').toUpperCase() + ' | ' : '') + 'RRS: ' + (signal.rrs || 0).toFixed(2);
         const timeDiv = document.createElement('div');
         timeDiv.className = 'signal-time';
         timeDiv.textContent = this.formatTime(signal.generated_at);
@@ -989,11 +989,11 @@ class RDTDashboardSocket {
             position: fixed;
             top: 80px;
             right: 20px;
-            background: white;
+            background: #1f2937;
             border-left: 4px solid ${this.getSeverityColor(alert.severity)};
             padding: 15px 20px;
             border-radius: 5px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
             z-index: 10000;
             max-width: 350px;
             animation: slideIn 0.3s ease;
@@ -1003,7 +1003,7 @@ class RDTDashboardSocket {
         titleEl.style.cssText = 'display: block; margin-bottom: 5px;';
         titleEl.textContent = alert.title || 'Alert';
         const messageEl = document.createElement('span');
-        messageEl.style.color = '#666';
+        messageEl.style.color = '#9ca3af';
         messageEl.textContent = alert.message || '';
         notification.appendChild(titleEl);
         notification.appendChild(messageEl);
@@ -1033,11 +1033,11 @@ class RDTDashboardSocket {
      */
     getSeverityColor(severity) {
         const colors = {
-            low: '#27ae60',
-            medium: '#f39c12',
-            high: '#e74c3c',
-            critical: '#c0392b',
-            info: '#3498db'
+            low: '#22c55e',
+            medium: '#f59e0b',
+            high: '#ef4444',
+            critical: '#dc2626',
+            info: '#3b82f6'
         };
         return colors[severity] || colors.info;
     }
@@ -1085,7 +1085,7 @@ class RDTDashboardSocket {
                 to { transform: translateX(100%); opacity: 0; }
             }
             @keyframes highlightNew {
-                0% { background: rgba(76, 175, 80, 0.2); }
+                0% { background: rgba(34, 197, 94, 0.2); }
                 100% { background: transparent; }
             }
         `;

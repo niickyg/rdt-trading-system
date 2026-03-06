@@ -5,7 +5,7 @@
 
 {% block page_content %}
 <!-- Orchestrator Offline Banner -->
-<div class="offline-banner" id="orch-offline-banner" style="display:none;background:#fff3e0;color:#e65100;padding:12px 20px;border-radius:8px;margin-bottom:20px;font-weight:500;">
+<div class="offline-banner" id="orch-offline-banner" style="display:none;background:rgba(245,158,11,0.15);color:#f59e0b;padding:12px 20px;border-radius:8px;margin-bottom:20px;font-weight:500;">
     Orchestrator is not running. Trading agents are inactive and data may be stale.
 </div>
 
@@ -77,7 +77,7 @@
             <h3 class="card-title">Strategy P&L</h3>
         </div>
         <div class="chart-container chart-container-sm">
-            <canvas id="strategy-pnl-chart"></canvas>
+            <canvas id="strategy-pnl-chart" aria-label="Strategy P&L chart" role="img"></canvas>
         </div>
     </div>
     <div class="card">
@@ -85,7 +85,7 @@
             <h3 class="card-title">Win / Loss Ratio</h3>
         </div>
         <div class="chart-container chart-container-sm">
-            <canvas id="win-rate-chart"></canvas>
+            <canvas id="win-rate-chart" aria-label="Win/Loss ratio chart" role="img"></canvas>
         </div>
     </div>
 </div>
@@ -130,8 +130,11 @@
             </div>
             {% endfor %}
             {% else %}
-            <div class="text-center text-muted" style="padding: 40px;">
-                No recent signals
+            <div class="empty-state">
+                <div class="empty-icon"><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+                <div class="empty-title">No Recent Signals</div>
+                <p>The scanner hasn't generated signals yet. Check back after the next scan cycle.</p>
+                <a href="/dashboard/scanner" class="btn btn-primary btn-sm">View Scanner</a>
             </div>
             {% endif %}
         </div>
@@ -169,8 +172,11 @@
             </div>
             {% endif %}
             {% else %}
-            <div class="text-center text-muted" style="padding: 40px;">
-                No open positions
+            <div class="empty-state">
+                <div class="empty-icon"><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></div>
+                <div class="empty-title">No Open Positions</div>
+                <p>You don't have any active positions. Check signals for new opportunities.</p>
+                <a href="/dashboard/signals" class="btn btn-primary btn-sm">Check Signals</a>
             </div>
             {% endif %}
         </div>
@@ -184,7 +190,7 @@
         <a href="/dashboard/agents" class="btn btn-secondary btn-sm">Details</a>
     </div>
     <div id="agent-health-strip" style="display:flex;flex-wrap:wrap;gap:10px;padding:15px;">
-        <span style="color:var(--text-light)">Loading...</span>
+        {% for i in range(5) %}<div class="skeleton" style="width:120px;height:32px;border-radius:16px;"></div>{% endfor %}
     </div>
 </div>
 
@@ -195,7 +201,7 @@
         <a href="/dashboard/strategies" class="btn btn-secondary btn-sm">Manage</a>
     </div>
     <div id="strategy-breakdown" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:15px;padding:15px;">
-        <span style="color:var(--text-light)">Loading...</span>
+        {% for i in range(5) %}<div class="skeleton skeleton-stat" style="height:80px;border-radius:8px;"></div>{% endfor %}
     </div>
 </div>
 
@@ -222,7 +228,8 @@
         dashboardFetch('/dashboard/api/positions')
             .then(r => r.json())
             .then(data => {
-                document.getElementById('stat-positions').textContent = data.stock_positions ? data.stock_positions.length : 0;
+                const posCount = data.stock_positions ? data.stock_positions.length : 0;
+                animateStatElement(document.getElementById('stat-positions'), posCount, function(v) { return Math.round(v).toString(); });
                 const dot = document.getElementById('market-status-dot');
                 const text = document.getElementById('market-status');
                 if (data.market_status === 'open') {
@@ -260,7 +267,7 @@
             const strip = document.getElementById('agent-health-strip');
             if (data.agent_health && data.agent_health.length > 0) {
                 strip.innerHTML = data.agent_health.map(a => {
-                    const color = STATE_COLORS[a.state] || '#95a5a6';
+                    const color = STATE_COLORS[a.state] || '#6b7280';
                     return '<a href="/dashboard/agents" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:var(--bg);border-radius:8px;text-decoration:none;color:var(--text);font-size:0.85rem;border:1px solid var(--border);">' +
                         '<span style="width:8px;height:8px;border-radius:50%;background:' + color + ';display:inline-block;' + (a.state==='running'?'animation:pulse 2s infinite':'') + '"></span>' +
                         escapeHtml(a.name) + '</a>';
@@ -273,7 +280,7 @@
             const breakdown = document.getElementById('strategy-breakdown');
             if (data.strategy_breakdown && data.strategy_breakdown.length > 0) {
                 breakdown.innerHTML = data.strategy_breakdown.map(s => {
-                    const color = STRATEGY_COLORS[s.name] || '#95a5a6';
+                    const color = STRATEGY_COLORS[s.name] || '#6b7280';
                     const label = STRATEGY_LABELS[s.name] || s.name;
                     const stats = s.stats || {};
                     const pnl = stats.total_pnl || 0;
@@ -281,7 +288,7 @@
                     return '<div style="background:var(--bg);border-radius:8px;padding:15px;border-left:3px solid ' + color + ';">' +
                         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
                         '<strong style="font-size:0.9rem;">' + escapeHtml(label) + '</strong>' +
-                        '<span style="font-size:0.75rem;padding:2px 8px;border-radius:10px;background:' + (s.is_active?'#e8f5e9':'#f5f5f5') + ';color:' + (s.is_active?'#2e7d32':'#999') + '">' + (s.is_active?'Active':'Inactive') + '</span>' +
+                        '<span style="font-size:0.75rem;padding:2px 8px;border-radius:10px;background:' + (s.is_active?'rgba(34,197,94,0.15)':'rgba(107,114,128,0.15)') + ';color:' + (s.is_active?'#22c55e':'#6b7280') + '">' + (s.is_active?'Active':'Inactive') + '</span>' +
                         '</div>' +
                         '<div style="font-size:0.8rem;color:var(--text-light);">' +
                         'Alloc: ' + (s.capital_allocation*100).toFixed(0) + '% | Pos: ' + s.open_positions + '/' + s.max_positions +
@@ -314,7 +321,7 @@
             names.push(STRATEGY_SHORT[s.name] || s.name);
             const pnl = (s.stats && s.stats.total_pnl) || 0;
             pnls.push(pnl);
-            colors.push(STRATEGY_COLORS[s.name] || '#95a5a6');
+            colors.push(STRATEGY_COLORS[s.name] || '#6b7280');
         });
 
         if (strategyPnlChart) strategyPnlChart.destroy();
@@ -334,15 +341,15 @@
             },
             scales: {
                 x: {
-                    grid: { color: 'rgba(0,0,0,0.05)' },
+                    grid: { color: 'rgba(255,255,255,0.05)' },
                     ticks: {
                         callback: function(v) { return '$' + v; },
-                        color: '#666',
+                        color: '#9ca3af',
                     }
                 },
                 y: {
                     grid: { display: false },
-                    ticks: { color: '#666' }
+                    ticks: { color: '#9ca3af' }
                 }
             }
         });
@@ -358,7 +365,7 @@
             labels: ['Wins', 'Losses'],
             datasets: [{
                 data: [wins, losses],
-                backgroundColor: ['#27ae60', '#e74c3c'],
+                backgroundColor: ['#22c55e', '#ef4444'],
                 borderWidth: 0,
                 spacing: 2,
             }]
@@ -399,7 +406,7 @@
             bars.innerHTML = strategies.map(s => {
                 const tp = s.training_phase;
                 if (!tp) return '';
-                const color = STRATEGY_COLORS[s.name] || '#95a5a6';
+                const color = STRATEGY_COLORS[s.name] || '#6b7280';
                 const label = STRATEGY_LABELS[s.name] || s.name;
                 const pct = tp.progress_pct || 0;
                 const graduated = !tp.is_training;

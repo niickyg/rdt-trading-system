@@ -80,7 +80,7 @@
       bottom: 20px;
       left: 50%;
       transform: translateX(-50%);
-      background: var(--primary, #1a1a2e);
+      background: var(--primary, #0d1117);
       color: white;
       padding: 15px 25px;
       border-radius: 8px;
@@ -94,7 +94,7 @@
     const style = document.createElement('style');
     style.textContent = `
       #pwa-update-banner button {
-        background: var(--accent, #4CAF50);
+        background: var(--accent, #3b82f6);
         color: white;
         border: none;
         padding: 8px 16px;
@@ -182,7 +182,7 @@
       position: fixed;
       bottom: 20px;
       right: 20px;
-      background: var(--accent, #4CAF50);
+      background: var(--accent, #3b82f6);
       color: white;
       border: none;
       padding: 12px 20px;
@@ -266,7 +266,7 @@
       top: 0;
       left: 0;
       right: 0;
-      background: var(--warning, #f39c12);
+      background: var(--warning, #f59e0b);
       color: white;
       padding: 10px;
       text-align: center;

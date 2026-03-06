@@ -7,8 +7,11 @@ using session cookies (@login_required) instead of API keys.
 """
 
 import json
+import os
+import fcntl
 from datetime import datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
@@ -60,7 +63,43 @@ def get_open_stock_positions(strategy=None):
             if strategy and strategy != 'all':
                 q = q.filter(Position.strategy_name == strategy)
             rows = q.all()
-            return [_row_to_dict(r, columns) for r in rows]
+            positions = [_row_to_dict(r, columns) for r in rows]
+
+            # Enrich with previous close from daily_bars for today's P&L calc
+            if positions:
+                from sqlalchemy import text
+                # Build lookup with both IBKR format (spaces) and dash format
+                # since positions may use "BF B" but daily_bars has "BF-B"
+                all_symbols = set()
+                for p in positions:
+                    sym = p['symbol']
+                    all_symbols.add(sym)
+                    all_symbols.add(sym.replace(' ', '-'))  # IBKR→dash
+                    all_symbols.add(sym.replace('-', ' '))  # dash→IBKR
+                all_symbols = list(all_symbols)
+                placeholders = ','.join([f':s{i}' for i in range(len(all_symbols))])
+                prev_close_query = text(f"""
+                    SELECT DISTINCT ON (symbol) symbol, close
+                    FROM daily_bars
+                    WHERE symbol IN ({placeholders})
+                    ORDER BY symbol, bar_date DESC
+                """)
+                params = {f's{i}': sym for i, sym in enumerate(all_symbols)}
+                try:
+                    prev_rows = session.execute(prev_close_query, params).fetchall()
+                    # Map both space and dash variants to the close price
+                    prev_map = {}
+                    for r in prev_rows:
+                        val = float(r[1])
+                        prev_map[r[0]] = val
+                        prev_map[r[0].replace('-', ' ')] = val
+                        prev_map[r[0].replace(' ', '-')] = val
+                    for p in positions:
+                        p['previous_close'] = prev_map.get(p['symbol'])
+                except Exception:
+                    pass
+
+            return positions
     except Exception as e:
         logger.warning(f"Error fetching stock positions: {e}")
         return []
@@ -329,15 +368,37 @@ def api_strategies():
     try:
         from strategies.registry import StrategyRegistry
         strategies = []
-        for name, strategy in StrategyRegistry.get_all().items():
-            strategies.append({
-                'name': name,
-                'is_active': strategy.is_active,
-                'capital_allocation': strategy.capital_allocation,
-                'max_positions': strategy.max_positions,
-                'open_positions': len(strategy.positions),
-                'risk_per_trade': strategy.risk_per_trade,
-            })
+        all_strats = StrategyRegistry.get_all()
+
+        if all_strats:
+            for name, strategy in all_strats.items():
+                strategies.append({
+                    'name': name,
+                    'is_active': strategy.is_active,
+                    'capital_allocation': strategy.capital_allocation,
+                    'max_positions': strategy.max_positions,
+                    'open_positions': len(strategy.positions),
+                    'risk_per_trade': strategy.risk_per_trade,
+                })
+        else:
+            # Bot not running — return known strategies with DB stats
+            trade_stats = get_trade_stats_by_strategy()
+            KNOWN_STRATEGIES = {
+                'rrs_momentum': {'capital_allocation': 0.40, 'max_positions': 6, 'risk_per_trade': 0.01},
+                'rsi2_mean_reversion': {'capital_allocation': 0.20, 'max_positions': 4, 'risk_per_trade': 0.01},
+                'trend_breakout': {'capital_allocation': 0.20, 'max_positions': 4, 'risk_per_trade': 0.015},
+                'pead': {'capital_allocation': 0.10, 'max_positions': 3, 'risk_per_trade': 0.01},
+                'gap_fill': {'capital_allocation': 0.10, 'max_positions': 3, 'risk_per_trade': 0.01},
+            }
+            for name, defaults in KNOWN_STRATEGIES.items():
+                strategies.append({
+                    'name': name,
+                    'is_active': False,
+                    'capital_allocation': defaults['capital_allocation'],
+                    'max_positions': defaults['max_positions'],
+                    'open_positions': 0,
+                    'risk_per_trade': defaults['risk_per_trade'],
+                })
         return jsonify({'strategies': strategies})
     except Exception as e:
         logger.error(f"Error in api_strategies: {e}")
@@ -420,20 +481,44 @@ def api_strategies_detail():
                     except Exception:
                         pass
 
-        for name, strategy in all_strats.items():
-            stats = trade_stats.get(name, {})
-            strat_info = {
-                'name': name,
-                'is_active': strategy.is_active,
-                'capital_allocation': strategy.capital_allocation,
-                'max_positions': strategy.max_positions,
-                'open_positions': len(strategy.positions),
-                'risk_per_trade': strategy.risk_per_trade,
-                'stats': stats,
-                'adaptive_params': adaptive_params.get(name, {}),
-                'training_phase': training_phase.get(name),
+        if all_strats:
+            # Bot is running — use live strategy objects
+            for name, strategy in all_strats.items():
+                stats = trade_stats.get(name, {})
+                strat_info = {
+                    'name': name,
+                    'is_active': strategy.is_active,
+                    'capital_allocation': strategy.capital_allocation,
+                    'max_positions': strategy.max_positions,
+                    'open_positions': len(strategy.positions),
+                    'risk_per_trade': strategy.risk_per_trade,
+                    'stats': stats,
+                    'adaptive_params': adaptive_params.get(name, {}),
+                    'training_phase': training_phase.get(name),
+                }
+                strategies.append(strat_info)
+        elif trade_stats:
+            # Bot not running but we have DB trade history — show stats-only cards
+            KNOWN_STRATEGIES = {
+                'rrs_momentum': {'capital_allocation': 0.40, 'max_positions': 6, 'risk_per_trade': 0.01},
+                'rsi2_mean_reversion': {'capital_allocation': 0.20, 'max_positions': 4, 'risk_per_trade': 0.01},
+                'trend_breakout': {'capital_allocation': 0.20, 'max_positions': 4, 'risk_per_trade': 0.015},
+                'pead': {'capital_allocation': 0.10, 'max_positions': 3, 'risk_per_trade': 0.01},
+                'gap_fill': {'capital_allocation': 0.10, 'max_positions': 3, 'risk_per_trade': 0.01},
             }
-            strategies.append(strat_info)
+            for name, stats in trade_stats.items():
+                defaults = KNOWN_STRATEGIES.get(name, {'capital_allocation': 0, 'max_positions': 0, 'risk_per_trade': 0})
+                strategies.append({
+                    'name': name,
+                    'is_active': False,
+                    'capital_allocation': defaults['capital_allocation'],
+                    'max_positions': defaults['max_positions'],
+                    'open_positions': 0,
+                    'risk_per_trade': defaults['risk_per_trade'],
+                    'stats': stats,
+                    'adaptive_params': {},
+                    'training_phase': None,
+                })
 
         return jsonify({'strategies': strategies})
     except Exception as e:
@@ -469,15 +554,36 @@ def api_overview():
 
         # Strategy breakdown
         strategy_breakdown = []
-        for name, strategy in StrategyRegistry.get_all().items():
-            strategy_breakdown.append({
-                'name': name,
-                'is_active': strategy.is_active,
-                'capital_allocation': strategy.capital_allocation,
-                'max_positions': strategy.max_positions,
-                'open_positions': len(strategy.positions),
-                'stats': strategy_stats.get(name, {}),
-            })
+        all_strats = StrategyRegistry.get_all()
+        if all_strats:
+            for name, strategy in all_strats.items():
+                strategy_breakdown.append({
+                    'name': name,
+                    'is_active': strategy.is_active,
+                    'capital_allocation': strategy.capital_allocation,
+                    'max_positions': strategy.max_positions,
+                    'open_positions': len(strategy.positions),
+                    'stats': strategy_stats.get(name, {}),
+                })
+        elif strategy_stats:
+            # Bot not running — show DB stats
+            KNOWN_STRATEGIES = {
+                'rrs_momentum': {'capital_allocation': 0.40, 'max_positions': 6},
+                'rsi2_mean_reversion': {'capital_allocation': 0.20, 'max_positions': 4},
+                'trend_breakout': {'capital_allocation': 0.20, 'max_positions': 4},
+                'pead': {'capital_allocation': 0.10, 'max_positions': 3},
+                'gap_fill': {'capital_allocation': 0.10, 'max_positions': 3},
+            }
+            for name, s_stats in strategy_stats.items():
+                defaults = KNOWN_STRATEGIES.get(name, {'capital_allocation': 0, 'max_positions': 0})
+                strategy_breakdown.append({
+                    'name': name,
+                    'is_active': False,
+                    'capital_allocation': defaults['capital_allocation'],
+                    'max_positions': defaults['max_positions'],
+                    'open_positions': 0,
+                    'stats': s_stats,
+                })
 
         # Agent health
         orch = get_running_orchestrator()
@@ -758,3 +864,377 @@ def api_journal_trade_notes(trade_id):
     except Exception as e:
         logger.error(f"Error in api_journal_trade_notes: {e}")
         return jsonify({'error': 'Failed to update trade notes'}), 500
+
+
+# ---------------------------------------------------------------------------
+# User Price Alerts (file-backed JSON store)
+# ---------------------------------------------------------------------------
+
+_ALERTS_FILE = Path(os.environ.get('DATA_DIR', 'data')) / 'user_alerts.json'
+
+
+def _read_alerts() -> list:
+    """Read alerts from JSON file with file locking."""
+    if not _ALERTS_FILE.exists():
+        return []
+    try:
+        with open(_ALERTS_FILE, 'r') as f:
+            fcntl.flock(f, fcntl.LOCK_SH)
+            data = json.load(f)
+            fcntl.flock(f, fcntl.LOCK_UN)
+            return data
+    except (json.JSONDecodeError, IOError):
+        return []
+
+
+def _write_alerts(alerts: list):
+    """Write alerts to JSON file with file locking."""
+    _ALERTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(_ALERTS_FILE, 'w') as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        json.dump(alerts, f, indent=2)
+        fcntl.flock(f, fcntl.LOCK_UN)
+
+
+@dashboard_data_bp.route('/dashboard/api/alerts')
+@login_required
+def api_alerts_list():
+    """List all user price alerts."""
+    try:
+        alerts = _read_alerts()
+        return jsonify({'alerts': alerts})
+    except Exception as e:
+        logger.error(f"Error listing alerts: {e}")
+        return jsonify({'error': 'Failed to list alerts'}), 500
+
+
+@dashboard_data_bp.route('/dashboard/api/alerts', methods=['POST'])
+@login_required
+def api_alerts_create():
+    """Create a new price alert."""
+    try:
+        data = request.get_json(silent=True) or {}
+        symbol = (data.get('symbol') or '').strip().upper()
+        condition = data.get('condition', '')
+        value = data.get('value')
+        if not symbol or not condition or value is None:
+            return jsonify({'error': 'symbol, condition, and value are required'}), 400
+
+        alerts = _read_alerts()
+        new_alert = {
+            'id': int(datetime.utcnow().timestamp() * 1000),
+            'symbol': symbol,
+            'condition': condition,
+            'value': float(value),
+            'notification_method': data.get('notification_method', 'email'),
+            'note': data.get('note', ''),
+            'status': 'active',
+            'created_at': datetime.utcnow().isoformat() + 'Z',
+        }
+        alerts.insert(0, new_alert)
+        _write_alerts(alerts)
+        return jsonify({'alert': new_alert}), 201
+    except Exception as e:
+        logger.error(f"Error creating alert: {e}")
+        return jsonify({'error': 'Failed to create alert'}), 500
+
+
+@dashboard_data_bp.route('/dashboard/api/alerts/<int:alert_id>', methods=['DELETE'])
+@login_required
+def api_alerts_delete(alert_id):
+    """Delete a price alert."""
+    try:
+        alerts = _read_alerts()
+        alerts = [a for a in alerts if a.get('id') != alert_id]
+        _write_alerts(alerts)
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error deleting alert: {e}")
+        return jsonify({'error': 'Failed to delete alert'}), 500
+
+
+@dashboard_data_bp.route('/dashboard/api/alerts/<int:alert_id>/toggle', methods=['POST'])
+@login_required
+def api_alerts_toggle(alert_id):
+    """Toggle alert active/paused status."""
+    try:
+        alerts = _read_alerts()
+        for a in alerts:
+            if a.get('id') == alert_id:
+                a['status'] = 'paused' if a.get('status') == 'active' else 'active'
+                _write_alerts(alerts)
+                return jsonify({'alert': a})
+        return jsonify({'error': 'Alert not found'}), 404
+    except Exception as e:
+        logger.error(f"Error toggling alert: {e}")
+        return jsonify({'error': 'Failed to toggle alert'}), 500
+
+
+# ---------------------------------------------------------------------------
+# Settings (file-backed JSON store)
+# ---------------------------------------------------------------------------
+
+_SETTINGS_FILE = Path(os.environ.get('DATA_DIR', 'data')) / 'user_settings.json'
+
+
+@dashboard_data_bp.route('/dashboard/api/settings')
+@login_required
+def api_settings_get():
+    """Get current user settings."""
+    try:
+        if _SETTINGS_FILE.exists():
+            with open(_SETTINGS_FILE, 'r') as f:
+                settings = json.load(f)
+        else:
+            settings = {}
+        return jsonify({'settings': settings})
+    except Exception as e:
+        logger.error(f"Error reading settings: {e}")
+        return jsonify({'error': 'Failed to read settings'}), 500
+
+
+@dashboard_data_bp.route('/dashboard/api/settings', methods=['PUT'])
+@login_required
+def api_settings_put():
+    """Save user settings."""
+    try:
+        data = request.get_json(silent=True) or {}
+        _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(_SETTINGS_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+        return jsonify({'success': True, 'settings': data})
+    except Exception as e:
+        logger.error(f"Error saving settings: {e}")
+        return jsonify({'error': 'Failed to save settings'}), 500
+
+
+# ---------------------------------------------------------------------------
+# Position Close
+# ---------------------------------------------------------------------------
+
+@dashboard_data_bp.route('/dashboard/api/positions/<symbol>/update', methods=['PUT'])
+@login_required
+def api_position_update(symbol):
+    """Update stop/target for a stock position."""
+    try:
+        data = request.get_json() or {}
+        new_stop = data.get('stop_price')
+        new_target = data.get('target_price')
+
+        if new_stop is None and new_target is None:
+            return jsonify({'error': 'Provide stop_price and/or target_price'}), 400
+
+        from trading.position_tracker import PositionTracker
+        tracker = None
+
+        # Try to get tracker from orchestrator first
+        try:
+            from agents.orchestrator import get_running_orchestrator
+            orch = get_running_orchestrator()
+            if orch and hasattr(orch, 'position_tracker'):
+                tracker = orch.position_tracker
+        except Exception:
+            pass
+
+        # Fallback to singleton
+        if tracker is None:
+            try:
+                from risk.position_tracker import get_position_tracker
+                tracker = get_position_tracker()
+            except Exception:
+                pass
+
+        if tracker is None:
+            return jsonify({'error': 'Position tracker not available'}), 503
+
+        result = {}
+        if new_stop is not None:
+            res = tracker.update_stop(symbol, float(new_stop))
+            if 'error' in res:
+                return jsonify({'error': res['error']}), 400
+            result = res
+
+        if new_target is not None:
+            res = tracker.update_target(symbol, float(new_target))
+            if 'error' in res:
+                return jsonify({'error': res['error']}), 400
+            result = res
+
+        logger.info(f"Position {symbol} updated via dashboard: stop={new_stop}, target={new_target}")
+        return jsonify({'success': True, 'position': result})
+    except Exception as e:
+        logger.error(f"Error updating position {symbol}: {e}")
+        return jsonify({'error': f'Failed to update position: {e}'}), 500
+
+
+@dashboard_data_bp.route('/dashboard/api/positions/<symbol>/close', methods=['POST'])
+@login_required
+def api_position_close(symbol):
+    """Close a stock position via the broker/position tracker."""
+    try:
+        from agents.orchestrator import get_running_orchestrator
+
+        orch = get_running_orchestrator()
+        if orch is None:
+            return jsonify({'error': 'Trading system is not running'}), 503
+
+        # Try to close via executor agent or position tracker
+        closed = False
+        if hasattr(orch, 'executor') and orch.executor:
+            try:
+                if hasattr(orch.executor, 'close_position'):
+                    orch.executor.close_position(symbol)
+                    closed = True
+            except Exception as ex:
+                logger.warning(f"Executor close failed for {symbol}: {ex}")
+
+        if not closed:
+            # Fallback: close via position tracker
+            try:
+                from risk.position_tracker import get_position_tracker
+                tracker = get_position_tracker()
+                if tracker and hasattr(tracker, 'close_position'):
+                    tracker.close_position(symbol, reason='manual_dashboard_close')
+                    closed = True
+            except Exception as ex:
+                logger.warning(f"Position tracker close failed for {symbol}: {ex}")
+
+        if closed:
+            logger.info(f"Position {symbol} closed via dashboard")
+            return jsonify({'success': True, 'symbol': symbol})
+        else:
+            return jsonify({'error': f'Could not close position for {symbol}. No handler available.'}), 500
+    except Exception as e:
+        logger.error(f"Error closing position {symbol}: {e}")
+        return jsonify({'error': f'Failed to close position: {e}'}), 500
+
+
+# ---------------------------------------------------------------------------
+# ML Status (AJAX endpoint)
+# ---------------------------------------------------------------------------
+
+@dashboard_data_bp.route('/dashboard/api/ml/status')
+@login_required
+def api_ml_status():
+    """Return ML monitoring data for AJAX refresh."""
+    try:
+        ml_data = {'error': None}
+
+        try:
+            from ml.model_monitor import get_model_monitors
+            monitors = get_model_monitors()
+            if not monitors:
+                ml_data['error'] = 'no_monitors'
+            else:
+                monitor = monitors[0]
+                ml_data['model_status'] = monitor.get_status() if hasattr(monitor, 'get_status') else None
+                ml_data['drift_status'] = monitor.get_drift_report() if hasattr(monitor, 'get_drift_report') else None
+                ml_data['performance_status'] = monitor.get_performance_status() if hasattr(monitor, 'get_performance_status') else None
+                ml_data['feature_drift'] = monitor.get_feature_drift() if hasattr(monitor, 'get_feature_drift') else None
+                ml_data['recent_predictions'] = monitor.get_recent_predictions(20) if hasattr(monitor, 'get_recent_predictions') else None
+        except ImportError:
+            ml_data['error'] = 'ml_module_not_available'
+        except Exception as ex:
+            ml_data['error'] = str(ex)
+
+        return jsonify(ml_data)
+    except Exception as e:
+        logger.error(f"Error in api_ml_status: {e}")
+        return jsonify({'error': 'Failed to fetch ML status'}), 500
+
+
+# ---------------------------------------------------------------------------
+# Backtest (session-auth proxy — avoids API-key requirement from dashboard)
+# ---------------------------------------------------------------------------
+@dashboard_data_bp.route('/dashboard/api/backtest', methods=['POST'])
+@login_required
+def api_backtest_proxy():
+    """Run a backtest via session auth (proxies to the shared backtest engine)."""
+    try:
+        from api.v1.routes import run_backtest_with_params
+    except ImportError:
+        return jsonify({'error': 'Backtest engine not available'}), 503
+
+    data = request.get_json() or {}
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Request body must be a JSON object'}), 400
+
+    # Basic validation
+    days = data.get('days', 365)
+    if not isinstance(days, (int, float)) or days < 30 or days > 730:
+        return jsonify({'error': 'days must be between 30 and 730'}), 400
+
+    try:
+        result = run_backtest_with_params(data)
+        return jsonify({
+            'parameters': data,
+            'result': result,
+        })
+    except Exception as e:
+        logger.error(f"Backtest error: {e}")
+        return jsonify({'error': f'Backtest failed: {str(e)}'}), 500
+
+
+# ---------------------------------------------------------------------------
+# Scanner (session-auth proxy — avoids API-key requirement from dashboard)
+# ---------------------------------------------------------------------------
+@dashboard_data_bp.route('/dashboard/api/scanner/scan', methods=['GET'])
+@login_required
+def api_scanner_scan():
+    """Run RRS scan via session auth."""
+    try:
+        from api.v1.routes import run_full_rrs_scan, format_timestamp
+        results = run_full_rrs_scan()
+        return jsonify({
+            'timestamp': format_timestamp(),
+            'count': len(results),
+            'strongest': results[:10],
+            'weakest': results[-10:] if len(results) >= 10 else [],
+            'all_results': results,
+        })
+    except ImportError:
+        return jsonify({'error': 'Scanner not available'}), 503
+    except Exception as e:
+        logger.error(f"Scanner scan error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@dashboard_data_bp.route('/dashboard/api/scanner/rrs/<symbol>', methods=['GET'])
+@login_required
+def api_scanner_rrs(symbol):
+    """Get RRS for a specific symbol via session auth."""
+    try:
+        from api.v1.routes import calculate_rrs_for_symbol, format_timestamp
+        import re
+        # Basic symbol validation
+        symbol = symbol.upper().strip()
+        if not re.match(r'^[A-Z]{1,5}$', symbol):
+            return jsonify({'error': 'Invalid symbol'}), 400
+        rrs_data = calculate_rrs_for_symbol(symbol)
+        if rrs_data is None:
+            return jsonify({'error': f'Symbol {symbol} not found'}), 404
+        return jsonify({'timestamp': format_timestamp(), 'symbol': symbol, **rrs_data})
+    except ImportError:
+        return jsonify({'error': 'RRS calculator not available'}), 503
+    except Exception as e:
+        logger.error(f"RRS lookup error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@dashboard_data_bp.route('/dashboard/api/onboarding/complete', methods=['POST'])
+@login_required
+def complete_onboarding():
+    """Mark onboarding as completed for current user."""
+    from flask_login import current_user
+    from data.database.models import User
+    try:
+        db = get_db_manager()
+        with db.session() as session:
+            user = session.query(User).filter_by(id=current_user.id).first()
+            if user:
+                user.onboarding_completed = True
+                session.commit()
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        logger.error(f"Onboarding complete error: {e}")
+        return jsonify({'error': str(e)}), 500

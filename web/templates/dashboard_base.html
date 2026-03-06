@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="/static/css/dashboard.css">
+<link rel="stylesheet" href="/static/css/dashboard.css?v=20260306b">
 {% block dashboard_css %}{% endblock %}
 {% endblock %}
 
@@ -35,6 +35,7 @@
             <li><a href="/dashboard/backtest" {% if active_page == 'backtest' %}class="active"{% endif %}>Backtest</a></li>
             <li><a href="/dashboard/agents" {% if active_page == 'agents' %}class="active"{% endif %}>Agent Monitor</a></li>
             <li><a href="/dashboard/confidence" {% if active_page == 'confidence' %}class="active"{% endif %}>AI Confidence</a></li>
+            <li><a href="/dashboard/ml" {% if active_page == 'ml' %}class="active"{% endif %}>ML Models</a></li>
             <li><a href="/dashboard/options" {% if active_page == 'options' %}class="active"{% endif %}>Options</a></li>
             <li><a href="/performance">Performance</a></li>
         </ul>
@@ -46,7 +47,7 @@
         </ul>
         <div class="sidebar-section">Account</div>
         <ul class="sidebar-nav">
-            <li><a href="/logout" style="color: #e74c3c;">Logout</a></li>
+            <li><a href="/logout" style="color: var(--danger);">Logout</a></li>
         </ul>
     </aside>
 
@@ -54,11 +55,62 @@
         {% block page_content %}{% endblock %}
     </main>
 </div>
+
+{% if user and user.onboarding_completed is defined and not user.onboarding_completed %}
+<div class="onboarding-overlay" id="onboarding-overlay">
+    <div class="onboarding-modal">
+        <div class="onboarding-progress">
+            <span class="progress-dot active" data-step="0"></span>
+            <span class="progress-dot" data-step="1"></span>
+            <span class="progress-dot" data-step="2"></span>
+            <span class="progress-dot" data-step="3"></span>
+            <span class="progress-dot" data-step="4"></span>
+        </div>
+        <div class="onboarding-step active" data-step="0">
+            <div class="onboarding-icon">&#128075;</div>
+            <h2>Welcome to RDT Trading!</h2>
+            <p>Let's get you set up in under a minute. We'll walk you through the key features so you can start trading smarter.</p>
+        </div>
+        <div class="onboarding-step" data-step="1">
+            <div class="onboarding-icon">&#128200;</div>
+            <h2>Choose Your Strategies</h2>
+            <p>RDT runs five independent strategies. Each targets a different market edge. You can enable or disable any strategy from the <strong>Strategies</strong> page.</p>
+            <div class="onboarding-strategies">
+                <span class="badge-strategy" style="background:#3b82f6">RRS Momentum</span>
+                <span class="badge-strategy" style="background:#22c55e">RSI(2) Mean Rev</span>
+                <span class="badge-strategy" style="background:#f59e0b">Trend Breakout</span>
+                <span class="badge-strategy" style="background:#a855f7">Post-Earnings</span>
+                <span class="badge-strategy" style="background:#ef4444">Gap Fill</span>
+            </div>
+        </div>
+        <div class="onboarding-step" data-step="2">
+            <div class="onboarding-icon">&#128737;</div>
+            <h2>Set Risk Parameters</h2>
+            <p>Control your risk from <strong>Settings</strong>: max positions, risk per trade, daily loss limits, and drawdown controls. Start conservative — you can always adjust later.</p>
+        </div>
+        <div class="onboarding-step" data-step="3">
+            <div class="onboarding-icon">&#128176;</div>
+            <h2>Start with Paper Trading</h2>
+            <p>We recommend starting in <strong>paper trading mode</strong> to validate the strategies before committing real capital. All signals and trades are tracked identically.</p>
+        </div>
+        <div class="onboarding-step" data-step="4">
+            <div class="onboarding-icon">&#128276;</div>
+            <h2>Set Your First Alert</h2>
+            <p>Head to <strong>Alerts</strong> to set up price or signal alerts. You'll get notified by email or on the dashboard when conditions trigger.</p>
+            <p style="margin-top: 12px; font-weight: 600; color: #4ade80;">You're all set! Explore the dashboard and start trading.</p>
+        </div>
+        <div class="onboarding-actions">
+            <button class="btn btn-secondary btn-sm" id="onboarding-skip" onclick="completeOnboarding()">Skip</button>
+            <button class="btn btn-primary btn-sm" id="onboarding-next" onclick="nextOnboardingStep()">Next</button>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="/static/js/dashboard-common.js"></script>
+<script src="/static/js/dashboard-common.js?v=20260306b"></script>
 <script>
 (function() {
     var toggle = document.getElementById('sidebar-toggle');
@@ -73,5 +125,33 @@
     sidebar.querySelectorAll('a').forEach(function(a) { a.addEventListener('click', close); });
 })();
 </script>
+{% if user and user.onboarding_completed is defined and not user.onboarding_completed %}
+<script>
+var _obStep = 0;
+var _obTotal = 5;
+function nextOnboardingStep() {
+    if (_obStep < _obTotal - 1) {
+        document.querySelector('.onboarding-step[data-step="' + _obStep + '"]').classList.remove('active');
+        document.querySelector('.progress-dot[data-step="' + _obStep + '"]').classList.remove('active');
+        document.querySelector('.progress-dot[data-step="' + _obStep + '"]').classList.add('done');
+        _obStep++;
+        document.querySelector('.onboarding-step[data-step="' + _obStep + '"]').classList.add('active');
+        document.querySelector('.progress-dot[data-step="' + _obStep + '"]').classList.add('active');
+        if (_obStep === _obTotal - 1) {
+            document.getElementById('onboarding-next').textContent = 'Get Started';
+        }
+    } else {
+        completeOnboarding();
+    }
+}
+function completeOnboarding() {
+    dashboardFetch('/dashboard/api/onboarding/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    }).catch(function() {});
+    document.getElementById('onboarding-overlay').style.display = 'none';
+}
+</script>
+{% endif %}
 {% block dashboard_js %}{% endblock %}
 {% endblock %}

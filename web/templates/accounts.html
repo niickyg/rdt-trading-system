@@ -64,8 +64,8 @@
 
     .account-card {
         background: var(--card);
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border-radius: 12px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         padding: 20px;
         position: relative;
         transition: transform 0.2s, box-shadow 0.2s;
@@ -103,10 +103,10 @@
         font-weight: 600;
     }
     .account-badge.default { background: var(--accent); color: white; }
-    .account-badge.paper { background: #e3f2fd; color: #1565c0; }
-    .account-badge.schwab { background: #e8f5e9; color: #2e7d32; }
-    .account-badge.ibkr { background: #fff3e0; color: #e65100; }
-    .account-badge.inactive { background: #ffebee; color: #c62828; }
+    .account-badge.paper { background: rgba(59,130,246,0.15); color: #3b82f6; }
+    .account-badge.schwab { background: rgba(34,197,94,0.15); color: #22c55e; }
+    .account-badge.ibkr { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .account-badge.inactive { background: rgba(239,68,68,0.15); color: #ef4444; }
 
     .account-stats {
         display: grid;
@@ -159,7 +159,7 @@
     }
     .modal-content {
         background: var(--card);
-        border-radius: 10px;
+        border-radius: 12px;
         padding: 30px;
         width: 100%;
         max-width: 500px;
@@ -188,7 +188,7 @@
     .portfolio-summary {
         background: linear-gradient(135deg, var(--primary), var(--secondary));
         color: white;
-        border-radius: 10px;
+        border-radius: 12px;
         padding: 25px;
         margin-bottom: 30px;
     }
@@ -842,13 +842,13 @@
     }
 
     function showSuccess(message) {
-        // Could integrate with a toast library
-        alert(message);
+        if (typeof showToast === 'function') { showToast(message, 'success'); }
+        else { console.log(message); }
     }
 
     function showError(message) {
-        // Could integrate with a toast library
-        alert('Error: ' + message);
+        if (typeof showToast === 'function') { showToast(message, 'error'); }
+        else { console.error(message); }
     }
 
     // Close modals on outside click

@@ -1,36 +1,92 @@
 {% extends "base.html" %}
 {% block title %}Features - RDT Trading{% endblock %}
 {% block content %}
-<div class="container" style="max-width: 900px; padding: 60px 20px;">
-    <h1 class="text-center mb-2">RRS Trading Strategy</h1>
-    <p class="text-center text-muted mb-2">Understanding Real Relative Strength</p>
+<div class="container" style="max-width: 1000px; padding: 60px 20px;">
+    <h1 class="text-center mb-2">Platform Features</h1>
+    <p class="text-center text-muted mb-2">A fully automated multi-strategy trading system</p>
 
     <div class="card">
-        <h3>What is Real Relative Strength (RRS)?</h3>
-        <p>RRS measures a stock's performance relative to the overall market (SPY), normalized by volatility. This identifies stocks that are genuinely outperforming or underperforming the market.</p>
-        <div style="background: var(--bg); padding: 15px; border-radius: 5px; margin: 15px 0;">
-            <code>RRS = (Stock % Change - SPY % Change) / Stock ATR</code>
+        <h3>Multi-Strategy Architecture</h3>
+        <p>Five independent strategies run simultaneously, each targeting a different market edge with its own capital allocation, risk limits, and ML-optimized parameters.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:15px;">
+            <div style="background:var(--bg);padding:12px;border-radius:6px;border-left:3px solid #3b82f6;">
+                <strong style="font-size:0.9rem;">RRS Momentum</strong>
+                <div style="font-size:0.8rem;color:var(--text-light);">Real Relative Strength vs SPY — catches momentum early</div>
+            </div>
+            <div style="background:var(--bg);padding:12px;border-radius:6px;border-left:3px solid #22c55e;">
+                <strong style="font-size:0.9rem;">RSI(2) Mean Reversion</strong>
+                <div style="font-size:0.8rem;color:var(--text-light);">Oversold bounces on fundamentally strong stocks</div>
+            </div>
+            <div style="background:var(--bg);padding:12px;border-radius:6px;border-left:3px solid #f59e0b;">
+                <strong style="font-size:0.9rem;">Trend Breakout</strong>
+                <div style="font-size:0.8rem;color:var(--text-light);">Consolidation breakouts with volume confirmation</div>
+            </div>
+            <div style="background:var(--bg);padding:12px;border-radius:6px;border-left:3px solid #a855f7;">
+                <strong style="font-size:0.9rem;">Post-Earnings Drift</strong>
+                <div style="font-size:0.8rem;color:var(--text-light);">Continuation trades after earnings surprises</div>
+            </div>
+            <div style="background:var(--bg);padding:12px;border-radius:6px;border-left:3px solid #ef4444;">
+                <strong style="font-size:0.9rem;">Gap Fill</strong>
+                <div style="font-size:0.8rem;color:var(--text-light);">Fades overextended overnight gap moves</div>
+            </div>
         </div>
     </div>
 
     <div class="card">
-        <h3>Entry Criteria</h3>
+        <h3>Machine Learning & Adaptive Learning</h3>
         <ul style="padding-left: 20px;">
-            <li>RRS value exceeds threshold (typically > 2.0)</li>
-            <li>Daily chart confirms strength (above key EMAs)</li>
-            <li>ML model confidence > 72%</li>
-            <li>Favorable market regime</li>
-            <li>No negative news or upcoming earnings</li>
+            <li>Per-strategy GradientBoosting models score every signal with a confidence rating</li>
+            <li>Adaptive parameter learning adjusts strategy thresholds based on recent performance</li>
+            <li>Market regime detection (trending, mean-reverting, volatile) influences strategy weights</li>
+            <li>Model drift monitoring with automatic retraining triggers</li>
+            <li>Feature engineering from price action, volume, volatility, and relative strength</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h3>Options Trading Module</h3>
+        <ul style="padding-left: 20px;">
+            <li>Full options support: calls, puts, vertical spreads, iron condors</li>
+            <li>IV regime-based strategy selection (low IV → debit spreads, high IV → credit spreads)</li>
+            <li>Delta-based strike picking with configurable target deltas</li>
+            <li>IBKR combo order execution for multi-leg strategies</li>
+            <li>Options chain viewer with Greeks display and risk analysis</li>
         </ul>
     </div>
 
     <div class="card">
         <h3>Risk Management</h3>
         <ul style="padding-left: 20px;">
-            <li>Stop loss: 1x ATR below entry</li>
-            <li>Profit target: 2x ATR above entry</li>
-            <li>Position sizing: 2% account risk per trade</li>
-            <li>Maximum concurrent positions: 5</li>
+            <li>Per-strategy position limits and capital allocation</li>
+            <li>Portfolio-wide max open positions and daily loss caps</li>
+            <li>ATR-based stop loss and profit target calculation</li>
+            <li>Correlation-aware position sizing</li>
+            <li>VIX filter prevents entries during extreme market stress</li>
+            <li>Automatic trade rejection with logged reasons</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h3>Real-Time Dashboard</h3>
+        <ul style="padding-left: 20px;">
+            <li>Dark-themed professional interface with WebSocket live updates</li>
+            <li>Live positions with current price, P&L, and stop/target progress bars</li>
+            <li>Signal feed with confidence scores, RRS values, and strategy tags</li>
+            <li>Trade journal with MFE/MAE analysis and performance breakdowns</li>
+            <li>Strategy analytics with per-strategy win rates and P&L</li>
+            <li>Built-in backtester with parameter optimization</li>
+            <li>Agent health monitoring and system status</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h3>Broker Integration</h3>
+        <ul style="padding-left: 20px;">
+            <li>Interactive Brokers (IBKR) as sole data source and execution broker</li>
+            <li>Real-time quotes and historical bar data with intelligent caching</li>
+            <li>Automatic order placement with bracket orders (stop + target)</li>
+            <li>Paper trading mode for strategy development and testing</li>
+            <li>Position reconciliation on system restart</li>
         </ul>
     </div>
 

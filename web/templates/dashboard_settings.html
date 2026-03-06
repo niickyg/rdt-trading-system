@@ -171,7 +171,7 @@
                 <div class="toggle-description">Receive signal alerts and daily summaries via email</div>
             </div>
             <label class="toggle-switch">
-                <input type="checkbox" id="email-notifications" name="email_notifications" checked>
+                <input type="checkbox" id="email-notifications" name="email_notifications" checked aria-label="Email Notifications">
                 <span class="toggle-slider"></span>
             </label>
         </div>
@@ -181,7 +181,7 @@
                 <div class="toggle-description">Receive urgent alerts via SMS (requires phone number)</div>
             </div>
             <label class="toggle-switch">
-                <input type="checkbox" id="sms-notifications" name="sms_notifications">
+                <input type="checkbox" id="sms-notifications" name="sms_notifications" aria-label="SMS Notifications">
                 <span class="toggle-slider"></span>
             </label>
         </div>
@@ -191,7 +191,7 @@
                 <div class="toggle-description">Get notified when new trading signals are generated</div>
             </div>
             <label class="toggle-switch">
-                <input type="checkbox" id="signal-alerts" name="signal_alerts" checked>
+                <input type="checkbox" id="signal-alerts" name="signal_alerts" checked aria-label="New Signal Alerts">
                 <span class="toggle-slider"></span>
             </label>
         </div>
@@ -201,7 +201,7 @@
                 <div class="toggle-description">Get notified when positions hit stop or target prices</div>
             </div>
             <label class="toggle-switch">
-                <input type="checkbox" id="price-alerts" name="price_alerts" checked>
+                <input type="checkbox" id="price-alerts" name="price_alerts" checked aria-label="Price Alerts">
                 <span class="toggle-slider"></span>
             </label>
         </div>
@@ -211,7 +211,7 @@
                 <div class="toggle-description">Receive a daily email with performance summary</div>
             </div>
             <label class="toggle-switch">
-                <input type="checkbox" id="daily-summary" name="daily_summary" checked>
+                <input type="checkbox" id="daily-summary" name="daily_summary" checked aria-label="Daily Summary">
                 <span class="toggle-slider"></span>
             </label>
         </div>
@@ -230,7 +230,7 @@
                 <div class="toggle-description">Suppress non-critical alerts during specified times</div>
             </div>
             <label class="toggle-switch">
-                <input type="checkbox" id="quiet-hours-enabled" name="quiet_hours_enabled">
+                <input type="checkbox" id="quiet-hours-enabled" name="quiet_hours_enabled" aria-label="Quiet Hours">
                 <span class="toggle-slider"></span>
             </label>
         </div>
@@ -306,7 +306,7 @@
                 <div class="toggle-description">Allow critical alerts (stop losses, system errors) to bypass quiet hours</div>
             </div>
             <label class="toggle-switch">
-                <input type="checkbox" id="override-critical" name="override_critical" checked>
+                <input type="checkbox" id="override-critical" name="override_critical" checked aria-label="Override for Critical Alerts">
                 <span class="toggle-slider"></span>
             </label>
         </div>
@@ -357,28 +357,9 @@
     <!-- API Keys -->
     <div class="card settings-section">
         <h3 class="settings-section-title">API Keys</h3>
-        <div class="form-group">
-            <label class="form-label">Your API Key</label>
-            <div class="api-key-display">
-                <div class="api-key-value" id="api-key-display">••••••••••••••••••••••••••••••••</div>
-                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleApiKeyVisibility()">Show</button>
-                <button type="button" class="btn btn-secondary btn-sm" onclick="copyApiKey()">Copy</button>
-            </div>
-            <p class="form-hint">Use this key to authenticate API requests</p>
-        </div>
-        <div class="form-group mt-2">
-            <label class="form-label">API Secret</label>
-            <div class="api-key-display">
-                <div class="api-key-value" id="api-secret-display">••••••••••••••••••••••••••••••••</div>
-                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleSecretVisibility()">Show</button>
-                <button type="button" class="btn btn-secondary btn-sm" onclick="copySecret()">Copy</button>
-            </div>
-            <p class="form-hint">Keep this secret safe and never share it</p>
-        </div>
-        <div class="mt-2">
-            <button type="button" class="btn btn-danger btn-sm" onclick="regenerateKeys()">Regenerate API Keys</button>
-            <span class="text-muted" style="margin-left: 10px; font-size: 0.85rem;">Warning: This will invalidate existing keys</span>
-        </div>
+        <p class="text-muted" style="font-size: 0.9rem;">
+            API keys are managed via the command line. Use <code>python scripts/manage_api_keys.py</code> to create or rotate keys.
+        </p>
     </div>
 
     <!-- Action Buttons -->
@@ -400,97 +381,55 @@
         'gap_fill': 'Fade 2-4% overnight gaps in healthy stocks (intraday)',
     };
 
-    // Simulated API key data (would come from server in production)
-    const apiKeyData = {
-        key: 'rdt_live_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6',
-        secret: 'rdt_secret_z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4'
-    };
-
-    let apiKeyVisible = false;
-    let secretVisible = false;
-
-    function toggleApiKeyVisibility() {
-        apiKeyVisible = !apiKeyVisible;
-        const display = document.getElementById('api-key-display');
-        display.textContent = apiKeyVisible ? apiKeyData.key : '••••••••••••••••••••••••••••••••';
-    }
-
-    function toggleSecretVisibility() {
-        secretVisible = !secretVisible;
-        const display = document.getElementById('api-secret-display');
-        display.textContent = secretVisible ? apiKeyData.secret : '••••••••••••••••••••••••••••••••';
-    }
-
-    function copyApiKey() {
-        navigator.clipboard.writeText(apiKeyData.key).then(() => {
-            alert('API Key copied to clipboard');
-        });
-    }
-
-    function copySecret() {
-        navigator.clipboard.writeText(apiKeyData.secret).then(() => {
-            alert('API Secret copied to clipboard');
-        });
-    }
-
-    function regenerateKeys() {
-        if (confirm('Are you sure you want to regenerate your API keys? This will invalidate all existing keys.')) {
-            // Would make API call in production
-            alert('API keys regenerated. Please update your applications with the new keys.');
-        }
-    }
-
     function resetForm() {
         if (confirm('Reset all settings to default values?')) {
             document.getElementById('settings-form').reset();
         }
     }
 
-    // Handle form submission
+    // Handle form submission — save to real API
     document.getElementById('settings-form').addEventListener('submit', async function(e) {
         e.preventDefault();
 
         const formData = new FormData(this);
         const settings = Object.fromEntries(formData.entries());
 
-        // Handle checkboxes (they don't send value when unchecked)
+        // Handle checkboxes
         settings.email_notifications = document.getElementById('email-notifications').checked;
         settings.sms_notifications = document.getElementById('sms-notifications').checked;
         settings.signal_alerts = document.getElementById('signal-alerts').checked;
         settings.price_alerts = document.getElementById('price-alerts').checked;
         settings.daily_summary = document.getElementById('daily-summary').checked;
-
-        // Collect quiet hours settings
         settings.quiet_hours_enabled = document.getElementById('quiet-hours-enabled').checked;
         settings.override_critical = document.getElementById('override-critical').checked;
 
-        // Collect selected days
         const selectedDays = [];
-        document.querySelectorAll('input[name="quiet_days"]:checked').forEach(cb => {
-            selectedDays.push(cb.value);
-        });
+        document.querySelectorAll('input[name="quiet_days"]:checked').forEach(cb => selectedDays.push(cb.value));
         settings.quiet_days = selectedDays;
 
-        // Collect selected channels
         const selectedChannels = [];
-        document.querySelectorAll('input[name="quiet_channels"]:checked').forEach(cb => {
-            selectedChannels.push(cb.value);
-        });
+        document.querySelectorAll('input[name="quiet_channels"]:checked').forEach(cb => selectedChannels.push(cb.value));
         settings.quiet_channels = selectedChannels;
 
         try {
-            // Save general settings
-            console.log('Saving settings:', settings);
+            const resp = await dashboardFetch('/dashboard/api/settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(settings)
+            });
+            if (resp.ok) {
+                showToast('Settings saved successfully!', 'success');
+            } else {
+                throw new Error('Save failed');
+            }
 
-            // Save alert schedule settings
+            // Also save alert schedule if enabled
             if (settings.quiet_hours_enabled) {
                 await saveAlertSchedule(settings);
             }
-
-            alert('Settings saved successfully!');
         } catch (error) {
             console.error('Error saving settings:', error);
-            alert('Error saving settings. Please try again.');
+            showToast('Error saving settings. Please try again.', 'error');
         }
     });
 
@@ -508,7 +447,7 @@
         };
 
         try {
-            const response = await fetch('/api/v1/alerts/schedule', {
+            const response = await dashboardFetch('/api/v1/alerts/schedule', {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -536,7 +475,7 @@
     // Do Not Disturb functions
     async function enableDND(minutes) {
         try {
-            const response = await fetch('/api/v1/alerts/schedule/dnd', {
+            const response = await dashboardFetch('/api/v1/alerts/schedule/dnd', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -547,31 +486,31 @@
             if (response.ok) {
                 const data = await response.json();
                 updateDNDStatus(true, data.dnd_until);
-                alert(`Do Not Disturb enabled for ${minutes} minutes`);
+                showToast('Do Not Disturb enabled for ' + minutes + ' minutes', 'success');
             } else {
                 throw new Error('Failed to enable DND');
             }
         } catch (error) {
             console.error('Error enabling DND:', error);
-            alert('Failed to enable Do Not Disturb');
+            showToast('Failed to enable Do Not Disturb', 'error');
         }
     }
 
     async function disableDND() {
         try {
-            const response = await fetch('/api/v1/alerts/schedule/dnd', {
+            const response = await dashboardFetch('/api/v1/alerts/schedule/dnd', {
                 method: 'DELETE'
             });
 
             if (response.ok) {
                 updateDNDStatus(false, null);
-                alert('Do Not Disturb disabled');
+                showToast('Do Not Disturb disabled', 'info');
             } else {
                 throw new Error('Failed to disable DND');
             }
         } catch (error) {
             console.error('Error disabling DND:', error);
-            alert('Failed to disable Do Not Disturb');
+            showToast('Failed to disable Do Not Disturb', 'error');
         }
     }
 
@@ -596,7 +535,7 @@
     // Queued alerts functions
     async function loadQueuedAlerts() {
         try {
-            const response = await fetch('/api/v1/alerts/queued');
+            const response = await dashboardFetch('/api/v1/alerts/queued');
             if (response.ok) {
                 const data = await response.json();
                 const section = document.getElementById('queued-alerts-section');
@@ -622,48 +561,60 @@
     // Load existing settings on page load
     async function loadSettings() {
         try {
-            // Load alert schedule
-            const scheduleResponse = await fetch('/api/v1/alerts/schedule');
-            if (scheduleResponse.ok) {
-                const data = await scheduleResponse.json();
-
-                // Apply user config
-                if (data.user_config) {
-                    const qh = data.user_config.quiet_hours;
-                    if (qh) {
-                        document.getElementById('quiet-hours-enabled').checked = qh.enabled;
-                        if (qh.enabled) {
-                            document.getElementById('quiet-hours-settings').style.display = 'block';
-                        }
-                        if (qh.start) {
-                            document.getElementById('quiet-hours-start').value = qh.start;
-                        }
-                        if (qh.end) {
-                            document.getElementById('quiet-hours-end').value = qh.end;
-                        }
-
-                        // Set selected days
-                        if (qh.days) {
-                            document.querySelectorAll('input[name="quiet_days"]').forEach(cb => {
-                                cb.checked = qh.days.includes(cb.value);
-                            });
-                        }
-                    }
-
-                    document.getElementById('override-critical').checked =
-                        data.user_config.override_critical !== false;
-
-                    // Update DND status
-                    if (data.user_config.dnd) {
-                        updateDNDStatus(data.user_config.dnd.enabled, data.user_config.dnd.until);
-                    }
+            // Load saved settings from dashboard API
+            const settingsResp = await dashboardFetch('/dashboard/api/settings');
+            if (settingsResp.ok) {
+                const data = await settingsResp.json();
+                const s = data.settings || {};
+                // Populate text/number fields
+                const fields = ['full_name', 'email', 'phone', 'default_position_size', 'max_positions',
+                    'risk_per_trade', 'min_rrs', 'quiet_hours_start', 'quiet_hours_end'];
+                fields.forEach(f => {
+                    const el = document.getElementById(f.replace(/_/g, '-'));
+                    if (el && s[f] !== undefined) el.value = s[f];
+                });
+                // Populate selects
+                ['timezone', 'preferred_direction', 'signal_strength'].forEach(f => {
+                    const el = document.getElementById(f.replace(/_/g, '-'));
+                    if (el && s[f]) el.value = s[f];
+                });
+                // Populate checkboxes
+                ['email_notifications', 'sms_notifications', 'signal_alerts', 'price_alerts',
+                 'daily_summary', 'quiet_hours_enabled', 'override_critical'].forEach(f => {
+                    const el = document.getElementById(f.replace(/_/g, '-'));
+                    if (el && s[f] !== undefined) el.checked = !!s[f];
+                });
+                // Quiet hours visibility
+                if (s.quiet_hours_enabled) {
+                    document.getElementById('quiet-hours-settings').style.display = 'block';
+                }
+                // Days
+                if (s.quiet_days) {
+                    document.querySelectorAll('input[name="quiet_days"]').forEach(cb => {
+                        cb.checked = s.quiet_days.includes(cb.value);
+                    });
+                }
+                // Channels
+                if (s.quiet_channels) {
+                    document.querySelectorAll('input[name="quiet_channels"]').forEach(cb => {
+                        cb.checked = s.quiet_channels.includes(cb.value);
+                    });
                 }
             }
 
+            // Load alert schedule
+            try {
+                const scheduleResponse = await dashboardFetch('/api/v1/alerts/schedule');
+                if (scheduleResponse.ok) {
+                    const data = await scheduleResponse.json();
+                    if (data.user_config && data.user_config.dnd) {
+                        updateDNDStatus(data.user_config.dnd.enabled, data.user_config.dnd.until);
+                    }
+                }
+            } catch (e) { /* schedule API may not exist */ }
+
             // Load queued alerts count
             await loadQueuedAlerts();
-
-            console.log('Settings loaded');
         } catch (error) {
             console.error('Error loading settings:', error);
         }
@@ -709,7 +660,7 @@
         let html = '';
         for (const s of strategies) {
             const label = STRATEGY_LABELS[s.name] || s.name;
-            const color = STRATEGY_COLORS[s.name] || '#95a5a6';
+            const color = STRATEGY_COLORS[s.name] || '#6b7280';
             const desc = STRATEGY_DESCS[s.name] || '';
             html += `
             <div class="toggle-row">
@@ -752,7 +703,7 @@
             // Revert the checkbox
             const cb = document.getElementById(`strategy-${name}`);
             if (cb) cb.checked = !active;
-            alert('Failed to toggle strategy. Is the bot running?');
+            showToast('Failed to toggle strategy. Is the bot running?', 'error');
         }
     }
 
@@ -764,7 +715,7 @@
         let html = '';
         for (const [name, s] of Object.entries(stats)) {
             const label = STRATEGY_LABELS[name] || name;
-            const color = STRATEGY_COLORS[name] || '#95a5a6';
+            const color = STRATEGY_COLORS[name] || '#6b7280';
             const pnlClass = s.total_pnl >= 0 ? 'text-success' : 'text-danger';
             html += `
             <div style="background: var(--bg); border-radius: 8px; padding: 12px; border-left: 3px solid ${color};">

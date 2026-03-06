@@ -251,6 +251,8 @@ def initialize_broker(paper_trading: bool = True, initial_balance: float = 25000
     """
     try:
         from brokers import get_broker
+        from dotenv import load_dotenv
+        load_dotenv('/app/.env', override=False)
 
         # Check BROKER_TYPE first — if a real broker is configured, use it
         # even when paper_trading is True (the broker handles paper mode internally).
@@ -260,27 +262,13 @@ def initialize_broker(paper_trading: bool = True, initial_balance: float = 25000
             broker = get_broker("schwab", from_env=True)
             logger.info("Schwab broker created from environment config")
         elif broker_type == 'ibkr':
-            try:
-                broker = get_broker("ibkr", from_env=True)
-                logger.info("IBKR broker created from environment config")
-                broker.connect()
-                logger.info(f"Broker connected: {broker.__class__.__name__}")
-                return broker
-            except Exception as e:
-                logger.warning(f"IBKR connection failed ({e}), falling back to paper broker")
-                broker = get_broker("paper", initial_balance=initial_balance)
-                logger.info(f"Paper broker created with ${initial_balance:,.2f} balance (IBKR fallback)")
-        elif paper_trading or broker_type == 'paper':
-            broker = get_broker("paper", initial_balance=initial_balance)
-            logger.info(f"Paper broker created with ${initial_balance:,.2f} balance")
+            broker = get_broker("ibkr", from_env=True)
+            logger.info("IBKR broker created from environment config")
+            broker.connect()
+            logger.info(f"Broker connected: {broker.__class__.__name__}")
+            return broker
         else:
-            broker = get_broker("paper", initial_balance=initial_balance)
-            logger.warning(f"Unknown broker type '{broker_type}', using paper broker")
-
-        # Connect the broker
-        broker.connect()
-        logger.info(f"Broker connected: {broker.__class__.__name__}")
-        return broker
+            raise ValueError(f"Unsupported broker type: '{broker_type}'. Set BROKER_TYPE=ibkr in .env")
 
     except Exception as e:
         logger.critical(f"CRITICAL: Broker initialization failed: {e}")
@@ -1287,6 +1275,30 @@ def initialize_all_components(include_agents: bool = False) -> Dict[str, Any]:
         components['alert_manager'] = initialize_alert_manager(config)
     components['prometheus_metrics'] = initialize_prometheus_metrics()
     components['realtime_scanner'] = initialize_realtime_scanner(config, watchlist)
+
+    # Initialize daily summary email task
+    try:
+        from alerts.daily_summary_task import DailySummaryTask, create_daily_summary_from_db
+        from data.database.connection import get_db_manager
+
+        def _db_summary_provider(summary_date=None):
+            db = get_db_manager()
+            with db.session() as session:
+                return create_daily_summary_from_db(session, summary_date)
+
+        evening_task = DailySummaryTask(schedule_time='16:30')
+        evening_task._data_provider = _db_summary_provider
+        evening_task.start_scheduler()
+
+        morning_task = DailySummaryTask(schedule_time='08:30')
+        morning_task._data_provider = _db_summary_provider
+        morning_task.start_scheduler()
+
+        components['daily_summary_evening'] = evening_task
+        components['daily_summary_morning'] = morning_task
+        logger.info("Daily summary email tasks initialized (08:30 + 16:30 ET)")
+    except Exception as e:
+        logger.warning(f"Daily summary setup skipped: {e}")
 
     # Register core components with API routes
     try:

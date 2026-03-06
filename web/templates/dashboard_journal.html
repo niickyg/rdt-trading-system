@@ -193,7 +193,9 @@
         </div>
     </div>
     <div class="empty-state" id="log-empty" style="display:none;">
-        <div class="empty-title">No closed trades in this period</div>
+        <div class="empty-icon"><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
+        <div class="empty-title">No Trades in This Period</div>
+        <p>Try adjusting the date range to see your trading activity.</p>
     </div>
 </div>
 
@@ -229,8 +231,8 @@
     function getStrategy() { return document.getElementById('filter-strategy').value; }
 
     // Chart defaults
-    var gridOpts = { color: 'rgba(0,0,0,0.05)' };
-    var tickOpts = { color: '#666' };
+    var gridOpts = { color: 'rgba(255,255,255,0.05)' };
+    var tickOpts = { color: '#9ca3af' };
     var legendOpts = { position: 'bottom', labels: { usePointStyle: true, padding: 20 } };
 
     // Tabs
@@ -274,18 +276,19 @@
                 if (chartEquity) chartEquity.destroy();
                 chartEquity = new Chart(document.getElementById('chart-equity').getContext('2d'), {
                     type: 'line',
-                    data: { labels: labels, datasets: [{ label: 'Equity', data: values, borderColor: '#3498db', backgroundColor: 'rgba(52,152,219,0.08)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 }] },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { grid: gridOpts, ticks: { color: '#666', callback: function(v) { return '$' + v.toLocaleString(); } } }, x: { grid: { display: false }, ticks: tickOpts } } }
+                    data: { labels: labels, datasets: [{ label: 'Equity', data: values, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 }] },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { grid: gridOpts, ticks: { color: '#9ca3af', callback: function(v) { return '$' + v.toLocaleString(); } } }, x: { grid: { display: false }, ticks: tickOpts } } }
                 });
 
                 var ddVals = snaps.map(function(s) { return s.drawdown_pct || 0; });
                 if (chartDrawdown) chartDrawdown.destroy();
                 chartDrawdown = new Chart(document.getElementById('chart-drawdown').getContext('2d'), {
                     type: 'line',
-                    data: { labels: labels, datasets: [{ label: 'Drawdown', data: ddVals, borderColor: '#e74c3c', backgroundColor: 'rgba(231,76,60,0.1)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 }] },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { reverse: true, grid: gridOpts, ticks: { color: '#666', callback: function(v) { return v + '%'; } } }, x: { grid: { display: false }, ticks: tickOpts } } }
+                    data: { labels: labels, datasets: [{ label: 'Drawdown', data: ddVals, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 }] },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { reverse: true, grid: gridOpts, ticks: { color: '#9ca3af', callback: function(v) { return v + '%'; } } }, x: { grid: { display: false }, ticks: tickOpts } } }
                 });
-            });
+            })
+            .catch(function(err) { console.error('Failed to load equity data:', err); });
     }
 
     // --- Daily P&L ---
@@ -321,7 +324,7 @@
                 document.getElementById('daily-win-days').innerHTML = '<span class="positive">' + greenDays + ' green</span> / <span class="negative">' + (days.length - greenDays) + ' red</span>';
 
                 var labels = days.map(function(d) { return d.date; });
-                var colors = pnls.map(function(v) { return v >= 0 ? 'rgba(39,174,96,0.7)' : 'rgba(231,76,60,0.7)'; });
+                var colors = pnls.map(function(v) { return v >= 0 ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)'; });
 
                 var winRates = [];
                 for (var i = 0; i < days.length; i++) {
@@ -338,20 +341,21 @@
                         labels: labels,
                         datasets: [
                             { label: 'Daily P&L', data: pnls, backgroundColor: colors, yAxisID: 'y', borderRadius: 2 },
-                            { label: 'Win Rate (20d)', data: winRates, type: 'line', borderColor: '#9b59b6', backgroundColor: 'transparent', yAxisID: 'y1', pointRadius: 0, tension: 0.3, borderWidth: 2, borderDash: [4, 2] }
+                            { label: 'Win Rate (20d)', data: winRates, type: 'line', borderColor: '#a855f7', backgroundColor: 'transparent', yAxisID: 'y1', pointRadius: 0, tension: 0.3, borderWidth: 2, borderDash: [4, 2] }
                         ]
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false,
                         scales: {
-                            y: { grid: gridOpts, ticks: { color: '#666', callback: function(v) { return '$' + v; } } },
-                            y1: { position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, ticks: { color: '#666', callback: function(v) { return v + '%'; } } },
+                            y: { grid: gridOpts, ticks: { color: '#9ca3af', callback: function(v) { return '$' + v; } } },
+                            y1: { position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, ticks: { color: '#9ca3af', callback: function(v) { return v + '%'; } } },
                             x: { grid: { display: false }, ticks: tickOpts }
                         },
                         plugins: { legend: legendOpts }
                     }
                 });
-            });
+            })
+            .catch(function(err) { console.error('Failed to load daily P&L:', err); });
     }
 
     // --- Trade Analytics ---
@@ -362,7 +366,8 @@
                 tradeData = data.trades || [];
                 renderAnalytics();
                 renderTradeLog();
-            });
+            })
+            .catch(function(err) { console.error('Failed to load trades:', err); });
     }
 
     function groupBy(arr, key) {
@@ -406,7 +411,7 @@
             chartDuration = new Chart(document.getElementById('chart-duration').getContext('2d'), {
                 type: 'bar',
                 data: { labels: Object.keys(bins), datasets: [{ data: Object.values(bins), backgroundColor: 'rgba(52,152,219,0.6)', borderRadius: 6, borderSkipped: false }] },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: tickOpts, title: { display: true, text: 'Bars Held', color: '#666' } }, y: { beginAtZero: true, grid: gridOpts, ticks: tickOpts } } }
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: tickOpts, title: { display: true, text: 'Bars Held', color: '#9ca3af' } }, y: { beginAtZero: true, grid: gridOpts, ticks: tickOpts } } }
             });
         }
 
@@ -414,14 +419,14 @@
         var scatter = tradeData.filter(function(t) { return t.peak_mfe_pct != null && t.peak_mae_pct != null; });
         if (scatter.length) {
             var pts = scatter.map(function(t) { return { x: Math.abs(t.peak_mae_pct || 0), y: t.peak_mfe_pct || 0 }; });
-            var colors = scatter.map(function(t) { return t.pnl > 0 ? 'rgba(39,174,96,0.5)' : 'rgba(231,76,60,0.5)'; });
+            var colors = scatter.map(function(t) { return t.pnl > 0 ? 'rgba(34,197,94,0.5)' : 'rgba(239,68,68,0.5)'; });
             if (chartMfeMae) chartMfeMae.destroy();
             chartMfeMae = new Chart(document.getElementById('chart-mfe-mae').getContext('2d'), {
                 type: 'scatter',
                 data: { datasets: [{ data: pts, backgroundColor: colors, pointRadius: 6, pointHoverRadius: 8 }] },
                 options: {
                     responsive: true, maintainAspectRatio: false,
-                    scales: { x: { grid: gridOpts, ticks: tickOpts, title: { display: true, text: 'MAE % (max adverse)', color: '#666' } }, y: { grid: gridOpts, ticks: tickOpts, title: { display: true, text: 'MFE % (max favorable)', color: '#666' } } },
+                    scales: { x: { grid: gridOpts, ticks: tickOpts, title: { display: true, text: 'MAE % (max adverse)', color: '#9ca3af' } }, y: { grid: gridOpts, ticks: tickOpts, title: { display: true, text: 'MFE % (max favorable)', color: '#9ca3af' } } },
                     plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { var t = scatter[ctx.dataIndex]; return t.symbol + ' | MAE: ' + ctx.parsed.x.toFixed(2) + '% | MFE: ' + ctx.parsed.y.toFixed(2) + '% | P&L: $' + (t.pnl||0).toFixed(2); } } } }
                 }
             });
@@ -497,7 +502,8 @@
                 renderTradeLog();
                 closeNoteModal();
             }
-        });
+        })
+        .catch(function(err) { console.error('Failed to save note:', err); });
     };
     document.getElementById('note-modal').addEventListener('click', function(e) { if (e.target === this) closeNoteModal(); });
 

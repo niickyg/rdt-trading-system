@@ -60,7 +60,9 @@
 
 <!-- Stock Positions -->
 <div id="positions-container">
-    <!-- Rendered by JS from server data -->
+    <div class="skeleton-card" style="height:180px"></div>
+    <div class="skeleton-card" style="height:180px"></div>
+    <div class="skeleton-card" style="height:180px"></div>
 </div>
 
 <!-- Options Positions -->
@@ -73,7 +75,7 @@
             <div class="position-symbol">
                 <span class="position-ticker">{{ opt.symbol }}</span>
                 <span class="badge badge-long">{{ opt.strategy_name }}</span>
-                <span class="badge" style="background: #e8eaf6; color: #3f51b5;">{{ opt.direction|upper }}</span>
+                <span class="badge" style="background: rgba(99,102,241,0.15); color: #818cf8;">{{ opt.direction|upper }}</span>
             </div>
             <div class="position-pnl">
                 {% if opt.unrealized_pnl is not none %}
@@ -126,6 +128,26 @@
     {% endfor %}
 {% endif %}
 </div>
+
+<!-- Edit Position Modal -->
+<div id="edit-modal-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;">
+    <div style="background:var(--card);border:1px solid var(--border-light);border-radius:10px;padding:30px;width:380px;max-width:90vw;">
+        <h3 style="margin-bottom:20px;font-size:1.1rem;">Edit Position: <span id="edit-modal-symbol"></span></h3>
+        <div style="margin-bottom:15px;">
+            <label style="display:block;font-size:0.85rem;color:var(--text-light);margin-bottom:5px;">Stop Price</label>
+            <input type="number" step="0.01" id="edit-stop-input" class="form-control" style="width:100%;">
+        </div>
+        <div style="margin-bottom:20px;">
+            <label style="display:block;font-size:0.85rem;color:var(--text-light);margin-bottom:5px;">Target Price</label>
+            <input type="number" step="0.01" id="edit-target-input" class="form-control" style="width:100%;">
+        </div>
+        <div id="edit-modal-error" style="color:var(--danger);font-size:0.85rem;margin-bottom:10px;display:none;"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+            <button class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+            <button class="btn btn-primary" id="edit-save-btn" onclick="saveEditPosition()">Save</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block dashboard_js %}
@@ -144,6 +166,7 @@
         entry_date: p.entry_time || '',
         rrs_at_entry: Number(p.rrs_at_entry) || 0,
         unrealized_pnl: p.unrealized_pnl,
+        previous_close: p.previous_close != null ? Number(p.previous_close) : null,
         strategy_name: p.strategy_name || 'rrs_momentum'
     }));
 
@@ -164,6 +187,7 @@
                         entry_date: p.entry_time || '',
                         rrs_at_entry: Number(p.rrs_at_entry) || 0,
                         unrealized_pnl: p.unrealized_pnl,
+                        previous_close: p.previous_close != null ? Number(p.previous_close) : null,
                         strategy_name: p.strategy_name || 'rrs_momentum'
                     }));
                 }
@@ -204,7 +228,7 @@
             return '<div class="position-card"><div class="position-header"><div class="position-symbol">' +
                 '<span class="position-ticker">' + opt.symbol + '</span>' +
                 '<span class="badge badge-long">' + opt.strategy_name + '</span>' +
-                '<span class="badge" style="background:#e8eaf6;color:#3f51b5;">' + (opt.direction||'').toUpperCase() + '</span>' +
+                '<span class="badge" style="background:rgba(99,102,241,0.15);color:#818cf8;">' + (opt.direction||'').toUpperCase() + '</span>' +
                 '</div><div class="position-pnl"><div class="position-pnl-value ' + pnlClass + '">' + pnlDisplay + '</div>' +
                 '<div style="font-size:0.85rem;color:var(--text-light);">Entry: $' + Number(opt.entry_premium).toFixed(2) + '</div>' +
                 '</div></div>' +
@@ -227,7 +251,7 @@
     }
 
     function updateSummary() {
-        let totalExposure = 0, totalPnl = 0, totalCost = 0, totalRisk = 0;
+        let totalExposure = 0, totalPnl = 0, totalCost = 0, totalRisk = 0, todayPnl = 0, todayCost = 0;
         positionsData.forEach(pos => {
             const { pnl, cost, value } = calculatePnL(pos);
             totalExposure += value;
@@ -235,21 +259,38 @@
             totalCost += cost;
             const riskPerShare = Math.abs(pos.entry_price - pos.stop_price);
             totalRisk += riskPerShare * pos.shares;
+            // Today's P&L: change from previous close to current price
+            if (pos.previous_close != null) {
+                const dayChange = pos.direction === 'long'
+                    ? (pos.current_price - pos.previous_close) * pos.shares
+                    : (pos.previous_close - pos.current_price) * pos.shares;
+                todayPnl += dayChange;
+                todayCost += pos.previous_close * pos.shares;
+            }
         });
         const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
 
-        document.getElementById('total-exposure').textContent = formatCurrency(totalExposure);
+        animateStatElement(document.getElementById('total-exposure'), totalExposure, formatCurrency);
         document.getElementById('position-count').textContent = positionsData.length + ' position' + (positionsData.length !== 1 ? 's' : '');
 
         const pnlEl = document.getElementById('total-pnl');
-        pnlEl.textContent = formatCurrency(totalPnl);
+        animateStatElement(pnlEl, totalPnl, formatCurrency);
         pnlEl.className = 'summary-value ' + (totalPnl >= 0 ? 'positive' : 'negative');
 
         const pnlPctEl = document.getElementById('total-pnl-pct');
-        pnlPctEl.textContent = formatPct(totalPnlPct);
+        animateStatElement(pnlPctEl, totalPnlPct, formatPct);
         pnlPctEl.className = 'summary-change ' + (totalPnlPct >= 0 ? 'positive' : 'negative');
 
-        document.getElementById('at-risk').textContent = formatCurrency(totalRisk);
+        // Today's P&L
+        const todayPnlEl = document.getElementById('today-pnl');
+        animateStatElement(todayPnlEl, todayPnl, formatCurrency);
+        todayPnlEl.className = 'summary-value ' + (todayPnl >= 0 ? 'positive' : 'negative');
+        const todayPnlPctEl = document.getElementById('today-pnl-pct');
+        const todayPnlPct = todayCost > 0 ? (todayPnl / todayCost) * 100 : 0;
+        animateStatElement(todayPnlPctEl, todayPnlPct, formatPct);
+        todayPnlPctEl.className = 'summary-change ' + (todayPnl >= 0 ? 'positive' : 'negative');
+
+        animateStatElement(document.getElementById('at-risk'), totalRisk, formatCurrency);
     }
 
     function buildPnlChart() {
@@ -259,7 +300,7 @@
 
         const labels = positionsData.map(p => p.symbol);
         const pnls = positionsData.map(p => calculatePnL(p).pnl);
-        const colors = pnls.map(v => v >= 0 ? '#27ae60' : '#e74c3c');
+        const colors = pnls.map(v => v >= 0 ? '#22c55e' : '#ef4444');
 
         if (pnlDistChart) pnlDistChart.destroy();
         pnlDistChart = createChart('pnl-distribution-chart', 'bar', {
@@ -273,8 +314,8 @@
         }, {
             plugins: { legend: { display: false } },
             scales: {
-                x: { grid: { display: false }, ticks: { color: '#666' } },
-                y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color: '#666', callback: function(v) { return '$' + v; } } }
+                x: { grid: { display: false }, ticks: { color: '#9ca3af' } },
+                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af', callback: function(v) { return '$' + v; } } }
             }
         });
     }
@@ -295,15 +336,21 @@
             const holdingDays = Math.floor((new Date() - entryDate) / (1000 * 60 * 60 * 24));
 
             // Progress bar: where current price sits between stop and target
-            const range = pos.target_price - pos.stop_price;
-            const progress = range > 0 ? ((pos.current_price - pos.stop_price) / range) * 100 : 50;
-            const clampedPct = Math.max(0, Math.min(100, progress));
-            const entryPct = range > 0 ? ((pos.entry_price - pos.stop_price) / range) * 100 : 50;
-            const clampedEntry = Math.max(0, Math.min(100, entryPct));
-            const barColor = isProfit ? 'var(--success, #2ecc71)' : 'var(--danger, #e74c3c)';
+            // For longs: stop < entry < target (range positive)
+            // For shorts: target < entry < stop (range negative) — flip to show stop on left, target on right
+            const isShort = pos.direction === 'short';
+            const barLow = isShort ? pos.target_price : pos.stop_price;
+            const barHigh = isShort ? pos.stop_price : pos.target_price;
+            const range = barHigh - barLow;
+            const progress = range > 0 ? ((pos.current_price - barLow) / range) * 100 : 50;
+            const clampedPct = Math.max(0, Math.min(100, isShort ? 100 - progress : progress));
+            const entryPct = range > 0 ? ((pos.entry_price - barLow) / range) * 100 : 50;
+            const clampedEntry = Math.max(0, Math.min(100, isShort ? 100 - entryPct : entryPct));
+            const barColor = isProfit ? 'var(--success, #22c55e)' : 'var(--danger, #ef4444)';
 
-            html += '<div class="position-card"><div class="position-header"><div class="position-symbol">' +
+            html += '<div class="position-card ' + (isProfit ? 'profit' : 'loss') + '"><div class="position-header"><div class="position-symbol">' +
                 '<span class="position-ticker">' + pos.symbol + '</span>' +
+                '<span style="font-size:1.3rem;font-weight:700;font-variant-numeric:tabular-nums;margin-left:8px;">$' + pos.current_price.toFixed(2) + '</span>' +
                 '<span class="badge ' + dirBadge + '">' + pos.direction.toUpperCase() + '</span>' +
                 formatStrategyBadge(pos.strategy_name) +
                 '</div><div class="position-pnl">' +
@@ -312,20 +359,23 @@
                 '</div></div>' +
                 // Stop / Target progress bar
                 '<div class="pos-range-bar">' +
-                '<div class="pos-range-labels"><span class="text-danger">Stop $' + pos.stop_price.toFixed(2) + '</span><span class="text-success">Target $' + pos.target_price.toFixed(2) + '</span></div>' +
+                '<div class="pos-range-labels">' +
+                (isShort
+                    ? '<span class="text-success">Target $' + pos.target_price.toFixed(2) + '</span><span class="text-danger">Stop $' + pos.stop_price.toFixed(2) + '</span>'
+                    : '<span class="text-danger">Stop $' + pos.stop_price.toFixed(2) + '</span><span class="text-success">Target $' + pos.target_price.toFixed(2) + '</span>'
+                ) + '</div>' +
                 '<div class="pos-range-track">' +
                 '<div class="pos-range-fill" style="width:' + clampedPct.toFixed(1) + '%;background:' + barColor + ';"></div>' +
                 '<div class="pos-range-entry" style="left:' + clampedEntry.toFixed(1) + '%;"></div>' +
                 '</div></div>' +
                 '<div class="position-details">' +
                 '<div class="detail-item"><div class="detail-label">Shares</div><div class="detail-value">' + pos.shares + '</div></div>' +
-                '<div class="detail-item"><div class="detail-label">Entry</div><div class="detail-value">$' + pos.entry_price.toFixed(2) + '</div></div>' +
-                '<div class="detail-item"><div class="detail-label">Current</div><div class="detail-value">$' + pos.current_price.toFixed(2) + '</div></div>' +
                 '<div class="detail-item"><div class="detail-label">Stop</div><div class="detail-value text-danger">$' + pos.stop_price.toFixed(2) + '</div></div>' +
+                '<div class="detail-item"><div class="detail-label">Entry</div><div class="detail-value">$' + pos.entry_price.toFixed(2) + '</div></div>' +
                 '<div class="detail-item"><div class="detail-label">Target</div><div class="detail-value text-success">$' + pos.target_price.toFixed(2) + '</div></div>' +
                 '</div>' +
                 '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:15px;padding-top:15px;border-top:1px solid var(--border);">' +
-                '<div style="font-size:0.85rem;color:var(--text-light);">Holding: ' + holdingDays + ' day' + (holdingDays !== 1 ? 's' : '') + ' | Value: ' + formatCurrency(value) + ' | RRS: ' + pos.rrs_at_entry.toFixed(2) + '</div>' +
+                '<div style="font-size:0.85rem;color:var(--text-light);">Holding: ' + holdingDays + ' day' + (holdingDays !== 1 ? 's' : '') + ' | Value: ' + formatCurrency(value) + (pos.strategy_name === 'rrs_momentum' && pos.rrs_at_entry ? ' | RRS: ' + pos.rrs_at_entry.toFixed(2) : '') + '</div>' +
                 '<div class="position-actions">' +
                 '<button class="btn btn-secondary btn-sm" onclick="editPosition(\'' + pos.symbol + '\')">Edit Stop/Target</button>' +
                 '<button class="btn btn-danger btn-sm" onclick="closePosition(\'' + pos.symbol + '\')">Close Position</button>' +
@@ -339,13 +389,88 @@
         fetchPositions();
     }
 
+    let editSymbol = null;
+
     function editPosition(symbol) {
-        alert('Edit position for ' + symbol + ' - This would open a modal to adjust stop/target prices');
+        const pos = positionsData.find(p => p.symbol === symbol);
+        if (!pos) return;
+        editSymbol = symbol;
+        document.getElementById('edit-modal-symbol').textContent = symbol;
+        document.getElementById('edit-stop-input').value = pos.stop_price.toFixed(2);
+        document.getElementById('edit-target-input').value = pos.target_price.toFixed(2);
+        document.getElementById('edit-modal-error').style.display = 'none';
+        document.getElementById('edit-modal-overlay').style.display = 'flex';
     }
 
-    function closePosition(symbol) {
-        if (confirm('Are you sure you want to close your ' + symbol + ' position?')) {
-            alert('Position closed for ' + symbol + ' - This would submit the close order');
+    function closeEditModal() {
+        document.getElementById('edit-modal-overlay').style.display = 'none';
+        editSymbol = null;
+    }
+
+    async function saveEditPosition() {
+        if (!editSymbol) return;
+        const stopVal = parseFloat(document.getElementById('edit-stop-input').value);
+        const targetVal = parseFloat(document.getElementById('edit-target-input').value);
+        if (isNaN(stopVal) || isNaN(targetVal)) {
+            document.getElementById('edit-modal-error').textContent = 'Invalid price values';
+            document.getElementById('edit-modal-error').style.display = 'block';
+            return;
+        }
+        const btn = document.getElementById('edit-save-btn');
+        btn.textContent = 'Saving...';
+        btn.disabled = true;
+        try {
+            const resp = await dashboardFetch('/dashboard/api/positions/' + encodeURIComponent(editSymbol) + '/update', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ stop_price: stopVal, target_price: targetVal })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                const pos = positionsData.find(p => p.symbol === editSymbol);
+                if (pos) {
+                    pos.stop_price = stopVal;
+                    pos.target_price = targetVal;
+                }
+                renderPositions();
+                updateSummary();
+                buildPnlChart();
+                closeEditModal();
+            } else {
+                document.getElementById('edit-modal-error').textContent = data.error || 'Failed to update';
+                document.getElementById('edit-modal-error').style.display = 'block';
+            }
+        } catch (err) {
+            document.getElementById('edit-modal-error').textContent = 'Error: ' + err;
+            document.getElementById('edit-modal-error').style.display = 'block';
+        } finally {
+            btn.textContent = 'Save';
+            btn.disabled = false;
+        }
+    }
+
+    document.getElementById('edit-modal-overlay').addEventListener('click', function(e) {
+        if (e.target === this) closeEditModal();
+    });
+
+    async function closePosition(symbol) {
+        if (!confirm('Are you sure you want to close your ' + symbol + ' position?')) return;
+        try {
+            const resp = await dashboardFetch('/dashboard/api/positions/' + encodeURIComponent(symbol) + '/close', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await resp.json();
+            if (resp.ok && data.success) {
+                positionsData = positionsData.filter(p => p.symbol !== symbol);
+                renderPositions();
+                updateSummary();
+                buildPnlChart();
+            } else {
+                showToast('Error closing position: ' + (data.error || 'Unknown error'), 'error');
+            }
+        } catch (err) {
+            showToast('Error closing position: ' + err, 'error');
         }
     }
 
@@ -360,7 +485,8 @@
                     current_price: Number(p.current_price) || Number(p.entry_price) || 0,
                     stop_price: Number(p.stop_loss) || 0, target_price: Number(p.take_profit) || 0,
                     entry_date: p.entry_time || '', rrs_at_entry: Number(p.rrs_at_entry) || 0,
-                    unrealized_pnl: p.unrealized_pnl, strategy_name: p.strategy_name || 'rrs_momentum'
+                    unrealized_pnl: p.unrealized_pnl, previous_close: p.previous_close != null ? Number(p.previous_close) : null,
+                    strategy_name: p.strategy_name || 'rrs_momentum'
                 }));
             }
             renderPositions();

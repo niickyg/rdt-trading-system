@@ -187,7 +187,8 @@
 
                 renderBucketsChart(data.confidence_buckets);
                 renderReasonsChart(rej.top_reasons);
-            });
+            })
+            .catch(function(err) { console.error('Failed to load confidence overview:', err); });
     }
 
     function renderBucketsChart(buckets) {
@@ -197,7 +198,7 @@
         var counts = buckets.map(function(b) { return b.count; });
         var winRates = buckets.map(function(b) { return b.win_rate; });
         var colors = buckets.map(function(b) {
-            return b.win_rate >= 60 ? 'rgba(39,174,96,0.7)' : b.win_rate >= 50 ? 'rgba(243,156,18,0.7)' : 'rgba(231,76,60,0.7)';
+            return b.win_rate >= 60 ? 'rgba(34,197,94,0.7)' : b.win_rate >= 50 ? 'rgba(245,158,11,0.7)' : 'rgba(239,68,68,0.7)';
         });
 
         chartBuckets = new Chart(ctx, {
@@ -206,15 +207,15 @@
                 labels: labels,
                 datasets: [
                     { label: 'Trades', data: counts, backgroundColor: colors, yAxisID: 'y', borderRadius: 6, borderSkipped: false },
-                    { label: 'Win Rate %', data: winRates, type: 'line', borderColor: '#3498db', backgroundColor: 'transparent', yAxisID: 'y1', pointRadius: 5, pointBackgroundColor: '#3498db', tension: 0.3, borderWidth: 2 }
+                    { label: 'Win Rate %', data: winRates, type: 'line', borderColor: '#3b82f6', backgroundColor: 'transparent', yAxisID: 'y1', pointRadius: 5, pointBackgroundColor: '#3b82f6', tension: 0.3, borderWidth: 2 }
                 ]
             },
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: {
-                    y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color: '#666' } },
-                    y1: { position: 'right', beginAtZero: true, max: 100, grid: { drawOnChartArea: false }, ticks: { color: '#666', callback: function(v) { return v + '%'; } } },
-                    x: { grid: { display: false }, ticks: { color: '#666' } }
+                    y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af' } },
+                    y1: { position: 'right', beginAtZero: true, max: 100, grid: { drawOnChartArea: false }, ticks: { color: '#9ca3af', callback: function(v) { return v + '%'; } } },
+                    x: { grid: { display: false }, ticks: { color: '#9ca3af' } }
                 },
                 plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } } }
             }
@@ -226,7 +227,7 @@
         if (chartReasons) chartReasons.destroy();
         if (!reasons || !reasons.length) {
             ctx.font = '14px sans-serif';
-            ctx.fillStyle = '#999';
+            ctx.fillStyle = '#9ca3af';
             ctx.textAlign = 'center';
             ctx.fillText('No rejection data yet', ctx.canvas.width / 2, ctx.canvas.height / 2);
             return;
@@ -236,7 +237,7 @@
             return s.length > 35 ? s.substring(0, 35) + '...' : s;
         });
         var counts = reasons.map(function(r) { return r.count; });
-        var barColors = ['#e74c3c','#e67e22','#f1c40f','#3498db','#9b59b6'];
+        var barColors = ['#ef4444','#f59e0b','#eab308','#3b82f6','#a855f7'];
 
         chartReasons = new Chart(ctx, {
             type: 'bar',
@@ -248,8 +249,8 @@
                 indexAxis: 'y',
                 responsive: true, maintainAspectRatio: false,
                 scales: {
-                    x: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color: '#666' } },
-                    y: { grid: { display: false }, ticks: { color: '#666', font: { size: 11 } } }
+                    x: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af' } },
+                    y: { grid: { display: false }, ticks: { color: '#9ca3af', font: { size: 11 } } }
                 },
                 plugins: { legend: { display: false } }
             }
@@ -288,7 +289,8 @@
                         '<td class="time-cell">' + timeAgo(s.timestamp) + '</td>' +
                         '</tr>';
                 }).join('');
-            });
+            })
+            .catch(function(err) { console.error('Failed to load rejected signals:', err); });
     }
 
     function loadParams() {
@@ -316,7 +318,8 @@
                         '<td style="color:var(--text-light);font-size:0.8rem">' + (c.reason || '') + '</td>' +
                         '</tr>';
                 }).join('');
-            });
+            })
+            .catch(function(err) { console.error('Failed to load param changes:', err); });
     }
 
     document.getElementById('filter-strategy').addEventListener('change', loadRejected);

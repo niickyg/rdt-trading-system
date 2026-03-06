@@ -5,19 +5,6 @@
 
 {% block dashboard_css %}
 <style>
-    .page-header {
-        margin-bottom: 25px;
-    }
-    .page-title {
-        font-size: 1.5rem;
-        font-weight: 600;
-        margin-bottom: 5px;
-    }
-    .page-subtitle {
-        color: var(--text-light);
-        font-size: 0.9rem;
-    }
-
     .backtest-form {
         display: grid;
         grid-template-columns: repeat(2, 1fr);
@@ -52,7 +39,7 @@
     }
     .btn-preset.active {
         border-color: var(--accent);
-        background: rgba(76, 175, 80, 0.1);
+        background: rgba(59, 130, 246, 0.1);
     }
     .btn-preset .preset-name {
         font-weight: 600;
@@ -101,11 +88,11 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background: rgba(255,255,255,0.9);
+        background: rgba(10,14,23,0.9);
         align-items: center;
         justify-content: center;
         flex-direction: column;
-        border-radius: 10px;
+        border-radius: 12px;
         z-index: 10;
     }
     .loading-overlay.active {
@@ -145,7 +132,7 @@
 {% block page_content %}
         <div class="page-header">
             <h1 class="page-title">Strategy Backtest</h1>
-            <p class="page-subtitle">Test RRS trading strategies against historical data</p>
+            <p class="page-subtitle">Test trading strategies against historical data</p>
         </div>
 
         <!-- Configuration Card -->
@@ -156,15 +143,15 @@
 
             <!-- Preset Buttons -->
             <div class="preset-buttons">
-                <button type="button" class="btn-preset" onclick="applyPreset('conservative')">
+                <button type="button" class="btn-preset" onclick="applyPreset('conservative', event)">
                     <div class="preset-name">Conservative</div>
                     <div class="preset-desc">Lower risk, tighter stops</div>
                 </button>
-                <button type="button" class="btn-preset" onclick="applyPreset('balanced')">
+                <button type="button" class="btn-preset" onclick="applyPreset('balanced', event)">
                     <div class="preset-name">Balanced</div>
                     <div class="preset-desc">Moderate risk/reward</div>
                 </button>
-                <button type="button" class="btn-preset" onclick="applyPreset('aggressive')">
+                <button type="button" class="btn-preset" onclick="applyPreset('aggressive', event)">
                     <div class="preset-name">Aggressive</div>
                     <div class="preset-desc">Higher risk, larger targets</div>
                 </button>
@@ -336,7 +323,7 @@
     };
 
     // Apply preset configuration
-    function applyPreset(presetName) {
+    function applyPreset(presetName, ev) {
         const preset = presets[presetName];
         if (!preset) return;
 
@@ -351,20 +338,7 @@
         document.querySelectorAll('.btn-preset').forEach(btn => {
             btn.classList.remove('active');
         });
-        event.target.closest('.btn-preset').classList.add('active');
-    }
-
-    // Ensure no service worker is intercepting requests
-    async function ensureNoServiceWorker() {
-        if ('serviceWorker' in navigator) {
-            const registrations = await navigator.serviceWorker.getRegistrations();
-            for (const reg of registrations) {
-                await reg.unregister();
-            }
-            // Clear all caches
-            const cacheNames = await caches.keys();
-            await Promise.all(cacheNames.map(n => caches.delete(n)));
-        }
+        if (ev && ev.target) ev.target.closest('.btn-preset').classList.add('active');
     }
 
     // Run backtest
@@ -383,9 +357,6 @@
         submitBtn.disabled = true;
         submitBtn.textContent = 'Running...';
 
-        // Kill any service worker before making the request
-        await ensureNoServiceWorker();
-
         // Gather form data
         const formData = {
             days: parseInt(document.getElementById('days').value),
@@ -399,7 +370,7 @@
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 min timeout
 
-            const response = await fetch('/api/v1/backtest', {
+            const response = await dashboardFetch('/dashboard/api/backtest', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -421,7 +392,7 @@
 
         } catch (error) {
             console.error('Backtest error:', error);
-            alert('Backtest error: ' + error.message);
+            showToast('Backtest error: ' + error.message, 'error');
         } finally {
             loadingOverlay.classList.remove('active');
             submitBtn.disabled = false;
@@ -489,12 +460,12 @@
             const isWin = pnl > 0;
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td><strong>${trade.symbol}</strong></td>
-                <td><span class="badge ${trade.direction === 'long' ? 'badge-long' : 'badge-short'}">${trade.direction.toUpperCase()}</span></td>
-                <td>${formatDate(trade.entry_date)}</td>
-                <td>$${trade.entry_price.toFixed(2)}</td>
-                <td>${formatDate(trade.exit_date)}</td>
-                <td>$${trade.exit_price.toFixed(2)}</td>
+                <td><strong>${escapeHtml(trade.symbol)}</strong></td>
+                <td><span class="badge ${trade.direction === 'long' ? 'badge-long' : 'badge-short'}">${escapeHtml((trade.direction || '').toUpperCase())}</span></td>
+                <td>${escapeHtml(formatDate(trade.entry_date))}</td>
+                <td>$${Number(trade.entry_price || 0).toFixed(2)}</td>
+                <td>${escapeHtml(formatDate(trade.exit_date))}</td>
+                <td>$${Number(trade.exit_price || 0).toFixed(2)}</td>
                 <td class="${isWin ? 'text-success' : 'text-danger'}">${isWin ? '+' : ''}${pnl.toFixed(2)}%</td>
                 <td><span class="badge ${isWin ? 'badge-success' : 'badge-danger'}">${isWin ? 'WIN' : 'LOSS'}</span></td>
             `;

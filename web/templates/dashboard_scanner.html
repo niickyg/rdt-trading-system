@@ -12,9 +12,11 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        border-radius: 10px;
+        flex-wrap: wrap;
+        gap: 15px;
+        border-radius: 12px;
         margin-bottom: 25px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
     }
     .scanner-info { display: flex; align-items: center; gap: 30px; }
     .scanner-status {
@@ -44,7 +46,7 @@
         background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%);
         color: white;
         padding: 20px 25px;
-        border-radius: 10px;
+        border-radius: 12px;
         margin-bottom: 25px;
         display: flex;
         justify-content: space-between;
@@ -65,8 +67,8 @@
         border-radius: 20px;
         font-weight: 500;
     }
-    .benchmark-change.positive { background: rgba(39, 174, 96, 0.2); color: #4cd964; }
-    .benchmark-change.negative { background: rgba(231, 76, 60, 0.2); color: #ff6b6b; }
+    .benchmark-change.positive { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+    .benchmark-change.negative { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
     .benchmark-details {
         display: flex;
         gap: 30px;
@@ -91,8 +93,8 @@
     }
     .results-card {
         background: var(--card);
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border-radius: 12px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         overflow: hidden;
     }
     .results-header {
@@ -215,8 +217,8 @@
     .summary-stat {
         background: var(--card);
         padding: 15px 20px;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border-radius: 12px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
     }
     .summary-stat-label {
         font-size: 0.8rem;
@@ -246,7 +248,7 @@
         text-transform: uppercase;
     }
     .mtf-badge.aligned {
-        background: rgba(39, 174, 96, 0.15);
+        background: rgba(34, 197, 94, 0.15);
         color: var(--success);
     }
     .mtf-badge.not-aligned {
@@ -383,11 +385,11 @@
         font-weight: 500;
     }
     .key-level-value.support {
-        background: rgba(39, 174, 96, 0.1);
+        background: rgba(34, 197, 94, 0.1);
         color: var(--success);
     }
     .key-level-value.resistance {
-        background: rgba(231, 76, 60, 0.1);
+        background: rgba(239, 68, 68, 0.1);
         color: var(--danger);
     }
 
@@ -724,7 +726,7 @@
 
         return `
             <div class="stock-row">
-                <div class="stock-symbol">${stock.symbol || 'N/A'}</div>
+                <div class="stock-symbol">${escapeHtml(stock.symbol || 'N/A')}</div>
                 <div class="stock-rrs">
                     <div class="stock-rrs-value ${rrsClass}">${(stock.rrs || 0).toFixed(2)}${boostIndicator}</div>
                 </div>
@@ -816,13 +818,7 @@
         showLoadingState('rw-results');
 
         try {
-            const response = await fetch('/api/v1/rrs/scan', {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-API-Key': getApiKey()
-                }
-            });
+            const response = await dashboardFetch('/dashboard/api/scanner/scan');
 
             if (!response.ok) {
                 throw new Error(`Scan failed: ${response.status}`);
@@ -931,7 +927,7 @@
 
             html += `
                 <div class="stock-row" id="${rowId}" onclick="toggleMtfDetails('${rowId}')">
-                    <div class="stock-symbol">${stock.symbol || 'N/A'}</div>
+                    <div class="stock-symbol">${escapeHtml(stock.symbol || 'N/A')}</div>
                     <div class="stock-rrs">
                         <div class="stock-rrs-value ${rrsClass}">${rrsValue.toFixed(2)}${boostIndicator}</div>
                     </div>
@@ -1056,11 +1052,7 @@
     async function fetchSpyData() {
         try {
             // Fetch SPY data from the RRS endpoint
-            const response = await fetch('/api/v1/rrs/SPY', {
-                headers: {
-                    'X-API-Key': getApiKey()
-                }
-            });
+            const response = await dashboardFetch('/dashboard/api/scanner/rrs/SPY');
 
             if (response.ok) {
                 const data = await response.json();
@@ -1074,6 +1066,9 @@
     function updateSpyDisplay(data) {
         const priceEl = document.getElementById('spy-price');
         const changeEl = document.getElementById('spy-change');
+        const highEl = document.getElementById('spy-high');
+        const lowEl = document.getElementById('spy-low');
+        const volumeEl = document.getElementById('spy-volume');
 
         if (data.spy_pct_change !== undefined) {
             const change = data.spy_pct_change;
@@ -1081,14 +1076,37 @@
             changeEl.className = `benchmark-change ${change >= 0 ? 'positive' : 'negative'}`;
         }
 
-        // These would come from actual market data
-        // For now showing placeholders that would be populated by real data
+        if (data.spy_price !== undefined) {
+            priceEl.textContent = Number(data.spy_price).toFixed(2);
+        } else if (data.price !== undefined) {
+            priceEl.textContent = Number(data.price).toFixed(2);
+        }
+
+        if (data.spy_high !== undefined) {
+            highEl.textContent = '$' + Number(data.spy_high).toFixed(2);
+        } else if (data.high !== undefined) {
+            highEl.textContent = '$' + Number(data.high).toFixed(2);
+        }
+
+        if (data.spy_low !== undefined) {
+            lowEl.textContent = '$' + Number(data.spy_low).toFixed(2);
+        } else if (data.low !== undefined) {
+            lowEl.textContent = '$' + Number(data.low).toFixed(2);
+        }
+
+        if (data.spy_volume !== undefined) {
+            volumeEl.textContent = formatVolume(data.spy_volume);
+        } else if (data.volume !== undefined) {
+            volumeEl.textContent = formatVolume(data.volume);
+        }
     }
 
-    function getApiKey() {
-        // In production, this would come from user session/localStorage
-        // For demo purposes, return empty or get from a stored value
-        return localStorage.getItem('rdt_api_key') || '';
+    function formatVolume(vol) {
+        if (!vol) return '---';
+        if (vol >= 1e9) return (vol / 1e9).toFixed(1) + 'B';
+        if (vol >= 1e6) return (vol / 1e6).toFixed(1) + 'M';
+        if (vol >= 1e3) return (vol / 1e3).toFixed(1) + 'K';
+        return vol.toString();
     }
 
     // Refresh SPY data periodically

@@ -166,7 +166,7 @@ except ImportError as e:
 try:
     from web.routes.options import options_bp
     app.register_blueprint(options_bp)
-    csrf.exempt(options_bp)
+    # Options routes use @login_required (session auth), so CSRF stays enabled
     logger.info("Options API blueprint registered")
 except ImportError as e:
     logger.warning(f"Could not import Options blueprint: {e}")
@@ -331,9 +331,23 @@ def _check_admin_auth():
 @app.route('/')
 def landing():
     """Landing page for signal service"""
+    total_signals = None
+    total_trades = None
+    try:
+        from data.database.models import Trade, Signal
+        from data.database.db_manager import get_db_manager
+        db = get_db_manager()
+        with db.session() as session:
+            total_trades_val = session.query(Trade).filter(Trade.status == 'CLOSED').count()
+            total_trades = f"{total_trades_val:,}" if total_trades_val else None
+            total_signals_val = session.query(Signal).count()
+            total_signals = f"{total_signals_val:,}" if total_signals_val else None
+    except Exception:
+        pass
     return render_template('landing.html',
                          title='RDT Trading Signals',
-                         tagline='Professional-grade trading signals powered by Real Relative Strength')
+                         total_signals=total_signals,
+                         total_trades=total_trades)
 
 
 @app.route('/pricing')
@@ -1476,8 +1490,20 @@ def initialize_trading_components():
         return {}
 
 
-# Initialize on module load
-_trading_components = initialize_trading_components()
+# Initialize on module load — but skip in werkzeug reloader parent process.
+# With debug=True, werkzeug runs this module twice: once as the parent (which just
+# watches for file changes) and once as the child (WERKZEUG_RUN_MAIN='true') which
+# actually serves requests. Only the child should connect to IBKR to avoid
+# duplicate client_id conflicts.
+_is_reloader_parent_init = (
+    __name__ == '__main__'
+    and os.environ.get('WERKZEUG_RUN_MAIN') != 'true'
+)
+if _is_reloader_parent_init:
+    logger.info("Werkzeug reloader parent: deferring trading init to child process")
+    _trading_components = {}
+else:
+    _trading_components = initialize_trading_components()
 
 # Start the real-time scanner in a background thread.
 # When werkzeug reloader is active (debug=True), both parent and child load this module.

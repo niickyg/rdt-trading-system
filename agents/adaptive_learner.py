@@ -569,7 +569,10 @@ class AdaptiveLearner(BaseAgent):
 
     def get_strategy_parameters(self, strategy_name: str) -> Dict:
         """Get current parameters for a specific strategy."""
-        params = self.strategy_params.get(strategy_name, self.params)
+        params = self.strategy_params.get(strategy_name)
+        if params is None:
+            # Pull actual defaults from the registered strategy object
+            params = self._defaults_for_strategy(strategy_name)
         metrics = self.strategy_metrics.get(strategy_name, PerformanceMetrics())
         is_training = self.training_phase.get(strategy_name, True)
         cfg = self.training_phase_config
@@ -588,6 +591,23 @@ class AdaptiveLearner(BaseAgent):
             'training_confidence_threshold': cfg.training_confidence_threshold if is_training else cfg.deployment_confidence_threshold,
             'training_rr_ratio': cfg.training_rr_ratio if is_training else cfg.deployment_rr_ratio,
         }
+
+    def _defaults_for_strategy(self, strategy_name: str) -> 'StrategyParameters':
+        """Build StrategyParameters from the actual strategy config defaults."""
+        try:
+            from strategies.registry import StrategyRegistry
+            strat = StrategyRegistry.get(strategy_name)
+            if strat:
+                return StrategyParameters(
+                    rrs_threshold=getattr(strat, 'rrs_threshold', self.params.rrs_threshold),
+                    stop_multiplier=getattr(strat, 'stop_atr_mult', self.params.stop_multiplier),
+                    target_multiplier=getattr(strat, 'target_atr_mult', self.params.target_multiplier),
+                    max_positions=getattr(strat, 'max_positions', self.params.max_positions),
+                    ml_confidence_threshold=self.params.ml_confidence_threshold,
+                )
+        except Exception:
+            pass
+        return self.params
 
     def get_current_parameters(self) -> Dict:
         """Get current strategy parameters for use by other agents"""
