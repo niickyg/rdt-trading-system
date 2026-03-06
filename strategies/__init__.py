@@ -6,6 +6,7 @@ to achieve higher returns through diversification and capital efficiency.
 """
 
 from strategies.base_strategy import BaseStrategy, StrategySignal, StrategyResult
+from strategies.registry import StrategyRegistry
 from strategies.leveraged_etf import LeveragedETFStrategy
 from strategies.kelly_sizer import KellyCriterionSizer
 from strategies.multi_strategy_engine import MultiStrategyEngine
@@ -14,6 +15,7 @@ __all__ = [
     'BaseStrategy',
     'StrategySignal',
     'StrategyResult',
+    'StrategyRegistry',
     'LeveragedETFStrategy',
     'KellyCriterionSizer',
     'MultiStrategyEngine',

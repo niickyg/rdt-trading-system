@@ -6,6 +6,7 @@ Aggressively adapts strategy parameters to current market conditions.
 """
 
 import json
+import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field, asdict
@@ -83,6 +84,34 @@ class PerformanceMetrics:
     time_exits: int = 0
 
 
+@dataclass
+class TrainingPhaseConfig:
+    """Configuration for per-strategy training phase.
+
+    During training phase, quality gates are relaxed to collect trade data
+    for ML model training. Once sufficient closed trades are collected,
+    the strategy graduates to deployment thresholds automatically.
+    """
+    # Training phase thresholds (relaxed)
+    training_ml_threshold: float = 50.0
+    training_confidence_threshold: float = 45.0
+    training_rr_ratio: float = 1.2
+
+    # Deployment thresholds (standard)
+    deployment_ml_threshold: float = 62.0
+    deployment_confidence_threshold: float = 65.0
+    deployment_rr_ratio: float = 1.5
+
+    # Per-strategy graduation targets (closed trades needed)
+    GRADUATION_TARGETS: Dict[str, int] = field(default_factory=lambda: {
+        'rrs_momentum': 75,
+        'trend_breakout': 75,
+        'rsi2_mean_reversion': 50,
+        'pead': 50,
+        'gap_fill': 50,
+    })
+
+
 class AdaptiveLearner(BaseAgent):
     """
     Adaptive learning agent that adjusts parameters in real-time
@@ -112,10 +141,20 @@ class AdaptiveLearner(BaseAgent):
         self.config_path = config_path or Path.home() / ".rdt-trading" / "adaptive_config.json"
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Current parameters
+        # Current parameters (global / rrs_momentum default)
         self.params = StrategyParameters()
 
-        # Trade history (rolling window)
+        # Per-strategy parameters, trade history, and metrics
+        self.strategy_params: Dict[str, StrategyParameters] = {}
+        self.strategy_trades: Dict[str, deque] = {}
+        self.strategy_metrics: Dict[str, PerformanceMetrics] = {}
+        self.strategy_trades_since_adj: Dict[str, int] = {}
+
+        # Training phase state — per-strategy (default True = in training)
+        self.training_phase: Dict[str, bool] = {}
+        self.training_phase_config = TrainingPhaseConfig()
+
+        # Legacy global trade history (rolling window)
         self.recent_trades: deque[TradeOutcome] = deque(maxlen=window_size)
 
         # Performance tracking
@@ -137,6 +176,16 @@ class AdaptiveLearner(BaseAgent):
 
         # Load saved configuration
         self._load_config()
+
+        # Log training phase status for all strategies
+        for strat_name in self.training_phase_config.GRADUATION_TARGETS:
+            status = self.get_training_phase_status(strat_name)
+            phase = "TRAINING" if status['is_training'] else "DEPLOYED"
+            logger.info(
+                f"Training phase: {strat_name} = {phase} "
+                f"({status['closed_trades']}/{status['graduation_target']} trades, "
+                f"{status['progress_pct']:.0f}%)"
+            )
 
         logger.info(f"Adaptive Learner initialized with parameters: {self.params.to_dict()}")
 
@@ -184,17 +233,37 @@ class AdaptiveLearner(BaseAgent):
                 market_regime=trade_data.get("market_regime", self.current_regime)
             )
 
-            # Add to history
+            # Add to global history
             self.recent_trades.append(outcome)
             self.trades_since_adjustment += 1
 
-            # Update metrics
+            # Add to per-strategy history
+            strat_name = trade_data.get("strategy_name", "rrs_momentum")
+            if strat_name not in self.strategy_trades:
+                self.strategy_trades[strat_name] = deque(maxlen=self.window_size)
+                self.strategy_metrics[strat_name] = PerformanceMetrics()
+                self.strategy_trades_since_adj[strat_name] = 0
+            self.strategy_trades[strat_name].append(outcome)
+            self.strategy_trades_since_adj[strat_name] += 1
+
+            # Update global metrics
             self._update_metrics()
 
-            # Check if adjustment needed
+            # Update per-strategy metrics
+            self._update_strategy_metrics(strat_name)
+
+            # Check if global adjustment needed
             if self.trades_since_adjustment >= self.adjustment_frequency:
                 self._adjust_parameters()
                 self.trades_since_adjustment = 0
+
+            # Check if per-strategy adjustment needed
+            if self.strategy_trades_since_adj.get(strat_name, 0) >= self.adjustment_frequency:
+                self._adjust_strategy_parameters(strat_name)
+                self.strategy_trades_since_adj[strat_name] = 0
+
+            # Check if strategy should graduate from training phase
+            self._check_graduation(strat_name)
 
             # Log outcome
             status = "WIN" if outcome.is_winner else "LOSS"
@@ -390,6 +459,136 @@ class AdaptiveLearner(BaseAgent):
         except Exception as e:
             logger.warning(f"Failed to persist parameter changes to DB: {e}")
 
+    def _update_strategy_metrics(self, strategy_name: str):
+        """Update rolling performance metrics for a specific strategy."""
+        trades_deque = self.strategy_trades.get(strategy_name)
+        if not trades_deque:
+            return
+
+        trades = list(trades_deque)
+        metrics = self.strategy_metrics.setdefault(strategy_name, PerformanceMetrics())
+
+        metrics.period_trades = len(trades)
+        metrics.period_wins = sum(1 for t in trades if t.is_winner)
+        metrics.period_losses = len(trades) - metrics.period_wins
+
+        if metrics.period_trades > 0:
+            metrics.win_rate = metrics.period_wins / metrics.period_trades
+
+        wins = [t.pnl for t in trades if t.is_winner]
+        losses = [abs(t.pnl) for t in trades if not t.is_winner]
+
+        metrics.avg_win = sum(wins) / len(wins) if wins else 0
+        metrics.avg_loss = sum(losses) / len(losses) if losses else 0
+
+        total_wins = sum(wins)
+        total_losses = sum(losses)
+        metrics.profit_factor = total_wins / total_losses if total_losses > 0 else float('inf')
+        metrics.total_pnl = sum(t.pnl for t in trades)
+
+        metrics.stop_outs = sum(1 for t in trades if t.exit_reason == 'stop')
+        metrics.target_hits = sum(1 for t in trades if t.exit_reason == 'target')
+        metrics.time_exits = sum(1 for t in trades if t.exit_reason == 'time')
+
+    def _adjust_strategy_parameters(self, strategy_name: str):
+        """Adjust parameters for a specific strategy based on its own performance."""
+        metrics = self.strategy_metrics.get(strategy_name)
+        if not metrics or metrics.period_trades < 5:
+            return
+
+        # Get or create per-strategy params
+        if strategy_name not in self.strategy_params:
+            self.strategy_params[strategy_name] = StrategyParameters()
+
+        params = self.strategy_params[strategy_name]
+
+        logger.info(
+            f"Adjusting '{strategy_name}' parameters "
+            f"(Win Rate: {metrics.win_rate:.1%}, PF: {metrics.profit_factor:.2f})"
+        )
+
+        # Simple adaptive logic: tighten when losing, loosen when winning
+        if metrics.win_rate < 0.40:
+            params.rrs_threshold = min(params.rrs_max, params.rrs_threshold + self.learning_rate)
+            logger.info(f"  '{strategy_name}': low win rate — increasing selectivity")
+        elif metrics.win_rate > 0.65:
+            params.rrs_threshold = max(params.rrs_min, params.rrs_threshold - self.learning_rate * 0.5)
+            logger.info(f"  '{strategy_name}': high win rate — relaxing threshold")
+
+        if metrics.profit_factor < 1.0:
+            params.ml_confidence_threshold = min(90.0, params.ml_confidence_threshold + 2)
+            logger.info(f"  '{strategy_name}': PF < 1.0 — raising confidence threshold")
+
+        self._save_config()
+
+    def get_training_phase_status(self, strategy_name: str) -> Dict:
+        """Get training phase status for a strategy."""
+        is_training = self.training_phase.get(strategy_name, True)
+        closed_trades = self._get_closed_trade_count(strategy_name)
+        graduation_target = self.training_phase_config.GRADUATION_TARGETS.get(strategy_name, 50)
+        progress_pct = min(100.0, (closed_trades / graduation_target) * 100) if graduation_target > 0 else 100.0
+        return {
+            'is_training': is_training,
+            'closed_trades': closed_trades,
+            'graduation_target': graduation_target,
+            'progress_pct': round(progress_pct, 1),
+        }
+
+    def _get_closed_trade_count(self, strategy_name: str) -> int:
+        """Query DB for closed trade count for a strategy."""
+        try:
+            from data.database import get_db_manager
+            db = get_db_manager()
+            with db.get_session() as session:
+                from sqlalchemy import text
+                result = session.execute(
+                    text("SELECT COUNT(*) FROM trades WHERE strategy_name = :sn AND status = 'closed'"),
+                    {'sn': strategy_name}
+                )
+                count = result.scalar() or 0
+                return count
+        except Exception as e:
+            logger.warning(f"Could not query closed trade count for {strategy_name}: {e}")
+            return 0
+
+    def _check_graduation(self, strategy_name: str):
+        """Check if a strategy should graduate from training phase."""
+        if not self.training_phase.get(strategy_name, True):
+            return  # Already graduated
+
+        target = self.training_phase_config.GRADUATION_TARGETS.get(strategy_name, 50)
+        closed_trades = self._get_closed_trade_count(strategy_name)
+
+        if closed_trades >= target:
+            self.training_phase[strategy_name] = False
+            logger.info(
+                f"GRADUATION: Strategy '{strategy_name}' graduated from training phase! "
+                f"({closed_trades} closed trades >= {target} target)"
+            )
+            self._save_config()
+
+    def get_strategy_parameters(self, strategy_name: str) -> Dict:
+        """Get current parameters for a specific strategy."""
+        params = self.strategy_params.get(strategy_name, self.params)
+        metrics = self.strategy_metrics.get(strategy_name, PerformanceMetrics())
+        is_training = self.training_phase.get(strategy_name, True)
+        cfg = self.training_phase_config
+
+        return {
+            'rrs_threshold': params.rrs_threshold,
+            'stop_multiplier': params.stop_multiplier,
+            'target_multiplier': params.target_multiplier,
+            'max_positions': params.max_positions,
+            'ml_confidence_threshold': params.ml_confidence_threshold,
+            'win_rate': metrics.win_rate,
+            'profit_factor': metrics.profit_factor,
+            'total_trades': metrics.period_trades,
+            'is_training': is_training,
+            'training_ml_threshold': cfg.training_ml_threshold if is_training else cfg.deployment_ml_threshold,
+            'training_confidence_threshold': cfg.training_confidence_threshold if is_training else cfg.deployment_confidence_threshold,
+            'training_rr_ratio': cfg.training_rr_ratio if is_training else cfg.deployment_rr_ratio,
+        }
+
     def get_current_parameters(self) -> Dict:
         """Get current strategy parameters for use by other agents"""
         return {
@@ -417,6 +616,14 @@ class AdaptiveLearner(BaseAgent):
                 for regime, params in data.get('regime_params', {}).items():
                     self.regime_params[regime] = StrategyParameters.from_dict(params)
 
+                # Load per-strategy params
+                for strat_name, strat_data in data.get('strategies', {}).items():
+                    if 'params' in strat_data:
+                        self.strategy_params[strat_name] = StrategyParameters.from_dict(strat_data['params'])
+
+                # Load training phase state
+                self.training_phase = data.get('training_phase', {})
+
                 logger.info(f"Loaded adaptive config from {self.config_path}")
 
         except Exception as e:
@@ -425,9 +632,28 @@ class AdaptiveLearner(BaseAgent):
     def _save_config(self):
         """Save current configuration to file (and DB snapshot via equity tracker)."""
         try:
+            # Build per-strategy section
+            strategies_data = {}
+            for strat_name, params in self.strategy_params.items():
+                metrics = self.strategy_metrics.get(strat_name, PerformanceMetrics())
+                strategies_data[strat_name] = {
+                    'params': params.to_dict(),
+                    'metrics': {
+                        'win_rate': metrics.win_rate,
+                        'profit_factor': metrics.profit_factor,
+                        'total_trades': metrics.period_trades,
+                    }
+                }
+
             data = {
                 'params': self.params.to_dict(),
                 'regime_params': {k: v.to_dict() for k, v in self.regime_params.items()},
+                'strategies': strategies_data,
+                'training_phase': self.training_phase,
+                'global': {
+                    'max_positions': self.params.max_positions,
+                    'current_regime': self.current_regime,
+                },
                 'last_updated': datetime.now().isoformat(),
                 'metrics': {
                     'win_rate': self.perf_metrics.win_rate,
@@ -445,11 +671,14 @@ class AdaptiveLearner(BaseAgent):
 
 # Singleton instance
 _learner: Optional[AdaptiveLearner] = None
+_learner_lock = threading.Lock()
 
 
 def get_adaptive_learner() -> AdaptiveLearner:
-    """Get global adaptive learner instance"""
+    """Get global adaptive learner instance (thread-safe)"""
     global _learner
     if _learner is None:
-        _learner = AdaptiveLearner()
+        with _learner_lock:
+            if _learner is None:
+                _learner = AdaptiveLearner()
     return _learner

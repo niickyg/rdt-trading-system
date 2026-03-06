@@ -5,8 +5,9 @@ Implements publish-subscribe pattern for agent messaging
 
 import asyncio
 import json
+import threading
 from datetime import datetime
-from typing import Dict, List, Callable, Any, Optional
+from typing import Dict, List, Callable, Any, Optional, Set
 from dataclasses import dataclass, field
 from enum import Enum
 from loguru import logger
@@ -96,6 +97,8 @@ class EventBus:
         self._running = False
         self._event_history: List[Event] = []
         self._max_history = 1000
+        self._lock = threading.Lock()
+        self._background_tasks: Set[asyncio.Task] = set()
 
     async def start(self):
         """Start the event bus"""
@@ -120,10 +123,11 @@ class EventBus:
             event_type: Type of event to subscribe to
             callback: Async or sync function to call when event occurs
         """
-        if event_type not in self._subscribers:
-            self._subscribers[event_type] = []
+        with self._lock:
+            if event_type not in self._subscribers:
+                self._subscribers[event_type] = []
 
-        self._subscribers[event_type].append(callback)
+            self._subscribers[event_type].append(callback)
         logger.debug(f"Subscribed to {event_type.value}")
 
     def unsubscribe(
@@ -132,9 +136,10 @@ class EventBus:
         callback: Callable
     ):
         """Unsubscribe from an event type"""
-        if event_type in self._subscribers:
-            if callback in self._subscribers[event_type]:
-                self._subscribers[event_type].remove(callback)
+        with self._lock:
+            if event_type in self._subscribers:
+                if callback in self._subscribers[event_type]:
+                    self._subscribers[event_type].remove(callback)
 
     async def publish(self, event: Event):
         """
@@ -148,14 +153,16 @@ class EventBus:
             return
 
         # Store in history
-        self._event_history.append(event)
-        if len(self._event_history) > self._max_history:
-            self._event_history.pop(0)
+        with self._lock:
+            self._event_history.append(event)
+            if len(self._event_history) > self._max_history:
+                self._event_history.pop(0)
 
         logger.debug(f"Publishing: {event}")
 
-        # Get subscribers for this event type
-        subscribers = self._subscribers.get(event.event_type, [])
+        # Get snapshot of subscribers under lock
+        with self._lock:
+            subscribers = list(self._subscribers.get(event.event_type, []))
 
         for callback in subscribers:
             try:
@@ -172,7 +179,9 @@ class EventBus:
         """
         try:
             loop = asyncio.get_running_loop()
-            asyncio.create_task(self.publish(event))
+            task = asyncio.create_task(self.publish(event))
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
         except RuntimeError:
             asyncio.run(self.publish(event))
 
@@ -206,10 +215,11 @@ class EventBus:
         limit: int = 100
     ) -> List[Event]:
         """Get event history, optionally filtered by type"""
-        if event_type:
-            events = [e for e in self._event_history if e.event_type == event_type]
-        else:
-            events = self._event_history
+        with self._lock:
+            if event_type:
+                events = [e for e in self._event_history if e.event_type == event_type]
+            else:
+                events = list(self._event_history)
 
         return events[-limit:]
 
@@ -343,14 +353,16 @@ class PersistentEventBus(EventBus):
         persisted = self._persist_event(event)
 
         # Store in memory history
-        self._event_history.append(event)
-        if len(self._event_history) > self._max_history:
-            self._event_history.pop(0)
+        with self._lock:
+            self._event_history.append(event)
+            if len(self._event_history) > self._max_history:
+                self._event_history.pop(0)
 
         logger.debug(f"Publishing: {event}")
 
-        # Get subscribers for this event type
-        subscribers = self._subscribers.get(event.event_type, [])
+        # Get snapshot of subscribers under lock
+        with self._lock:
+            subscribers = list(self._subscribers.get(event.event_type, []))
         all_succeeded = True
         error_msg = None
 
@@ -424,7 +436,8 @@ class PersistentEventBus(EventBus):
                         logger.info(f"Replaying event {event.event_id} ({event.event_type.value})")
 
                         # Publish to subscribers (without re-persisting)
-                        subscribers = self._subscribers.get(event.event_type, [])
+                        with self._lock:
+                            subscribers = list(self._subscribers.get(event.event_type, []))
                         all_succeeded = True
                         error_msg = None
 
@@ -520,6 +533,7 @@ class PersistentEventBus(EventBus):
 
 # Global event bus instance
 _event_bus: Optional[EventBus] = None
+_event_bus_lock = threading.Lock()
 
 
 def get_event_bus(persistent: bool = False) -> EventBus:
@@ -534,20 +548,23 @@ def get_event_bus(persistent: bool = False) -> EventBus:
     """
     global _event_bus
     if _event_bus is None:
-        if persistent:
-            _event_bus = PersistentEventBus()
-            logger.info("Created PersistentEventBus for event recovery support")
-        else:
-            _event_bus = EventBus()
+        with _event_bus_lock:
+            if _event_bus is None:
+                if persistent:
+                    _event_bus = PersistentEventBus()
+                    logger.info("Created PersistentEventBus for event recovery support")
+                else:
+                    _event_bus = EventBus()
     return _event_bus
 
 
 def get_persistent_event_bus() -> PersistentEventBus:
     """Get or create a persistent event bus instance."""
     global _event_bus
-    if _event_bus is None or not isinstance(_event_bus, PersistentEventBus):
-        _event_bus = PersistentEventBus()
-        logger.info("Created PersistentEventBus")
+    with _event_bus_lock:
+        if _event_bus is None or not isinstance(_event_bus, PersistentEventBus):
+            _event_bus = PersistentEventBus()
+            logger.info("Created PersistentEventBus")
     return _event_bus
 
 

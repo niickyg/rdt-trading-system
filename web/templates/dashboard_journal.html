@@ -1,0 +1,512 @@
+{% extends "dashboard_base.html" %}
+{% set active_page = "journal" %}
+
+{% block title %}Journal - RDT Trading{% endblock %}
+
+{% block dashboard_css %}
+<style>
+    .note-link { cursor: pointer; color: var(--accent); font-size: 0.8rem; }
+    .note-link:hover { text-decoration: underline; }
+    .note-preview { color: var(--text-light); font-size: 0.8rem; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pnl-bar { display: inline-block; height: 14px; border-radius: 2px; min-width: 2px; vertical-align: middle; }
+</style>
+{% endblock %}
+
+{% block page_content %}
+<div class="page-header">
+    <div>
+        <div class="page-title">Trading Journal</div>
+        <div class="page-subtitle">Performance tracking, trade review &amp; notes</div>
+    </div>
+    <div class="filters-bar">
+        <div class="filter-group">
+            <span class="filter-label">Period</span>
+            <select class="filter-select" id="filter-days">
+                <option value="30">30 Days</option>
+                <option value="90" selected>90 Days</option>
+                <option value="180">6 Months</option>
+                <option value="365">1 Year</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <span class="filter-label">Strategy</span>
+            <select class="filter-select" id="filter-strategy">
+                <option value="all">All Strategies</option>
+                <option value="rrs_momentum">RRS Momentum</option>
+                <option value="rsi2_mean_reversion">RSI2 Mean Rev</option>
+                <option value="trend_breakout">Trend Breakout</option>
+                <option value="pead">PEAD</option>
+                <option value="gap_fill">Gap Fill</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="journal-tabs">
+    <div class="journal-tab active" data-tab="equity">Equity</div>
+    <div class="journal-tab" data-tab="daily">Daily P&amp;L</div>
+    <div class="journal-tab" data-tab="analytics">Analytics</div>
+    <div class="journal-tab" data-tab="log">Trade Log</div>
+</div>
+
+<!-- Equity -->
+<div class="tab-panel active" id="panel-equity">
+    <div class="grid grid-4 mb-2">
+        <div class="stat-card stat-card-accent info">
+            <div class="stat-label">Current Equity</div>
+            <div class="stat-value" id="eq-current">--</div>
+            <div class="stat-change" id="eq-current-sub">&nbsp;</div>
+        </div>
+        <div class="stat-card stat-card-accent danger">
+            <div class="stat-label">Max Drawdown</div>
+            <div class="stat-value" id="eq-maxdd">--</div>
+            <div class="stat-change">worst peak-to-trough</div>
+        </div>
+        <div class="stat-card stat-card-accent success">
+            <div class="stat-label">High Water Mark</div>
+            <div class="stat-value" id="eq-hwm">--</div>
+            <div class="stat-change">all-time high</div>
+        </div>
+        <div class="stat-card stat-card-accent">
+            <div class="stat-label">Data Points</div>
+            <div class="stat-value" id="eq-count">--</div>
+            <div class="stat-change">equity snapshots</div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Equity Curve</h3>
+        </div>
+        <div class="chart-container chart-container-lg"><canvas id="chart-equity"></canvas></div>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Drawdown</h3>
+        </div>
+        <div class="chart-container chart-container-md"><canvas id="chart-drawdown"></canvas></div>
+    </div>
+    <div class="empty-state" id="equity-empty" style="display:none;">
+        <div class="empty-title">No equity snapshots yet</div>
+        <p style="color:var(--text-light)">Snapshots are recorded automatically during market hours.</p>
+    </div>
+</div>
+
+<!-- Daily P&L -->
+<div class="tab-panel" id="panel-daily">
+    <div class="grid grid-4 mb-2">
+        <div class="stat-card stat-card-accent success">
+            <div class="stat-label">Best Day</div>
+            <div class="stat-value" id="daily-best">--</div>
+            <div class="stat-change" id="daily-best-date">&nbsp;</div>
+        </div>
+        <div class="stat-card stat-card-accent danger">
+            <div class="stat-label">Worst Day</div>
+            <div class="stat-value" id="daily-worst">--</div>
+            <div class="stat-change" id="daily-worst-date">&nbsp;</div>
+        </div>
+        <div class="stat-card stat-card-accent">
+            <div class="stat-label">Avg Daily P&amp;L</div>
+            <div class="stat-value" id="daily-avg">--</div>
+            <div class="stat-change">per trading day</div>
+        </div>
+        <div class="stat-card stat-card-accent info">
+            <div class="stat-label">Trading Days</div>
+            <div class="stat-value" id="daily-count">--</div>
+            <div class="stat-change" id="daily-win-days">&nbsp;</div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Daily P&amp;L</h3>
+            <span style="font-size:0.8rem;color:var(--text-light)">Line = 20-day rolling win rate</span>
+        </div>
+        <div class="chart-container chart-container-lg"><canvas id="chart-daily-pnl"></canvas></div>
+    </div>
+    <div class="empty-state" id="daily-empty" style="display:none;">
+        <div class="empty-title">No daily stats yet</div>
+        <p style="color:var(--text-light)">Stats are recorded at market close each day.</p>
+    </div>
+</div>
+
+<!-- Analytics -->
+<div class="tab-panel" id="panel-analytics">
+    <div class="grid grid-2 mb-2">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">By Exit Reason</h3></div>
+            <table class="table" id="tbl-exit-reason"><thead><tr><th>Reason</th><th>Trades</th><th>Win Rate</th><th>Avg P&amp;L</th></tr></thead><tbody></tbody></table>
+        </div>
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">By Market Regime</h3></div>
+            <table class="table" id="tbl-market-regime"><thead><tr><th>Regime</th><th>Trades</th><th>Win Rate</th><th>Avg P&amp;L</th></tr></thead><tbody></tbody></table>
+        </div>
+    </div>
+    <div class="grid grid-2 mb-2">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">By VIX Regime</h3></div>
+            <table class="table" id="tbl-vix-regime"><thead><tr><th>VIX</th><th>Trades</th><th>Win Rate</th><th>Avg P&amp;L</th></tr></thead><tbody></tbody></table>
+        </div>
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Holding Duration</h3></div>
+            <div class="chart-container chart-container-md"><canvas id="chart-duration"></canvas></div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">MFE vs MAE</h3>
+            <span style="font-size:0.8rem;color:var(--text-light)">Green = winners, Red = losers</span>
+        </div>
+        <div class="chart-container chart-container-lg"><canvas id="chart-mfe-mae"></canvas></div>
+    </div>
+    <div class="empty-state" id="analytics-empty" style="display:none;">
+        <div class="empty-title">Not enough trade data for analytics</div>
+    </div>
+</div>
+
+<!-- Trade Log -->
+<div class="tab-panel" id="panel-log">
+    <div class="card" style="padding:0;">
+        <div class="card-header" style="padding:20px 25px;">
+            <h3 class="card-title">All Trades</h3>
+            <span style="font-size:0.8rem;color:var(--text-light)" id="log-count"></span>
+        </div>
+        <div class="signals-table-container">
+            <table class="signals-table" id="trade-log-table">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Dir</th>
+                        <th>Strategy</th>
+                        <th>Entry</th>
+                        <th>Exit</th>
+                        <th>P&amp;L</th>
+                        <th>P&amp;L %</th>
+                        <th>MFE</th>
+                        <th>MAE</th>
+                        <th>Bars</th>
+                        <th>Exit</th>
+                        <th>Conf</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody id="trade-log-body"></tbody>
+            </table>
+        </div>
+    </div>
+    <div class="empty-state" id="log-empty" style="display:none;">
+        <div class="empty-title">No closed trades in this period</div>
+    </div>
+</div>
+
+<!-- Note Modal -->
+<div class="note-modal-overlay" id="note-modal">
+    <div class="note-modal">
+        <h3 style="margin:0 0 5px">Trade Notes</h3>
+        <p style="margin:0 0 15px;font-size:0.85rem;color:var(--text-light)" id="note-modal-symbol"></p>
+        <textarea id="note-modal-text" placeholder="What did you learn from this trade?"></textarea>
+        <div class="note-modal-actions">
+            <button onclick="closeNoteModal()">Cancel</button>
+            <button class="btn-save" onclick="saveNote()">Save Note</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block dashboard_js %}
+<script>
+(function() {
+    var chartEquity = null, chartDrawdown = null, chartDailyPnl = null, chartDuration = null, chartMfeMae = null;
+    var tradeData = [];
+    var currentNoteTradeId = null;
+
+    function fmt(v, d) { return v != null ? Number(v).toFixed(d || 2) : '--'; }
+    function money(v) { return v != null ? '$' + Number(v).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : '--'; }
+    function pnlColor(v) { return v > 0 ? 'var(--success)' : v < 0 ? 'var(--danger)' : 'var(--text-light)'; }
+    function stratBadge(s) {
+        var cls = {'rrs_momentum':'badge-rrs','rsi2_mean_reversion':'badge-rsi2','trend_breakout':'badge-trend','pead':'badge-pead','gap_fill':'badge-gap'};
+        return '<span class="badge-strategy '+(cls[s]||'')+'">'+(s||'--')+'</span>';
+    }
+    function getDays() { return document.getElementById('filter-days').value; }
+    function getStrategy() { return document.getElementById('filter-strategy').value; }
+
+    // Chart defaults
+    var gridOpts = { color: 'rgba(0,0,0,0.05)' };
+    var tickOpts = { color: '#666' };
+    var legendOpts = { position: 'bottom', labels: { usePointStyle: true, padding: 20 } };
+
+    // Tabs
+    document.querySelectorAll('.journal-tab').forEach(function(tab) {
+        tab.addEventListener('click', function() {
+            document.querySelectorAll('.journal-tab').forEach(function(t) { t.classList.remove('active'); });
+            document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+            tab.classList.add('active');
+            document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+        });
+    });
+
+    // --- Equity ---
+    function loadEquity() {
+        fetch('/dashboard/api/journal/equity?days=' + getDays())
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var snaps = data.snapshots || [];
+                if (!snaps.length) {
+                    document.getElementById('equity-empty').style.display = 'block';
+                    ['eq-current','eq-maxdd','eq-hwm'].forEach(function(id) { document.getElementById(id).textContent = '--'; });
+                    document.getElementById('eq-count').textContent = '0';
+                    return;
+                }
+                document.getElementById('equity-empty').style.display = 'none';
+                var last = snaps[snaps.length - 1];
+                var first = snaps[0];
+                var totalReturn = first.equity_value > 0 ? ((last.equity_value - first.equity_value) / first.equity_value * 100) : 0;
+                document.getElementById('eq-current').textContent = money(last.equity_value);
+                document.getElementById('eq-current-sub').innerHTML = '<span class="' + (totalReturn >= 0 ? 'positive' : 'negative') + '">' + (totalReturn >= 0 ? '+' : '') + totalReturn.toFixed(2) + '% period return</span>';
+
+                var maxDD = Math.min.apply(null, snaps.map(function(s) { return s.drawdown_pct || 0; }));
+                document.getElementById('eq-maxdd').textContent = fmt(maxDD, 2) + '%';
+                var hwm = Math.max.apply(null, snaps.map(function(s) { return s.high_water_mark || 0; }));
+                document.getElementById('eq-hwm').textContent = money(hwm);
+                document.getElementById('eq-count').textContent = snaps.length;
+
+                var labels = snaps.map(function(s) { return new Date(s.timestamp).toLocaleDateString(); });
+                var values = snaps.map(function(s) { return s.equity_value; });
+
+                if (chartEquity) chartEquity.destroy();
+                chartEquity = new Chart(document.getElementById('chart-equity').getContext('2d'), {
+                    type: 'line',
+                    data: { labels: labels, datasets: [{ label: 'Equity', data: values, borderColor: '#3498db', backgroundColor: 'rgba(52,152,219,0.08)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 }] },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { grid: gridOpts, ticks: { color: '#666', callback: function(v) { return '$' + v.toLocaleString(); } } }, x: { grid: { display: false }, ticks: tickOpts } } }
+                });
+
+                var ddVals = snaps.map(function(s) { return s.drawdown_pct || 0; });
+                if (chartDrawdown) chartDrawdown.destroy();
+                chartDrawdown = new Chart(document.getElementById('chart-drawdown').getContext('2d'), {
+                    type: 'line',
+                    data: { labels: labels, datasets: [{ label: 'Drawdown', data: ddVals, borderColor: '#e74c3c', backgroundColor: 'rgba(231,76,60,0.1)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 }] },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { reverse: true, grid: gridOpts, ticks: { color: '#666', callback: function(v) { return v + '%'; } } }, x: { grid: { display: false }, ticks: tickOpts } } }
+                });
+            });
+    }
+
+    // --- Daily P&L ---
+    function loadDaily() {
+        fetch('/dashboard/api/journal/daily?days=' + getDays())
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var days = data.days || [];
+                if (!days.length) { document.getElementById('daily-empty').style.display = 'block'; return; }
+                document.getElementById('daily-empty').style.display = 'none';
+
+                var pnls = days.map(function(d) { return d.pnl || 0; });
+                var bestIdx = pnls.indexOf(Math.max.apply(null, pnls));
+                var worstIdx = pnls.indexOf(Math.min.apply(null, pnls));
+                var greenDays = pnls.filter(function(v) { return v > 0; }).length;
+                var avg = pnls.reduce(function(a, b) { return a + b; }, 0) / pnls.length;
+
+                var bestEl = document.getElementById('daily-best');
+                bestEl.textContent = money(pnls[bestIdx]);
+                bestEl.style.color = 'var(--success)';
+                document.getElementById('daily-best-date').textContent = days[bestIdx].date;
+
+                var worstEl = document.getElementById('daily-worst');
+                worstEl.textContent = money(pnls[worstIdx]);
+                worstEl.style.color = 'var(--danger)';
+                document.getElementById('daily-worst-date').textContent = days[worstIdx].date;
+
+                var avgEl = document.getElementById('daily-avg');
+                avgEl.textContent = money(avg);
+                avgEl.style.color = pnlColor(avg);
+
+                document.getElementById('daily-count').textContent = days.length;
+                document.getElementById('daily-win-days').innerHTML = '<span class="positive">' + greenDays + ' green</span> / <span class="negative">' + (days.length - greenDays) + ' red</span>';
+
+                var labels = days.map(function(d) { return d.date; });
+                var colors = pnls.map(function(v) { return v >= 0 ? 'rgba(39,174,96,0.7)' : 'rgba(231,76,60,0.7)'; });
+
+                var winRates = [];
+                for (var i = 0; i < days.length; i++) {
+                    if (i < 19) { winRates.push(null); continue; }
+                    var w = 0;
+                    for (var j = i - 19; j <= i; j++) { if (pnls[j] > 0) w++; }
+                    winRates.push((w / 20) * 100);
+                }
+
+                if (chartDailyPnl) chartDailyPnl.destroy();
+                chartDailyPnl = new Chart(document.getElementById('chart-daily-pnl').getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            { label: 'Daily P&L', data: pnls, backgroundColor: colors, yAxisID: 'y', borderRadius: 2 },
+                            { label: 'Win Rate (20d)', data: winRates, type: 'line', borderColor: '#9b59b6', backgroundColor: 'transparent', yAxisID: 'y1', pointRadius: 0, tension: 0.3, borderWidth: 2, borderDash: [4, 2] }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            y: { grid: gridOpts, ticks: { color: '#666', callback: function(v) { return '$' + v; } } },
+                            y1: { position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, ticks: { color: '#666', callback: function(v) { return v + '%'; } } },
+                            x: { grid: { display: false }, ticks: tickOpts }
+                        },
+                        plugins: { legend: legendOpts }
+                    }
+                });
+            });
+    }
+
+    // --- Trade Analytics ---
+    function loadTrades() {
+        fetch('/dashboard/api/journal/trades?days=' + getDays() + '&strategy=' + getStrategy())
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                tradeData = data.trades || [];
+                renderAnalytics();
+                renderTradeLog();
+            });
+    }
+
+    function groupBy(arr, key) {
+        var groups = {};
+        arr.forEach(function(t) { var k = t[key] || 'unknown'; if (!groups[k]) groups[k] = []; groups[k].push(t); });
+        return groups;
+    }
+
+    function renderBreakdown(tableId, groups) {
+        var tbody = document.querySelector('#' + tableId + ' tbody');
+        var rows = Object.keys(groups).sort().map(function(k) {
+            var trades = groups[k];
+            var wins = trades.filter(function(t) { return t.pnl > 0; }).length;
+            var wr = trades.length ? (wins / trades.length * 100) : 0;
+            var avgPnl = trades.reduce(function(a, t) { return a + (t.pnl || 0); }, 0) / trades.length;
+            return '<tr>' +
+                '<td><strong>' + k + '</strong></td>' +
+                '<td>' + trades.length + '</td>' +
+                '<td style="color:' + pnlColor(wr - 50) + ';font-weight:600">' + wr.toFixed(1) + '%</td>' +
+                '<td style="color:' + pnlColor(avgPnl) + ';font-weight:600">' + money(avgPnl) + '</td></tr>';
+        });
+        tbody.innerHTML = rows.join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-light);padding:20px">No data</td></tr>';
+    }
+
+    function renderAnalytics() {
+        if (!tradeData.length) { document.getElementById('analytics-empty').style.display = 'block'; return; }
+        document.getElementById('analytics-empty').style.display = 'none';
+
+        renderBreakdown('tbl-exit-reason', groupBy(tradeData, 'exit_reason'));
+        renderBreakdown('tbl-market-regime', groupBy(tradeData, 'market_regime'));
+        renderBreakdown('tbl-vix-regime', groupBy(tradeData, 'vix_regime'));
+
+        // Duration histogram
+        var durations = tradeData.filter(function(t) { return t.bars_held != null; }).map(function(t) { return t.bars_held; });
+        if (durations.length) {
+            var maxB = Math.max.apply(null, durations);
+            var binSize = Math.max(1, Math.ceil(maxB / 10));
+            var bins = {};
+            durations.forEach(function(d) { var b = Math.floor(d / binSize) * binSize; var l = b + '-' + (b + binSize - 1); bins[l] = (bins[l] || 0) + 1; });
+            if (chartDuration) chartDuration.destroy();
+            chartDuration = new Chart(document.getElementById('chart-duration').getContext('2d'), {
+                type: 'bar',
+                data: { labels: Object.keys(bins), datasets: [{ data: Object.values(bins), backgroundColor: 'rgba(52,152,219,0.6)', borderRadius: 6, borderSkipped: false }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: tickOpts, title: { display: true, text: 'Bars Held', color: '#666' } }, y: { beginAtZero: true, grid: gridOpts, ticks: tickOpts } } }
+            });
+        }
+
+        // MFE/MAE
+        var scatter = tradeData.filter(function(t) { return t.peak_mfe_pct != null && t.peak_mae_pct != null; });
+        if (scatter.length) {
+            var pts = scatter.map(function(t) { return { x: Math.abs(t.peak_mae_pct || 0), y: t.peak_mfe_pct || 0 }; });
+            var colors = scatter.map(function(t) { return t.pnl > 0 ? 'rgba(39,174,96,0.5)' : 'rgba(231,76,60,0.5)'; });
+            if (chartMfeMae) chartMfeMae.destroy();
+            chartMfeMae = new Chart(document.getElementById('chart-mfe-mae').getContext('2d'), {
+                type: 'scatter',
+                data: { datasets: [{ data: pts, backgroundColor: colors, pointRadius: 6, pointHoverRadius: 8 }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: { x: { grid: gridOpts, ticks: tickOpts, title: { display: true, text: 'MAE % (max adverse)', color: '#666' } }, y: { grid: gridOpts, ticks: tickOpts, title: { display: true, text: 'MFE % (max favorable)', color: '#666' } } },
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { var t = scatter[ctx.dataIndex]; return t.symbol + ' | MAE: ' + ctx.parsed.x.toFixed(2) + '% | MFE: ' + ctx.parsed.y.toFixed(2) + '% | P&L: $' + (t.pnl||0).toFixed(2); } } } }
+                }
+            });
+        }
+    }
+
+    // --- Trade Log ---
+    function renderTradeLog() {
+        var tbody = document.getElementById('trade-log-body');
+        var emptyEl = document.getElementById('log-empty');
+        var countEl = document.getElementById('log-count');
+        if (!tradeData.length) { tbody.innerHTML = ''; emptyEl.style.display = 'block'; countEl.textContent = ''; return; }
+        emptyEl.style.display = 'none';
+        countEl.textContent = tradeData.length + ' trades';
+
+        var sorted = tradeData.slice().sort(function(a, b) { return (b.pnl || 0) - (a.pnl || 0); });
+        var bestIds = {};
+        var worstIds = {};
+        sorted.slice(0, Math.min(5, sorted.length)).forEach(function(t) { if (t.pnl > 0) bestIds[t.id] = true; });
+        sorted.slice(-Math.min(5, sorted.length)).forEach(function(t) { if (t.pnl < 0) worstIds[t.id] = true; });
+
+        tbody.innerHTML = tradeData.map(function(t) {
+            var rowClass = bestIds[t.id] ? 'row-best' : worstIds[t.id] ? 'row-worst' : '';
+            var noteHtml = t.notes
+                ? '<span class="note-preview" title="' + t.notes.replace(/"/g, '&quot;') + '">' + t.notes.substring(0, 25) + '</span> '
+                : '';
+            noteHtml += '<a class="note-link" onclick="openNoteModal(' + t.id + ',\'' + (t.symbol||'') + '\',\'' + encodeURIComponent(t.notes || '') + '\');return false;">' + (t.notes ? 'edit' : '+ add') + '</a>';
+            return '<tr class="' + rowClass + '">' +
+                '<td><strong>' + t.symbol + '</strong></td>' +
+                '<td>' + (t.direction || '').toUpperCase() + '</td>' +
+                '<td>' + stratBadge(t.strategy_name) + '</td>' +
+                '<td class="price-cell">$' + fmt(t.entry_price, 2) + '</td>' +
+                '<td class="price-cell">$' + fmt(t.exit_price, 2) + '</td>' +
+                '<td style="color:' + pnlColor(t.pnl) + ';font-weight:600">' + (t.pnl >= 0 ? '+' : '') + money(t.pnl) + '</td>' +
+                '<td style="color:' + pnlColor(t.pnl_percent) + '">' + (t.pnl_percent >= 0 ? '+' : '') + fmt(t.pnl_percent, 2) + '%</td>' +
+                '<td style="color:var(--success)">' + (t.peak_mfe_pct != null ? '+' + fmt(t.peak_mfe_pct, 1) + '%' : '--') + '</td>' +
+                '<td style="color:var(--danger)">' + (t.peak_mae_pct != null ? '-' + fmt(Math.abs(t.peak_mae_pct), 1) + '%' : '--') + '</td>' +
+                '<td>' + (t.bars_held != null ? t.bars_held : '--') + '</td>' +
+                '<td>' + (t.exit_reason || '--') + '</td>' +
+                '<td>' + (t.ml_confidence != null ? fmt(t.ml_confidence, 0) + '%' : '--') + '</td>' +
+                '<td style="min-width:120px">' + noteHtml + '</td>' +
+                '</tr>';
+        }).join('');
+    }
+
+    // Note modal
+    window.openNoteModal = function(tradeId, symbol, encodedNotes) {
+        currentNoteTradeId = tradeId;
+        document.getElementById('note-modal-symbol').textContent = symbol + ' #' + tradeId;
+        document.getElementById('note-modal-text').value = decodeURIComponent(encodedNotes);
+        document.getElementById('note-modal').classList.add('open');
+        document.getElementById('note-modal-text').focus();
+    };
+    window.closeNoteModal = function() {
+        document.getElementById('note-modal').classList.remove('open');
+        currentNoteTradeId = null;
+    };
+    window.saveNote = function() {
+        if (!currentNoteTradeId) return;
+        var notes = document.getElementById('note-modal-text').value;
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        fetch('/dashboard/api/journal/trades/' + currentNoteTradeId + '/notes', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': meta ? meta.getAttribute('content') : '' },
+            body: JSON.stringify({ notes: notes })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                for (var i = 0; i < tradeData.length; i++) {
+                    if (tradeData[i].id === currentNoteTradeId) { tradeData[i].notes = notes; break; }
+                }
+                renderTradeLog();
+                closeNoteModal();
+            }
+        });
+    };
+    document.getElementById('note-modal').addEventListener('click', function(e) { if (e.target === this) closeNoteModal(); });
+
+    // Filters
+    document.getElementById('filter-days').addEventListener('change', loadAll);
+    document.getElementById('filter-strategy').addEventListener('change', loadAll);
+
+    function loadAll() { loadEquity(); loadDaily(); loadTrades(); }
+    loadAll();
+})();
+</script>
+{% endblock %}

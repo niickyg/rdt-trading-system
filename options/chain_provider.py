@@ -157,8 +157,9 @@ class IBKRChainProvider(ChainProvider):
             if not qualified:
                 return None
 
-            ticker = ib.reqMktData(ib_contract, snapshot=True)
-            ib.sleep(1.0)
+            # Generic ticks: 106=implied vol, 104=hist vol, 100=option volume
+            ticker = ib.reqMktData(ib_contract, genericTickList="100,106", snapshot=True)
+            ib.sleep(1.5)  # Allow time for live Greeks to arrive
             ib.cancelMktData(ib_contract)
 
             greeks = ticker.modelGreeks
@@ -283,7 +284,7 @@ class IBKRChainProvider(ChainProvider):
 class PaperChainProvider(ChainProvider):
     """
     Chain provider that generates synthetic options data using
-    Black-Scholes pricing and yfinance for underlying prices.
+    Black-Scholes pricing and DB-cached daily bars for underlying prices.
 
     Produces realistic chains with:
     - Strike intervals: $1 (<$50), $2.50 ($50-200), $5 (>$200)
@@ -399,31 +400,18 @@ class PaperChainProvider(ChainProvider):
         self, symbol: str, period_days: int = 30
     ) -> Optional[List[float]]:
         try:
-            import yfinance as yf
+            from data.database.historical_cache import get_historical_cache
+            cache = get_historical_cache()
 
-            ticker = yf.Ticker(symbol)
-            period = f"{period_days}d" if period_days <= 365 else f"{period_days // 30}mo"
-            hist = ticker.history(period=period)
-
-            if hist is None or hist.empty:
+            df = cache.get_daily_bars(symbol, lookback_days=period_days)
+            if df is None or df.empty:
                 return None
 
-            # Handle MultiIndex columns
-            if hasattr(hist.columns, 'nlevels') and hist.columns.nlevels > 1:
-                close_col = ("Close", symbol)
-                if close_col in hist.columns:
-                    closes = hist[close_col].dropna().tolist()
-                else:
-                    # Try first level
-                    closes = hist["Close"].iloc[:, 0].dropna().tolist() if "Close" in hist.columns.get_level_values(0) else []
-            else:
-                col = "Close" if "Close" in hist.columns else "close"
-                closes = hist[col].dropna().tolist() if col in hist.columns else []
-
+            closes = df['close'].dropna().tolist()
             return closes if closes else None
 
         except Exception as e:
-            logger.warning(f"yfinance price history failed for {symbol}: {e}")
+            logger.warning(f"Price history fetch failed for {symbol}: {e}")
             return None
 
     def get_underlying_price(self, symbol: str) -> float:
@@ -438,25 +426,14 @@ class PaperChainProvider(ChainProvider):
             return cached
 
         try:
-            import yfinance as yf
+            from data.database.historical_cache import get_historical_cache
+            cache = get_historical_cache()
 
-            ticker = yf.Ticker(symbol)
-            hist = ticker.history(period="30d")
-
-            if hist is None or hist.empty:
+            df = cache.get_daily_bars(symbol, lookback_days=30)
+            if df is None or df.empty:
                 return None
 
-            # Handle MultiIndex columns
-            if hasattr(hist.columns, 'nlevels') and hist.columns.nlevels > 1:
-                close_col = ("Close", symbol)
-                if close_col in hist.columns:
-                    closes = hist[close_col].dropna().tolist()
-                else:
-                    closes = hist["Close"].iloc[:, 0].dropna().tolist() if "Close" in hist.columns.get_level_values(0) else []
-            else:
-                col = "Close" if "Close" in hist.columns else "close"
-                closes = hist[col].dropna().tolist() if col in hist.columns else []
-
+            closes = df['close'].dropna().tolist()
             if not closes:
                 return None
 

@@ -102,6 +102,20 @@ def load_configuration() -> Dict[str, Any]:
 
         # Data provider
         'data_cache_ttl': int(os.environ.get('DATA_CACHE_TTL', 30)),
+
+        # Scanner filter gates (passed through to RealTimeScanner)
+        'spy_gate_enabled': os.environ.get('SPY_GATE_ENABLED', 'true').lower() == 'true',
+        'daily_sma_filter_enabled': os.environ.get('DAILY_SMA_FILTER_ENABLED', 'true').lower() == 'true',
+        'vix_filter_enabled': os.environ.get('VIX_FILTER_ENABLED', 'true').lower() == 'true',
+        'news_filter_enabled': os.environ.get('NEWS_FILTER_ENABLED', 'true').lower() == 'true',
+        'first_hour_filter_enabled': os.environ.get('FIRST_HOUR_FILTER_ENABLED', 'true').lower() == 'true',
+        'sector_filter_enabled': os.environ.get('SECTOR_FILTER_ENABLED', 'true').lower() == 'true',
+        'intermarket_enabled': os.environ.get('INTERMARKET_ENABLED', 'true').lower() == 'true',
+        'mtf_enabled': os.environ.get('MTF_ENABLED', 'false').lower() == 'true',
+        'decay_predictor_enabled': os.environ.get('DECAY_PREDICTOR_ENABLED', 'true').lower() == 'true',
+        'mean_reversion_enabled': os.environ.get('MEAN_REVERSION_ENABLED', 'false').lower() == 'true',
+        'premarket_scan_enabled': os.environ.get('PREMARKET_SCAN_ENABLED', 'false').lower() == 'true',
+        'afterhours_scan_enabled': os.environ.get('AFTERHOURS_SCAN_ENABLED', 'false').lower() == 'true',
     }
 
     # Validate critical config values
@@ -143,7 +157,7 @@ def get_watchlist() -> List[str]:
     except Exception as e:
         # Default watchlist
         default = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA',
-                   'AMD', 'NFLX', 'CRM', 'SHOP', 'SQ', 'ROKU', 'SNOW', 'PLTR']
+                   'AMD', 'NFLX', 'CRM', 'SHOP', 'XYZ', 'ROKU', 'SNOW', 'PLTR']
         logger.warning(f"Using default watchlist ({len(default)} symbols): {e}")
         return default
 
@@ -238,21 +252,30 @@ def initialize_broker(paper_trading: bool = True, initial_balance: float = 25000
     try:
         from brokers import get_broker
 
-        if paper_trading:
+        # Check BROKER_TYPE first — if a real broker is configured, use it
+        # even when paper_trading is True (the broker handles paper mode internally).
+        broker_type = os.environ.get('BROKER_TYPE', 'paper').lower().strip()
+
+        if broker_type == 'schwab':
+            broker = get_broker("schwab", from_env=True)
+            logger.info("Schwab broker created from environment config")
+        elif broker_type == 'ibkr':
+            try:
+                broker = get_broker("ibkr", from_env=True)
+                logger.info("IBKR broker created from environment config")
+                broker.connect()
+                logger.info(f"Broker connected: {broker.__class__.__name__}")
+                return broker
+            except Exception as e:
+                logger.warning(f"IBKR connection failed ({e}), falling back to paper broker")
+                broker = get_broker("paper", initial_balance=initial_balance)
+                logger.info(f"Paper broker created with ${initial_balance:,.2f} balance (IBKR fallback)")
+        elif paper_trading or broker_type == 'paper':
             broker = get_broker("paper", initial_balance=initial_balance)
             logger.info(f"Paper broker created with ${initial_balance:,.2f} balance")
         else:
-            # Load broker config from environment
-            broker_type = os.environ.get('BROKER_TYPE', 'paper')
-            if broker_type == 'schwab':
-                broker = get_broker("schwab", from_env=True)
-                logger.info("Schwab broker created from environment config")
-            elif broker_type == 'ibkr':
-                broker = get_broker("ibkr", from_env=True)
-                logger.info("IBKR broker created from environment config")
-            else:
-                broker = get_broker("paper", initial_balance=initial_balance)
-                logger.warning(f"Unknown broker type '{broker_type}', using paper broker")
+            broker = get_broker("paper", initial_balance=initial_balance)
+            logger.warning(f"Unknown broker type '{broker_type}', using paper broker")
 
         # Connect the broker
         broker.connect()
@@ -396,6 +419,30 @@ def reconcile_positions(broker, position_tracker) -> None:
         logger.error(f"Position reconciliation failed (non-fatal): {e}")
 
 
+def seed_paper_broker_positions(broker, position_tracker) -> None:
+    """
+    Copy DB-loaded positions into the paper broker so reconciliation
+    doesn't close them as stale.  No-op for non-paper brokers.
+    """
+    try:
+        from brokers.paper_broker import PaperBroker
+    except ImportError:
+        return
+
+    if not isinstance(broker, PaperBroker) or position_tracker is None:
+        return
+
+    for symbol, pos in position_tracker._positions.items():
+        side = pos.direction.value  # 'long' or 'short'
+        qty = pos.shares if side == 'long' else -pos.shares
+        broker._positions[symbol] = {
+            'quantity': qty,
+            'avg_cost': pos.entry_price,
+            'side': side,
+        }
+        logger.info(f"Seeded paper broker with {symbol}: {qty} shares @ ${pos.entry_price:.2f} ({side})")
+
+
 def initialize_order_monitor():
     """
     Initialize the order monitor for tracking order lifecycle.
@@ -490,8 +537,8 @@ def initialize_ensemble_model():
         Ensemble model instance or None
     """
     try:
-        import joblib
         import numpy as np
+        from ml.safe_model_loader import safe_load_model
 
         model_dir = get_model_path("ensemble")
 
@@ -520,15 +567,15 @@ def initialize_ensemble_model():
                     features_path = self.model_dir / "feature_names.json"
 
                     if xgb_path.exists():
-                        self.xgb_model = joblib.load(xgb_path)
+                        self.xgb_model = safe_load_model(str(xgb_path))
                         logger.debug("XGBoost model loaded")
 
                     if rf_path.exists():
-                        self.rf_model = joblib.load(rf_path)
+                        self.rf_model = safe_load_model(str(rf_path))
                         logger.debug("Random Forest model loaded")
 
                     if meta_path.exists():
-                        self.meta_learner = joblib.load(meta_path)
+                        self.meta_learner = safe_load_model(str(meta_path))
                         logger.debug("Meta-learner loaded")
 
                     if features_path.exists():
@@ -956,14 +1003,19 @@ def initialize_realtime_scanner(config: Dict = None, watchlist: List[str] = None
 
         config = config or {}
 
-        scanner = RealTimeScanner(config={
-            'atr_period': config.get('atr_period', 14),
-            'rrs_strong_threshold': config.get('rrs_strong_threshold', config.get('rrs_threshold', 1.75)),
-            'scan_interval_seconds': config.get('scan_interval', 60),
-            'min_volume': config.get('min_volume', 500000),
-            'min_price': config.get('min_price', 5.0),
-            'max_price': config.get('max_price', 500.0),
-        })
+        # Pass full config through so scanner gate flags (spy_gate_enabled,
+        # daily_sma_filter_enabled, vix_filter_enabled, etc.) are respected
+        scanner_config = dict(config)
+        scanner_config.setdefault('atr_period', 14)
+        scanner_config.setdefault('rrs_strong_threshold', config.get('rrs_threshold', 1.75))
+        scanner_config.setdefault('min_volume', 500000)
+        scanner_config.setdefault('min_price', 5.0)
+        scanner_config.setdefault('max_price', 500.0)
+        # Translate scan_interval -> scan_interval_seconds if needed
+        if 'scan_interval' in scanner_config and 'scan_interval_seconds' not in scanner_config:
+            scanner_config['scan_interval_seconds'] = scanner_config.pop('scan_interval')
+
+        scanner = RealTimeScanner(config=scanner_config)
         if watchlist:
             scanner.watchlist = watchlist
         logger.info(f"Real-time scanner initialized with {len(scanner.watchlist)} symbols")
@@ -1033,6 +1085,9 @@ def initialize_all_components(include_agents: bool = False) -> Dict[str, Any]:
         'adaptive_learner': None,
         'orchestrator': None,
 
+        # Options
+        'options': None,
+
         # Monitoring
         'alert_manager': None,
         'prometheus_metrics': None,
@@ -1063,6 +1118,51 @@ def initialize_all_components(include_agents: bool = False) -> Dict[str, Any]:
     )
     components['position_sizer'] = initialize_position_sizer(config['account_size'])
 
+    # Wire broker into data provider for IBKR streaming/snapshot quotes
+    if components['data_provider'] and components['broker']:
+        components['data_provider'].set_broker(components['broker'])
+
+    # Initialize historical bar cache (PostgreSQL-backed daily OHLCV)
+    try:
+        from data.database.historical_cache import get_historical_cache
+        historical_cache = get_historical_cache()
+        components['historical_cache'] = historical_cache
+
+        # Wire cache into data provider
+        if components['data_provider']:
+            components['data_provider'].set_historical_cache(historical_cache)
+
+        # Pre-load daily history from DB into memory
+        all_symbols = list(watchlist) + (['SPY'] if 'SPY' not in watchlist else [])
+        # Add intermarket ETFs so they're cached too
+        intermarket_etfs = ['TLT', 'UUP', 'GLD', 'IWM']
+        for etf in intermarket_etfs:
+            if etf not in all_symbols:
+                all_symbols.append(etf)
+
+        cached_history = historical_cache.get_bulk_daily_bars(all_symbols, lookback_days=60)
+        if cached_history:
+            logger.info(f"Daily history pre-loaded from DB cache: {len(cached_history)} symbols")
+        else:
+            logger.info("Daily history: no data in DB cache yet (will populate from IBKR)")
+    except Exception as e:
+        logger.warning(f"Failed to initialize historical bar cache: {e}")
+        historical_cache = None
+
+    # Start IBKR streaming market data (rotates through symbol groups)
+    broker = components['broker']
+    if broker and hasattr(broker, 'start_streaming') and hasattr(broker, 'is_connected') and broker.is_connected:
+        try:
+            streaming_symbols = list(watchlist) + (['SPY'] if 'SPY' not in watchlist else [])
+            broker.start_streaming(streaming_symbols)
+            logger.info(f"IBKR streaming started for {len(streaming_symbols)} symbols")
+        except Exception as e:
+            logger.warning(f"Failed to start IBKR streaming: {e}")
+
+        # Start background refresh thread for daily bar cache
+        if historical_cache and components['data_provider']:
+            components['data_provider'].start_background_refresh(all_symbols)
+
     # Initialize trading tracking
     logger.info("Initializing Trading Tracking...")
     components['position_tracker'] = initialize_position_tracker()
@@ -1070,9 +1170,60 @@ def initialize_all_components(include_agents: bool = False) -> Dict[str, Any]:
     components['execution_tracker'] = initialize_execution_tracker()
     components['trades_repository'] = initialize_trades_repository()
 
+    # Seed paper broker with DB positions so reconciliation doesn't close them
+    seed_paper_broker_positions(components['broker'], components['position_tracker'])
+
     # Reconcile broker positions with internal tracker after both are ready
     logger.info("Reconciling broker and tracker positions...")
     reconcile_positions(components['broker'], components['position_tracker'])
+
+    # Initialize Options components
+    try:
+        from options.config import OptionsConfig
+        options_config = OptionsConfig()
+        if options_config.is_options_enabled:
+            logger.info("Initializing Options Trading Components...")
+            from options.chain_provider import IBKRChainProvider, PaperChainProvider
+            from options.chain import OptionsChainManager
+            from options.iv_analyzer import IVAnalyzer
+            from options.strategy_selector import StrategySelector
+            from options.position_sizer import OptionsPositionSizer
+            from options.executor import OptionsExecutor, IBKROptionsExecutor
+            from options.paper_executor import PaperOptionsExecutor
+            from options.exit_manager import OptionsExitManager
+            from options.risk import OptionsRiskManager
+
+            broker_type = config.get('broker_type', 'paper')
+            if broker_type == 'ibkr' and components['broker']:
+                chain_provider = IBKRChainProvider(components['broker'])
+                raw_executor = IBKROptionsExecutor(components['broker'], options_config)
+            else:
+                chain_provider = PaperChainProvider()
+                raw_executor = PaperOptionsExecutor(chain_provider, options_config)
+
+            chain_manager = OptionsChainManager(chain_provider, options_config)
+            iv_analyzer = IVAnalyzer(chain_provider, chain_manager)
+            strategy_selector = StrategySelector(chain_manager, iv_analyzer, options_config)
+            position_sizer = OptionsPositionSizer(options_config)
+            options_executor = OptionsExecutor(raw_executor, options_config)
+            exit_manager = OptionsExitManager(chain_manager, options_config)
+            risk_manager = OptionsRiskManager(chain_manager, options_config)
+
+            components['options'] = {
+                'config': options_config,
+                'chain_manager': chain_manager,
+                'iv_analyzer': iv_analyzer,
+                'strategy_selector': strategy_selector,
+                'position_sizer': position_sizer,
+                'executor': options_executor,
+                'exit_manager': exit_manager,
+                'risk_manager': risk_manager,
+            }
+            logger.info("Options trading components initialized successfully")
+        else:
+            logger.info("Options trading disabled (OPTIONS_ENABLED=false or OPTIONS_MODE=stocks)")
+    except Exception as e:
+        logger.warning(f"Could not initialize options components: {e}")
 
     # Initialize ML/Analysis
     logger.info("Initializing ML & Analysis...")
@@ -1176,6 +1327,7 @@ def initialize_all_components(include_agents: bool = False) -> Dict[str, Any]:
         'Trading Tracking': ['position_tracker', 'order_monitor', 'execution_tracker', 'trades_repository'],
         'ML & Analysis': ['regime_detector', 'ensemble_model', 'feature_pipeline', 'model_monitor', 'drift_detector'],
         'Agents': ['learning_agent', 'scanner_agent', 'analyzer_agent', 'executor_agent', 'risk_agent', 'adaptive_learner', 'orchestrator'],
+        'Options': ['options'],
         'Monitoring': ['alert_manager', 'prometheus_metrics', 'realtime_scanner'],
     }
 

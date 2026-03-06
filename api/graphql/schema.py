@@ -9,6 +9,7 @@ Defines the complete GraphQL schema for the RDT Trading System including:
 
 import graphene
 from typing import List, Optional
+from loguru import logger
 
 from api.graphql.types import (
     DateTime,
@@ -356,7 +357,8 @@ class CreateAlert(graphene.Mutation):
             alert = AlertMutationResolver.create_alert(info, input)
             return CreateAlert(alert=alert, success=True, message="Alert created successfully")
         except Exception as e:
-            return CreateAlert(alert=None, success=False, message=str(e))
+            logger.error(f"CreateAlert mutation error: {e}")
+            return CreateAlert(alert=None, success=False, message='Operation failed')
 
 
 class ClosePosition(graphene.Mutation):
@@ -377,7 +379,8 @@ class ClosePosition(graphene.Mutation):
             trade = PositionMutationResolver.close_position(info, symbol, price, reason)
             return ClosePosition(trade=trade, success=True, message=f"Position closed for {symbol}")
         except Exception as e:
-            return ClosePosition(trade=None, success=False, message=str(e))
+            logger.error(f"ClosePosition mutation error: {e}")
+            return ClosePosition(trade=None, success=False, message='Operation failed')
 
 
 class UpdateSettings(graphene.Mutation):
@@ -395,7 +398,8 @@ class UpdateSettings(graphene.Mutation):
             settings = SettingsMutationResolver.update_settings(info, input)
             return UpdateSettings(settings=settings, success=True, message="Settings updated")
         except Exception as e:
-            return UpdateSettings(settings=None, success=False, message=str(e))
+            logger.error(f"UpdateSettings mutation error: {e}")
+            return UpdateSettings(settings=None, success=False, message='Operation failed')
 
 
 class Mutation(graphene.ObjectType):

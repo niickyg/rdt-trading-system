@@ -1,0 +1,329 @@
+{% extends "dashboard_base.html" %}
+{% set active_page = "confidence" %}
+
+{% block title %}AI Confidence - RDT Trading{% endblock %}
+
+{% block dashboard_css %}
+<style>
+    .reason-tag {
+        display: inline-block;
+        padding: 3px 8px;
+        background: var(--bg);
+        border-radius: 4px;
+        font-size: 0.75rem;
+        margin: 1px;
+        color: var(--text);
+    }
+    .conf-bar { width: 50px; height: 4px; background: var(--border); border-radius: 2px; display: inline-block; vertical-align: middle; margin-left: 6px; overflow: hidden; }
+    .conf-bar-fill { height: 100%; border-radius: 2px; }
+    .param-delta { display: inline-flex; align-items: center; gap: 3px; font-weight: 600; font-size: 0.85rem; }
+    .param-delta.up { color: var(--success); }
+    .param-delta.down { color: var(--danger); }
+</style>
+{% endblock %}
+
+{% block page_content %}
+<div class="page-header">
+    <div>
+        <div class="page-title">AI Confidence</div>
+        <div class="page-subtitle">How the ML model is performing and what it's filtering out</div>
+    </div>
+    <div class="filters-bar">
+        <div class="filter-group">
+            <span class="filter-label">Strategy</span>
+            <select class="filter-select" id="filter-strategy">
+                <option value="all">All Strategies</option>
+                <option value="rrs_momentum">RRS Momentum</option>
+                <option value="rsi2_mean_reversion">RSI2 Mean Rev</option>
+                <option value="trend_breakout">Trend Breakout</option>
+                <option value="pead">PEAD</option>
+                <option value="gap_fill">Gap Fill</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="grid grid-4 mb-2">
+    <div class="stat-card stat-card-accent info">
+        <div class="stat-label">Signals w/ ML Data</div>
+        <div class="stat-value" id="stat-total">--</div>
+        <div class="stat-change" id="stat-total-sub">&nbsp;</div>
+    </div>
+    <div class="stat-card stat-card-accent">
+        <div class="stat-label">Avg Confidence</div>
+        <div class="stat-value" id="stat-avg-conf">--</div>
+        <div class="stat-change" id="stat-avg-sub">&nbsp;</div>
+    </div>
+    <div class="stat-card stat-card-accent warning">
+        <div class="stat-label">Rejected</div>
+        <div class="stat-value" id="stat-rejected">--</div>
+        <div class="stat-change" id="stat-rejected-sub">&nbsp;</div>
+    </div>
+    <div class="stat-card stat-card-accent success">
+        <div class="stat-label">Missed Opportunity (1d)</div>
+        <div class="stat-value" id="stat-whpnl">--</div>
+        <div class="stat-change">avg would-have P&amp;L</div>
+    </div>
+</div>
+
+<div class="grid grid-2 mb-2">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Confidence vs Win Rate</h3>
+        </div>
+        <div class="chart-container chart-container-md">
+            <canvas id="chart-buckets"></canvas>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Top Rejection Reasons</h3>
+        </div>
+        <div class="chart-container chart-container-md">
+            <canvas id="chart-reasons"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Rejected Signals</h3>
+        <span style="font-size:0.85rem;color:var(--text-light)" id="rejected-count"></span>
+    </div>
+    <div class="signals-table-container">
+        <table class="signals-table" id="rejected-table">
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Strategy</th>
+                    <th>Dir</th>
+                    <th>RRS</th>
+                    <th>ML Conf</th>
+                    <th>Reasons</th>
+                    <th>Would-Have 1d</th>
+                    <th>Time</th>
+                </tr>
+            </thead>
+            <tbody id="rejected-body"></tbody>
+        </table>
+    </div>
+    <div class="empty-state" id="rejected-empty" style="display:none;">
+        <div class="empty-title">No rejected signals in this period</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Parameter Adjustments</h3>
+        <span style="font-size:0.85rem;color:var(--text-light)">Adaptive learner changes</span>
+    </div>
+    <div class="signals-table-container">
+        <table class="signals-table" id="params-table">
+            <thead>
+                <tr>
+                    <th>When</th>
+                    <th>Parameter</th>
+                    <th>Old</th>
+                    <th>New</th>
+                    <th>Change</th>
+                    <th>Reason</th>
+                </tr>
+            </thead>
+            <tbody id="params-body"></tbody>
+        </table>
+    </div>
+    <div class="empty-state" id="params-empty" style="display:none;">
+        <div class="empty-title">No parameter adjustments yet</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block dashboard_js %}
+<script>
+(function() {
+    var chartBuckets = null, chartReasons = null;
+
+    function fmt(v, d) { return v != null ? Number(v).toFixed(d || 2) : '--'; }
+    function pnlColor(v) { return v > 0 ? 'var(--success)' : v < 0 ? 'var(--danger)' : 'var(--text-light)'; }
+    function stratBadge(s) {
+        var cls = {'rrs_momentum':'badge-rrs','rsi2_mean_reversion':'badge-rsi2','trend_breakout':'badge-trend','pead':'badge-pead','gap_fill':'badge-gap'};
+        return '<span class="badge-strategy '+(cls[s]||'')+'">'+(s||'--')+'</span>';
+    }
+    function timeAgo(ts) {
+        if (!ts) return '--';
+        var d = new Date(ts), now = new Date(), diff = Math.floor((now - d) / 60000);
+        if (diff < 60) return diff + 'm ago';
+        if (diff < 1440) return Math.floor(diff/60) + 'h ago';
+        return Math.floor(diff/1440) + 'd ago';
+    }
+    function confBar(v) {
+        if (v == null) return '--';
+        var pct = Math.min(100, Math.max(0, v));
+        var cls = pct >= 80 ? 'high' : pct >= 60 ? 'medium' : 'low';
+        return fmt(v, 1) + '%<div class="conf-bar"><div class="conf-bar-fill confidence-fill ' + cls + '" style="width:' + pct + '%"></div></div>';
+    }
+
+    function loadOverview() {
+        fetch('/dashboard/api/confidence/overview')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) return;
+                document.getElementById('stat-total').textContent = data.trades_with_confidence || 0;
+                document.getElementById('stat-total-sub').textContent = 'closed trades with ML data';
+                document.getElementById('stat-avg-conf').textContent = data.avg_confidence ? fmt(data.avg_confidence, 1) + '%' : 'N/A';
+
+                var rej = data.rejection_summary;
+                document.getElementById('stat-rejected').textContent = rej.total || 0;
+                document.getElementById('stat-rejected-sub').textContent = 'signals filtered out';
+
+                var whp = rej.avg_would_have_pnl_1d;
+                var el = document.getElementById('stat-whpnl');
+                if (whp != null) {
+                    el.textContent = (whp >= 0 ? '+' : '') + fmt(whp, 2) + '%';
+                    el.style.color = pnlColor(whp);
+                } else {
+                    el.textContent = 'N/A';
+                }
+
+                renderBucketsChart(data.confidence_buckets);
+                renderReasonsChart(rej.top_reasons);
+            });
+    }
+
+    function renderBucketsChart(buckets) {
+        var ctx = document.getElementById('chart-buckets').getContext('2d');
+        if (chartBuckets) chartBuckets.destroy();
+        var labels = buckets.map(function(b) { return b.range + '%'; });
+        var counts = buckets.map(function(b) { return b.count; });
+        var winRates = buckets.map(function(b) { return b.win_rate; });
+        var colors = buckets.map(function(b) {
+            return b.win_rate >= 60 ? 'rgba(39,174,96,0.7)' : b.win_rate >= 50 ? 'rgba(243,156,18,0.7)' : 'rgba(231,76,60,0.7)';
+        });
+
+        chartBuckets = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'Trades', data: counts, backgroundColor: colors, yAxisID: 'y', borderRadius: 6, borderSkipped: false },
+                    { label: 'Win Rate %', data: winRates, type: 'line', borderColor: '#3498db', backgroundColor: 'transparent', yAxisID: 'y1', pointRadius: 5, pointBackgroundColor: '#3498db', tension: 0.3, borderWidth: 2 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color: '#666' } },
+                    y1: { position: 'right', beginAtZero: true, max: 100, grid: { drawOnChartArea: false }, ticks: { color: '#666', callback: function(v) { return v + '%'; } } },
+                    x: { grid: { display: false }, ticks: { color: '#666' } }
+                },
+                plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } } }
+            }
+        });
+    }
+
+    function renderReasonsChart(reasons) {
+        var ctx = document.getElementById('chart-reasons').getContext('2d');
+        if (chartReasons) chartReasons.destroy();
+        if (!reasons || !reasons.length) {
+            ctx.font = '14px sans-serif';
+            ctx.fillStyle = '#999';
+            ctx.textAlign = 'center';
+            ctx.fillText('No rejection data yet', ctx.canvas.width / 2, ctx.canvas.height / 2);
+            return;
+        }
+        var labels = reasons.map(function(r) {
+            var s = r.reason;
+            return s.length > 35 ? s.substring(0, 35) + '...' : s;
+        });
+        var counts = reasons.map(function(r) { return r.count; });
+        var barColors = ['#e74c3c','#e67e22','#f1c40f','#3498db','#9b59b6'];
+
+        chartReasons = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{ data: counts, backgroundColor: barColors.slice(0, counts.length), borderRadius: 6, borderSkipped: false }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                    x: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color: '#666' } },
+                    y: { grid: { display: false }, ticks: { color: '#666', font: { size: 11 } } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    function loadRejected() {
+        var strategy = document.getElementById('filter-strategy').value;
+        fetch('/dashboard/api/confidence/rejected?days=30&strategy=' + strategy)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var tbody = document.getElementById('rejected-body');
+                var empty = document.getElementById('rejected-empty');
+                var count = document.getElementById('rejected-count');
+                if (!data.signals || !data.signals.length) {
+                    tbody.innerHTML = '';
+                    empty.style.display = 'block';
+                    count.textContent = '';
+                    return;
+                }
+                empty.style.display = 'none';
+                count.textContent = data.signals.length + ' signals';
+                tbody.innerHTML = data.signals.map(function(s) {
+                    var reasons = Array.isArray(s.rejection_reasons) ? s.rejection_reasons : [];
+                    var reasonsHtml = reasons.map(function(r) { return '<span class="reason-tag">' + r + '</span>'; }).join(' ');
+                    var whp = s.would_have_pnl_1d;
+                    var whpText = whp != null ? '<span style="color:' + pnlColor(whp) + ';font-weight:600">' + (whp >= 0 ? '+' : '') + fmt(whp, 2) + '%</span>' : '<span style="color:var(--text-light)">pending</span>';
+                    return '<tr>' +
+                        '<td><strong>' + s.symbol + '</strong></td>' +
+                        '<td>' + stratBadge(s.strategy_name) + '</td>' +
+                        '<td>' + (s.direction || '').toUpperCase() + '</td>' +
+                        '<td>' + fmt(s.rrs, 2) + '</td>' +
+                        '<td>' + confBar(s.ml_confidence) + '</td>' +
+                        '<td style="max-width:280px">' + reasonsHtml + '</td>' +
+                        '<td>' + whpText + '</td>' +
+                        '<td class="time-cell">' + timeAgo(s.timestamp) + '</td>' +
+                        '</tr>';
+                }).join('');
+            });
+    }
+
+    function loadParams() {
+        fetch('/dashboard/api/confidence/params?days=90')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var tbody = document.getElementById('params-body');
+                var empty = document.getElementById('params-empty');
+                if (!data.changes || !data.changes.length) {
+                    tbody.innerHTML = '';
+                    empty.style.display = 'block';
+                    return;
+                }
+                empty.style.display = 'none';
+                tbody.innerHTML = data.changes.map(function(c) {
+                    var delta = Number(c.new_value) - Number(c.old_value);
+                    var cls = delta > 0 ? 'up' : delta < 0 ? 'down' : '';
+                    var arrow = delta > 0 ? '&#9650;' : delta < 0 ? '&#9660;' : '&#8212;';
+                    return '<tr>' +
+                        '<td class="time-cell"><span class="time-relative">' + timeAgo(c.timestamp) + '</span></td>' +
+                        '<td><strong>' + c.parameter_name + '</strong></td>' +
+                        '<td style="font-family:monospace">' + fmt(c.old_value, 4) + '</td>' +
+                        '<td style="font-family:monospace">' + fmt(c.new_value, 4) + '</td>' +
+                        '<td><span class="param-delta ' + cls + '">' + arrow + ' ' + fmt(Math.abs(delta), 4) + '</span></td>' +
+                        '<td style="color:var(--text-light);font-size:0.8rem">' + (c.reason || '') + '</td>' +
+                        '</tr>';
+                }).join('');
+            });
+    }
+
+    document.getElementById('filter-strategy').addEventListener('change', loadRejected);
+
+    loadOverview();
+    loadRejected();
+    loadParams();
+})();
+</script>
+{% endblock %}

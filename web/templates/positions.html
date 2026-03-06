@@ -625,11 +625,171 @@
         <!-- Open Positions Tab -->
         <div id="tab-positions" class="tab-content active">
             <div id="positions-container">
-                <div class="loading-state">
-                    <div class="spinner"></div>
-                    <span>Loading positions...</span>
-                </div>
+                <!-- Rendered by JS from server-injected data -->
             </div>
+
+            {% if options_positions %}
+            <!-- Options Positions -->
+            <h2 style="margin-top: 30px; font-size: 1.3rem; font-weight: 600;">Options Positions</h2>
+            <div style="margin-top: 15px;">
+                {% for opt in options_positions %}
+                {% set debit = opt.total_premium < 0 %}
+                {% set first_leg_hdr = opt.legs[0] if opt.legs else {} %}
+                {% set greeks_hdr = first_leg_hdr.get('greeks', {}) if first_leg_hdr else {} %}
+                {% set multiplier = first_leg_hdr.get('multiplier', 100) if first_leg_hdr else 100 %}
+                {% set cost_basis = opt.entry_premium * multiplier * opt.contracts %}
+                <div class="position-card" style="border-left-color: var(--accent);">
+                    <div class="position-header">
+                        <div class="position-symbol">
+                            <span class="position-ticker">{{ opt.symbol }}</span>
+                            {% set sn = opt.strategy_name or 'rrs_momentum' %}
+                            <span class="badge" style="font-size:0.7rem;{% if sn == 'rrs_momentum' %}background:#e3f2fd;color:#1565c0{% elif sn == 'trend_breakout' %}background:#fce4ec;color:#c62828{% elif sn == 'rsi2_mean_reversion' %}background:#e8f5e9;color:#2e7d32{% elif sn == 'pead' %}background:#fff3e0;color:#e65100{% elif sn == 'gap_fill' %}background:#f3e5f5;color:#7b1fa2{% else %}background:#ede7f6;color:#5e35b1{% endif %};">
+                                {{ sn|replace('_', ' ')|title }}
+                            </span>
+                            <span class="badge {% if opt.direction|lower == 'long' %}badge-long{% else %}badge-short{% endif %}">
+                                {{ opt.direction|upper }}
+                            </span>
+                            <span class="badge" style="background: #e8eaf6; color: #3949ab;">
+                                {{ opt.contracts }} contract{{ 's' if opt.contracts != 1 }}
+                            </span>
+                        </div>
+                        <div class="position-pnl">
+                            <div class="position-pnl-value" style="color: var(--text);">
+                                ${{ '%.2f'|format(cost_basis) }}
+                            </div>
+                            <div class="position-pnl-pct" style="color: var(--text-light);">
+                                {{ 'Debit' if debit else 'Credit' }} &middot; ${{ '%.2f'|format(opt.entry_premium) }}/contract
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Position Value Row -->
+                    {% set first_leg = opt.legs[0] if opt.legs else {} %}
+                    {% set greeks = first_leg.get('greeks', {}) if first_leg else {} %}
+                    {% set mid_price = ((greeks.bid or 0) + (greeks.ask or 0)) / 2 if greeks.bid and greeks.ask else 0 %}
+                    {% set market_value = mid_price * multiplier * opt.contracts if mid_price > 0 else 0 %}
+                    {% set total_pnl = market_value - cost_basis if market_value > 0 else none %}
+                    {% set pnl_pct = (total_pnl / cost_basis * 100) if total_pnl is not none and cost_basis > 0 else none %}
+                    <div class="position-details" style="grid-template-columns: repeat(6, 1fr);">
+                        <div class="detail-item">
+                            <div class="detail-label">Entry Price</div>
+                            <div class="detail-value">${{ '%.2f'|format(opt.entry_premium) }}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Mid Price</div>
+                            <div class="detail-value">{% if mid_price > 0 %}${{ '%.2f'|format(mid_price) }}{% else %}—{% endif %}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Cost Basis</div>
+                            <div class="detail-value">${{ '%.0f'|format(cost_basis) }}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Market Value</div>
+                            <div class="detail-value">{% if market_value > 0 %}${{ '%.0f'|format(market_value) }}{% else %}—{% endif %}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Total P&L</div>
+                            <div class="detail-value {% if total_pnl is not none %}{% if total_pnl >= 0 %}text-success{% else %}text-danger{% endif %}{% endif %}">
+                                {% if total_pnl is not none %}${{ '%+.2f'|format(total_pnl) }}{% else %}—{% endif %}
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">P&L %</div>
+                            <div class="detail-value {% if pnl_pct is not none %}{% if pnl_pct >= 0 %}text-success{% else %}text-danger{% endif %}{% endif %}">
+                                {% if pnl_pct is not none %}{{ '%+.1f'|format(pnl_pct) }}%{% else %}—{% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Greeks Row -->
+                    <div class="position-details" style="grid-template-columns: repeat(6, 1fr); border-top: none; padding-top: 0;">
+                        <div class="detail-item">
+                            <div class="detail-label">Delta</div>
+                            <div class="detail-value">{{ '%.3f'|format(opt.entry_delta) if opt.entry_delta else '—' }}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Gamma</div>
+                            <div class="detail-value">{{ '%.4f'|format(greeks.gamma) if greeks.gamma else '—' }}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Theta</div>
+                            <div class="detail-value {% if greeks.theta and greeks.theta < 0 %}text-danger{% endif %}">
+                                {{ '%.4f'|format(greeks.theta) if greeks.theta else '—' }}
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Vega</div>
+                            <div class="detail-value">{{ '%.4f'|format(greeks.vega) if greeks.vega else '—' }}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">IV</div>
+                            <div class="detail-value">{{ '%.1f'|format(opt.entry_iv * 100) if opt.entry_iv else '—' }}%</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Underlying</div>
+                            <div class="detail-value">${{ '%.2f'|format(greeks.underlying_price) if greeks.underlying_price else '—' }}</div>
+                        </div>
+                    </div>
+
+                    <!-- Legs Table -->
+                    {% if opt.legs %}
+                    <div style="margin-top: 15px;">
+                        <table style="width: 100%; font-size: 0.85rem; border-collapse: collapse;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid var(--border); color: var(--text-light); text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.5px;">
+                                    <th style="padding: 8px 10px; text-align: left;">Action</th>
+                                    <th style="padding: 8px 10px; text-align: left;">Contract</th>
+                                    <th style="padding: 8px 10px; text-align: right;">Strike</th>
+                                    <th style="padding: 8px 10px; text-align: right;">Bid / Ask</th>
+                                    <th style="padding: 8px 10px; text-align: right;">Volume</th>
+                                    <th style="padding: 8px 10px; text-align: right;">Open Int</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for leg in opt.legs %}
+                                {% set lg = leg.get('greeks', {}) if leg else {} %}
+                                <tr style="border-bottom: 1px solid var(--border);">
+                                    <td style="padding: 8px 10px;">
+                                        <span class="badge {% if leg.action == 'BUY' %}badge-long{% else %}badge-short{% endif %}" style="font-size: 0.75rem;">
+                                            {{ leg.action }}
+                                        </span>
+                                    </td>
+                                    <td style="padding: 8px 10px; font-weight: 500;">
+                                        {{ leg.expiry[:4] }}-{{ leg.expiry[4:6] }}-{{ leg.expiry[6:] if leg.expiry|length >= 8 else leg.expiry[4:] }}
+                                        {{ leg.right }}
+                                    </td>
+                                    <td style="padding: 8px 10px; text-align: right; font-weight: 600;">${{ '%.2f'|format(leg.strike) }}</td>
+                                    <td style="padding: 8px 10px; text-align: right;">
+                                        {% if lg.bid is not none and lg.ask is not none %}
+                                            ${{ '%.2f'|format(lg.bid) }} / ${{ '%.2f'|format(lg.ask) }}
+                                        {% else %}—{% endif %}
+                                    </td>
+                                    <td style="padding: 8px 10px; text-align: right;">{{ '{:,}'.format(lg.volume) if lg.volume else '—' }}</td>
+                                    <td style="padding: 8px 10px; text-align: right;">{{ '{:,}'.format(lg.open_interest) if lg.open_interest else '—' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+
+                    <!-- Footer -->
+                    <div class="position-footer">
+                        <div class="position-meta">
+                            Opened: {{ opt.entry_time[:10] if opt.entry_time else '—' }} |
+                            {% if opt.legs and opt.legs[0].expiry %}
+                            {% set exp = opt.legs[0].expiry %}
+                            Expiry: {{ exp[:4] }}-{{ exp[4:6] }}-{{ exp[6:] if exp|length >= 8 else exp[4:] }}
+                            {% endif %}
+                        </div>
+                        <div class="position-actions">
+                            <a href="/dashboard/options" class="btn btn-secondary btn-sm">View Details</a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
         </div>
 
         <!-- Trade Journal Tab -->
@@ -805,22 +965,92 @@
 
 {% block extra_js %}
 <script>
-    // State
-    let positionsData = [];
+    // Strategy badge colors
+    function strategyBadgeStyle(name) {
+        const colors = {
+            'rrs_momentum':       'background:#e3f2fd;color:#1565c0',
+            'trend_breakout':     'background:#fce4ec;color:#c62828',
+            'rsi2_mean_reversion':'background:#e8f5e9;color:#2e7d32',
+            'pead':               'background:#fff3e0;color:#e65100',
+            'gap_fill':           'background:#f3e5f5;color:#7b1fa2',
+        };
+        return colors[name] || 'background:#ede7f6;color:#5e35b1';
+    }
+
+    // State — inject server data, normalize field names
+    let _rawPositions = {{ positions | tojson }};
+    let positionsData = _rawPositions.map(p => ({
+        symbol: p.symbol,
+        direction: (p.direction || '').toLowerCase(),
+        shares: p.shares || 0,
+        entry_price: Number(p.entry_price) || 0,
+        current_price: Number(p.current_price) || Number(p.entry_price) || 0,
+        stop_price: Number(p.stop_loss) || 0,
+        stop_loss: Number(p.stop_loss) || 0,
+        target_price: Number(p.take_profit) || 0,
+        take_profit: Number(p.take_profit) || 0,
+        entry_time: p.entry_time || '',
+        unrealized_pnl: Number(p.unrealized_pnl) || 0,
+        unrealized_pnl_pct: p.entry_price > 0 ? ((Number(p.unrealized_pnl) || 0) / (Number(p.entry_price) * (p.shares || 1))) * 100 : 0,
+        rrs_at_entry: Number(p.rrs_at_entry) || 0,
+        updated_at: p.updated_at || '',
+        strategy_name: p.strategy_name || 'rrs_momentum'
+    }));
     let currentSymbol = null;
     let allNotes = [];
 
-    // Fetch positions from API
+    // Fetch positions from dashboard API
     async function fetchPositions() {
         try {
-            const response = await fetch('/api/v1/positions');
+            const response = await fetch('/dashboard/api/positions');
             if (response.ok) {
                 const data = await response.json();
-                positionsData = data.positions || [];
+                const raw = data.stock_positions || [];
+                positionsData = raw.map(p => ({
+                    symbol: p.symbol,
+                    direction: (p.direction || '').toLowerCase(),
+                    shares: p.shares || 0,
+                    entry_price: Number(p.entry_price) || 0,
+                    current_price: Number(p.current_price) || Number(p.entry_price) || 0,
+                    stop_price: Number(p.stop_loss) || 0,
+                    stop_loss: Number(p.stop_loss) || 0,
+                    target_price: Number(p.take_profit) || 0,
+                    take_profit: Number(p.take_profit) || 0,
+                    entry_time: p.entry_time || '',
+                    unrealized_pnl: Number(p.unrealized_pnl) || 0,
+                    unrealized_pnl_pct: p.entry_price > 0 ? ((Number(p.unrealized_pnl) || 0) / (Number(p.entry_price) * (p.shares || 1))) * 100 : 0,
+                    rrs_at_entry: Number(p.rrs_at_entry) || 0,
+                    updated_at: p.updated_at || '',
+                    strategy_name: p.strategy_name || 'rrs_momentum'
+                }));
                 renderPositions();
-                updateSummary(data.summary);
+                // Build summary from data
+                let totalValue = 0, totalPnl = 0, totalCost = 0;
+                positionsData.forEach(p => {
+                    const cost = p.shares * p.entry_price;
+                    const value = p.shares * p.current_price;
+                    totalCost += cost;
+                    totalValue += value;
+                    totalPnl += p.unrealized_pnl;
+                });
+                const longCount = positionsData.filter(p => p.direction === 'long').length;
+                const shortCount = positionsData.filter(p => p.direction === 'short').length;
+                const profitableCount = positionsData.filter(p => p.unrealized_pnl > 0).length;
+                let totalRisk = 0;
+                positionsData.forEach(p => {
+                    if (p.stop_loss) totalRisk += Math.abs(p.entry_price - p.stop_loss) * p.shares;
+                });
+                updateSummary({
+                    total_exposure: totalValue,
+                    total_positions: positionsData.length,
+                    total_unrealized_pnl: totalPnl,
+                    total_unrealized_pnl_pct: totalCost > 0 ? (totalPnl / totalCost) * 100 : 0,
+                    long_positions: longCount,
+                    short_positions: shortCount,
+                    profitable_positions: profitableCount,
+                    total_risk: totalRisk
+                });
                 updateLastUpdate();
-                checkAlerts();
                 updateJournalSymbols();
             }
         } catch (error) {
@@ -828,30 +1058,14 @@
         }
     }
 
-    // Fetch performance stats
-    async function fetchPerformance() {
-        try {
-            const response = await fetch('/api/v1/positions/performance');
-            if (response.ok) {
-                const data = await response.json();
-                renderPerformance(data.performance);
-            }
-        } catch (error) {
-            console.error('Error fetching performance:', error);
-        }
-    }
+    // Performance stats (skip — requires full trading components)
+    async function fetchPerformance() {}
 
-    // Check for stop/target alerts
+    // Alerts check (skip — requires broker connection)
     async function checkAlerts() {
-        try {
-            const response = await fetch('/api/v1/positions/check');
-            if (response.ok) {
-                const data = await response.json();
-                renderAlerts(data.alerts);
-            }
-        } catch (error) {
-            console.error('Error checking alerts:', error);
-        }
+        // Clear alerts container
+        const container = document.getElementById('alerts-container');
+        if (container) container.innerHTML = '';
     }
 
     function renderAlerts(alerts) {
@@ -980,6 +1194,7 @@
                         <div class="position-symbol">
                             <span class="position-ticker">${pos.symbol}</span>
                             <span class="badge ${dirBadge}">${pos.direction.toUpperCase()}</span>
+                            <span class="badge" style="${strategyBadgeStyle(pos.strategy_name)};font-size:0.7rem;">${(pos.strategy_name||'rrs_momentum').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</span>
                             ${pos.is_stop_hit ? '<span class="badge badge-danger">STOP HIT</span>' : ''}
                             ${pos.is_target_hit ? '<span class="badge badge-success">TARGET HIT</span>' : ''}
                         </div>
@@ -1355,9 +1570,34 @@
         fetchPositions();
     }
 
-    // Initial load
-    fetchPositions();
-    fetchPerformance();
+    // Initial render from server-injected data
+    renderPositions();
+    if (positionsData.length > 0) {
+        // Build initial summary
+        let totalValue = 0, totalPnl = 0, totalCost = 0;
+        positionsData.forEach(p => {
+            totalCost += p.shares * p.entry_price;
+            totalValue += p.shares * p.current_price;
+            totalPnl += p.unrealized_pnl;
+        });
+        const longCount = positionsData.filter(p => p.direction === 'long').length;
+        const shortCount = positionsData.filter(p => p.direction === 'short').length;
+        const profitableCount = positionsData.filter(p => p.unrealized_pnl > 0).length;
+        let totalRisk = 0;
+        positionsData.forEach(p => {
+            if (p.stop_loss) totalRisk += Math.abs(p.entry_price - p.stop_loss) * p.shares;
+        });
+        updateSummary({
+            total_value: totalValue,
+            total_unrealized_pnl: totalPnl,
+            total_unrealized_pnl_pct: totalCost > 0 ? (totalPnl / totalCost) * 100 : 0,
+            position_count: positionsData.length,
+            long_positions: longCount,
+            short_positions: shortCount,
+            profitable_positions: profitableCount,
+            total_risk: totalRisk
+        });
+    }
 
     // Auto-refresh every 30 seconds
     setInterval(fetchPositions, 30000);

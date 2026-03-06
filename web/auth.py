@@ -10,6 +10,7 @@ Provides:
 """
 
 import os
+import threading
 from datetime import datetime, timedelta
 from functools import wraps
 
@@ -18,7 +19,7 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash,
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, scoped_session
 from loguru import logger
 
 # Import User model
@@ -36,8 +37,9 @@ login_manager.login_view = 'auth.login'
 login_manager.login_message = 'Please log in to access the dashboard.'
 login_manager.login_message_category = 'info'
 
-# Database session (will be initialized in init_auth)
-_db_session = None
+# Database session factory (will be initialized in init_auth)
+_db_session_factory = None
+_db_session_lock = threading.Lock()
 
 # Session cookie name
 SESSION_COOKIE_NAME = 'rdt_session_token'
@@ -146,15 +148,17 @@ def get_db_path():
 
 
 def get_db_session():
-    """Get or create database session"""
-    global _db_session
-    if _db_session is None:
-        db_path = get_db_path()
-        engine = create_engine(f'sqlite:///{db_path}', echo=False)
-        Base.metadata.create_all(engine)
-        Session = sessionmaker(bind=engine)
-        _db_session = Session()
-    return _db_session
+    """Get or create database session (thread-safe via scoped_session)"""
+    global _db_session_factory
+    if _db_session_factory is None:
+        with _db_session_lock:
+            if _db_session_factory is None:
+                db_path = get_db_path()
+                engine = create_engine(f'sqlite:///{db_path}', echo=False)
+                Base.metadata.create_all(engine)
+                session_factory = sessionmaker(bind=engine)
+                _db_session_factory = scoped_session(session_factory)
+    return _db_session_factory()
 
 
 def get_client_ip():
@@ -299,7 +303,7 @@ def login():
                         # Successful login - reset failed attempts
                         reset_failed_login(user, session)
 
-                        login_user(user, remember=remember)
+                        login_user(user, remember=True)  # Always remember — single-user trading system
                         logger.info(f"User logged in: {username}")
 
                         # Create session record

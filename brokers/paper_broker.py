@@ -10,15 +10,10 @@ and P&L without executing real trades. Useful for:
 
 import uuid
 import random
+import threading
 from datetime import datetime
 from typing import Dict, List, Optional
 from loguru import logger
-
-try:
-    import yfinance as yf
-    YF_AVAILABLE = True
-except ImportError:
-    YF_AVAILABLE = False
 
 from brokers.broker_interface import (
     BrokerInterface, Quote, Order, Position, AccountInfo,
@@ -74,6 +69,7 @@ class PaperBroker(BrokerInterface):
 
         # Positions: symbol -> {quantity, avg_cost, side}
         self._positions: Dict[str, dict] = {}
+        self._lock = threading.Lock()  # Guards _positions, _orders, _pending_orders
 
         # Orders
         self._orders: Dict[str, Order] = {}
@@ -163,65 +159,27 @@ class PaperBroker(BrokerInterface):
         return None
 
     def get_quote(self, symbol: str) -> Quote:
-        """Get current quote for a symbol."""
+        """Get current quote for a symbol.
+
+        Tries the DataProvider (IBKR) up to 3 times, then falls back to
+        the local quote cache.  Never uses yfinance or dummy prices.
+        """
         symbol = symbol.upper()
 
-        # Try DataProvider cache first (fast, no network call)
-        dp_quote = self._try_data_provider_price(symbol)
-        if dp_quote is not None:
-            self._quote_cache[symbol] = dp_quote
-            return dp_quote
+        # Retry DataProvider (IBKR) up to 3 times with short back-off
+        for attempt in range(3):
+            dp_quote = self._try_data_provider_price(symbol)
+            if dp_quote is not None:
+                self._quote_cache[symbol] = dp_quote
+                return dp_quote
+            if attempt < 2:
+                import time as _time
+                _time.sleep(0.3 * (attempt + 1))
 
-        if YF_AVAILABLE:
-            try:
-                ticker = yf.Ticker(symbol)
-                info = ticker.info
-
-                last = info.get(
-                    'regularMarketPrice',
-                    info.get('previousClose', 0)
-                )
-
-                if not last or last == 0:
-                    # Try fast_info
-                    try:
-                        last = ticker.fast_info.get('lastPrice', 100.0)
-                    except Exception:
-                        last = 100.0
-
-                bid = info.get('bid', last * 0.999)
-                ask = info.get('ask', last * 1.001)
-                volume = info.get('regularMarketVolume', 0)
-
-                # Ensure bid/ask are valid
-                if not bid or bid == 0:
-                    bid = last * 0.999
-                if not ask or ask == 0:
-                    ask = last * 1.001
-
-                quote = Quote(
-                    symbol=symbol,
-                    bid=float(bid),
-                    ask=float(ask),
-                    last=float(last),
-                    volume=int(volume or 0),
-                    timestamp=datetime.now(),
-                    high=float(info.get('dayHigh', last)),
-                    low=float(info.get('dayLow', last)),
-                    open=float(info.get('regularMarketOpen', last)),
-                    prev_close=float(info.get('previousClose', last))
-                )
-
-                self._quote_cache[symbol] = quote
-                return quote
-
-            except Exception as e:
-                logger.warning(f"Failed to get quote for {symbol}: {e}")
-
-        # Return cached or dummy quote
+        # Return last-known cached quote if available
         if symbol in self._quote_cache:
             cached = self._quote_cache[symbol]
-            # Update timestamp
+            logger.debug(f"Using cached quote for {symbol} (IBKR unavailable)")
             return Quote(
                 symbol=cached.symbol,
                 bid=cached.bid,
@@ -235,12 +193,13 @@ class PaperBroker(BrokerInterface):
                 prev_close=cached.prev_close
             )
 
-        # Return dummy quote
+        # No data at all — return zero-price so callers can guard
+        logger.warning(f"No IBKR quote available for {symbol} after 3 retries, no cache")
         return Quote(
             symbol=symbol,
-            bid=100.0,
-            ask=100.10,
-            last=100.05,
+            bid=0.0,
+            ask=0.0,
+            last=0.0,
             volume=0,
             timestamp=datetime.now()
         )
@@ -257,12 +216,14 @@ class PaperBroker(BrokerInterface):
             raise BrokerError("Not connected")
 
         result = {}
-        for symbol, pos in self._positions.items():
+        with self._lock:
+            positions_snapshot = dict(self._positions)
+        for symbol, pos in positions_snapshot.items():
             if pos['quantity'] == 0:
                 continue
 
             quote = self.get_quote(symbol)
-            current_price = quote.last
+            current_price = quote.last if quote.last > 0 else pos['avg_cost']
             quantity = pos['quantity']
             avg_cost = pos['avg_cost']
 
@@ -409,6 +370,11 @@ class PaperBroker(BrokerInterface):
 
     def _execute_fill(self, order: Order, fill_price: float):
         """Execute order fill and update positions."""
+        with self._lock:
+            self._execute_fill_locked(order, fill_price)
+
+    def _execute_fill_locked(self, order: Order, fill_price: float):
+        """Execute order fill and update positions (must hold self._lock)."""
         symbol = order.symbol
         quantity = order.quantity
         side = order.side
@@ -471,12 +437,37 @@ class PaperBroker(BrokerInterface):
 
             if symbol in self._positions:
                 pos = self._positions[symbol]
-                total_shares = pos['quantity'] + quantity
-                pos['avg_cost'] = (
-                    (pos['avg_cost'] * pos['quantity'] + fill_price * quantity)
-                    / total_shares
-                )
-                pos['quantity'] = total_shares
+                if pos.get('side') == 'short':
+                    # This is a cover (buying to close short position)
+                    short_qty = abs(pos['quantity'])
+                    covered_qty = min(quantity, short_qty)
+                    remaining_buy = quantity - covered_qty
+
+                    # Calculate realized P&L on covered shares
+                    pnl = (pos['avg_cost'] - fill_price) * covered_qty
+                    self._realized_pnl += pnl
+                    self._realized_pnl_today += pnl
+                    trade_pnl = pnl
+
+                    pos['quantity'] += covered_qty  # quantity is negative for shorts
+                    if pos['quantity'] == 0:
+                        del self._positions[symbol]
+
+                    # If buying more than the short, open a long with the remainder
+                    if remaining_buy > 0:
+                        self._positions[symbol] = {
+                            'quantity': remaining_buy,
+                            'avg_cost': fill_price,
+                            'side': 'long'
+                        }
+                else:
+                    # Adding to existing long position
+                    total_shares = pos['quantity'] + quantity
+                    pos['avg_cost'] = (
+                        (pos['avg_cost'] * pos['quantity'] + fill_price * quantity)
+                        / total_shares
+                    )
+                    pos['quantity'] = total_shares
             else:
                 self._positions[symbol] = {
                     'quantity': quantity,
@@ -500,7 +491,20 @@ class PaperBroker(BrokerInterface):
                 del self._positions[symbol]
 
         elif side == OrderSide.SELL_SHORT:
-            # Short selling
+            # Short selling — reject if there is a conflicting long position
+            if symbol in self._positions and self._positions[symbol].get('side') == 'long':
+                order.status = OrderStatus.REJECTED
+                order.error_message = (
+                    f"Cannot sell short {symbol}: existing long position "
+                    f"({self._positions[symbol]['quantity']} shares). "
+                    f"Close the long position first."
+                )
+                logger.warning(
+                    f"Order rejected: SELL_SHORT on {symbol} conflicts with "
+                    f"existing long position of {self._positions[symbol]['quantity']} shares"
+                )
+                return
+
             proceeds = fill_price * quantity - self.commission_per_trade
             self.cash += proceeds
 

@@ -16,6 +16,7 @@ from .execution_tracker import (
     SlippageStats,
     get_execution_tracker
 )
+from .intraday_exit_manager import IntradayExitManager, IntradayExitSignal
 
 __all__ = [
     # Position tracking
@@ -34,4 +35,8 @@ __all__ = [
     'ExecutionQuality',
     'SlippageStats',
     'get_execution_tracker',
+
+    # Intraday exit management
+    'IntradayExitManager',
+    'IntradayExitSignal',
 ]

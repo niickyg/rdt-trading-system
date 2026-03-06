@@ -2,7 +2,9 @@
 # Core dependencies
 requests==2.32.5
 pandas>=2.2.3
+lxml>=5.1.0
 numpy>=1.26.4,<2.0.0  # Cap below 2.0 to avoid NumPy 2.x API breaks in downstream packages
+tzdata>=2024.1  # Required by ib_insync for timezone parsing
 python-dotenv==1.0.1
 
 # Configuration
@@ -10,13 +12,14 @@ pydantic>=2.5.0
 pydantic-settings>=2.1.0
 
 # Market data
-yfinance==0.2.66  # Pinned to latest 0.2.x; 1.x is a new major with breaking API changes
+yfinance==0.2.66  # Kept for VIX data only; live trading uses IBKR
 
 # ML (for predictions and ensemble models)
 scikit-learn>=1.6.1
 joblib>=1.4.2
 matplotlib>=3.9.4
 xgboost>=2.0.0
+hmmlearn>=0.3.0
 
 # Alerts and notifications
 twilio>=8.10.0
@@ -37,6 +40,9 @@ loguru>=0.7.0
 # Data serialization
 pyarrow>=15.0.2
 
+# Payments
+stripe>=8.0.0
+
 # Web Dashboard
 flask>=3.0.0
 flask-cors>=4.0.0
@@ -53,6 +59,9 @@ eventlet>=0.35.0
 # GraphQL support
 graphene>=3.3.0
 graphql-core>=3.2.0
+
+# Interactive Brokers
+ib-insync>=0.9.86
 
 # HTTP
 aiohttp

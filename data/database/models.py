@@ -43,6 +43,12 @@ class ExitReason(str, Enum):
     TRAILING_STOP = "trailing_stop"
     MANUAL = "manual"
     EOD = "end_of_day"
+    STALE_RECONCILED = "stale_reconciled"
+    INTRADAY_RS_LOSS = "intraday_rs_loss"
+    INTRADAY_VWAP = "intraday_vwap"
+    INTRADAY_TIME_STOP = "intraday_time_stop"
+    INTRADAY_BREAKEVEN = "intraday_breakeven"
+    INTRADAY_OTHER = "intraday_other"
 
 
 class SignalStatus(str, Enum):
@@ -115,6 +121,16 @@ class Trade(Base):
     broker_order_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # MFE/MAE tracking (finalized on POSITION_CLOSED)
+    peak_mfe: Mapped[Optional[float]] = mapped_column(Numeric(12, 2), nullable=True)
+    peak_mae: Mapped[Optional[float]] = mapped_column(Numeric(12, 2), nullable=True)
+    peak_mfe_pct: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    peak_mae_pct: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    peak_mfe_r: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    peak_mae_r: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    bars_to_mfe: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    bars_held: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
     # Filter evaluation metadata (for forward-test data collection)
     vix_regime: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     vix_value: Mapped[Optional[float]] = mapped_column(Numeric(8, 2), nullable=True)
@@ -132,6 +148,7 @@ class Trade(Base):
     vix_position_size_mult: Mapped[Optional[float]] = mapped_column(Numeric(6, 3), nullable=True)
     sector_boost: Mapped[Optional[float]] = mapped_column(Numeric(6, 3), nullable=True)
     first_hour_filtered: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
+    strategy_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default='rrs_momentum')
 
     __table_args__ = (
         Index("ix_trades_symbol", "symbol"),
@@ -141,6 +158,7 @@ class Trade(Base):
         Index("ix_trades_symbol_status", "symbol", "status"),
         Index("ix_trades_market_regime", "market_regime"),
         Index("ix_trades_vix_regime", "vix_regime"),
+        Index("ix_trades_strategy_name", "strategy_name"),
         CheckConstraint("shares > 0", name="ck_trades_shares_positive"),
         CheckConstraint("entry_price > 0", name="ck_trades_entry_price_positive"),
     )
@@ -161,6 +179,7 @@ class Position(Base):
     current_price: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
     unrealized_pnl: Mapped[Optional[float]] = mapped_column(Numeric(12, 2), nullable=True)
     rrs_at_entry: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    strategy_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default='rrs_momentum')
     updated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
@@ -169,6 +188,7 @@ class Position(Base):
 
     __table_args__ = (
         Index("ix_positions_symbol", "symbol"),
+        Index("ix_positions_strategy_name", "strategy_name"),
         CheckConstraint("shares > 0", name="ck_positions_shares_positive"),
     )
 
@@ -190,6 +210,8 @@ class OptionsPosition(Base):
     order_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array
     legs_json: Mapped[str] = mapped_column(Text, nullable=False)  # JSON: contracts + greeks
     fill_details_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON
+    current_premium: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+    unrealized_pnl: Mapped[Optional[float]] = mapped_column(Numeric(14, 2), nullable=True)
     updated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True, onupdate=datetime.utcnow
     )
@@ -260,6 +282,7 @@ class Signal(Base):
     daily_weak: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     volume: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     market_regime: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    strategy_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default='rrs_momentum')
 
     __table_args__ = (
         Index("ix_signals_symbol", "symbol"),
@@ -267,6 +290,7 @@ class Signal(Base):
         Index("ix_signals_status", "status"),
         Index("ix_signals_symbol_timestamp", "symbol", "timestamp"),
         Index("ix_signals_timestamp_status", "timestamp", "status"),
+        Index("ix_signals_strategy_name", "strategy_name"),
     )
 
 
@@ -948,6 +972,7 @@ class RejectedSignal(Base):
     volume: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     ml_probability: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
     ml_confidence: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    strategy_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default='rrs_momentum')
 
     # Outcome tracking (filled later by OutcomeTracker)
     price_after_1h: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
@@ -961,6 +986,7 @@ class RejectedSignal(Base):
         Index("ix_rejected_signals_symbol", "symbol"),
         Index("ix_rejected_signals_timestamp", "timestamp"),
         Index("ix_rejected_signals_symbol_timestamp", "symbol", "timestamp"),
+        Index("ix_rejected_signals_strategy_name", "strategy_name"),
     )
 
 
@@ -1068,3 +1094,204 @@ class QueuedAlertRecord(Base):
     def set_channels_list(self, channels: list):
         """Set channels from a list."""
         self.channels = ",".join(channels)
+
+
+# =============================================================================
+# ML Training Data Models
+# =============================================================================
+
+class IntradayBar(Base):
+    """5-minute OHLCV bars for intraday analysis and Entry Timing model."""
+    __tablename__ = "intraday_bars"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String(10), nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    open: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
+    high: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
+    low: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
+    close: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
+    volume: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    vwap: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "timestamp", name="uq_intraday_bars_symbol_timestamp"),
+        Index("ix_intraday_bars_symbol_timestamp", "symbol", "timestamp"),
+    )
+
+
+class TechnicalIndicator(Base):
+    """Daily technical indicators for ML feature persistence."""
+    __tablename__ = "technical_indicators"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String(10), nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    rsi_14: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    macd_line: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+    macd_signal: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+    macd_histogram: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+    bb_upper: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+    bb_middle: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+    bb_lower: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+    bb_width: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    ema_9: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+    ema_21: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+    ema_50: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+    ema_200: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+    adx: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    obv: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    atr_14: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+    close_price: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "date", name="uq_technical_indicators_symbol_date"),
+        Index("ix_technical_indicators_symbol_date", "symbol", "date"),
+    )
+
+
+class TradeSnapshot(Base):
+    """Point-in-time position snapshots for MFE/MAE tracking."""
+    __tablename__ = "trade_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    trade_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("trades.id", ondelete="CASCADE"), nullable=False
+    )
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    current_price: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
+    unrealized_pnl: Mapped[Optional[float]] = mapped_column(Numeric(12, 2), nullable=True)
+    unrealized_pnl_pct: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    unrealized_r: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    mfe: Mapped[Optional[float]] = mapped_column(Numeric(12, 2), nullable=True)
+    mae: Mapped[Optional[float]] = mapped_column(Numeric(12, 2), nullable=True)
+    mfe_pct: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    mae_pct: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    bars_held: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    rsi_at_snapshot: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    distance_to_stop_pct: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    distance_to_target_pct: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+
+    __table_args__ = (
+        Index("ix_trade_snapshots_trade_id_timestamp", "trade_id", "timestamp"),
+    )
+
+
+class MarketRegimeDaily(Base):
+    """Daily market context for regime-aware ML models."""
+    __tablename__ = "market_regime_daily"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, unique=True)
+    vix_close: Mapped[Optional[float]] = mapped_column(Numeric(8, 2), nullable=True)
+    vix_regime: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    spy_close: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+    spy_trend: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    spy_above_200ema: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    spy_above_50ema: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    advance_decline_ratio: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    new_highs: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    new_lows: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    breadth_thrust: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    put_call_ratio: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    regime_label: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+
+    __table_args__ = (
+        Index("ix_market_regime_daily_date", "date"),
+    )
+
+
+class SectorData(Base):
+    """Daily sector relative strength for sector rotation analysis."""
+    __tablename__ = "sector_data"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    sector: Mapped[str] = mapped_column(String(30), nullable=False)
+    etf_symbol: Mapped[str] = mapped_column(String(10), nullable=False)
+    close_price: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+    daily_return_pct: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    relative_strength_5d: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    relative_strength_20d: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    relative_strength_60d: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    sector_rank: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("date", "sector", name="uq_sector_data_date_sector"),
+        Index("ix_sector_data_date_sector", "date", "sector"),
+    )
+
+
+class OptionsGreeksHistory(Base):
+    """Greeks snapshots during options positions for options ML."""
+    __tablename__ = "options_greeks_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    options_trade_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("options_trades.id", ondelete="SET NULL"), nullable=True
+    )
+    symbol: Mapped[str] = mapped_column(String(10), nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    underlying_price: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+    delta: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    gamma: Mapped[Optional[float]] = mapped_column(Numeric(8, 6), nullable=True)
+    theta: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    vega: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    iv: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    premium: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+    dte: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    moneyness: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    intrinsic_value: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+    extrinsic_value: Mapped[Optional[float]] = mapped_column(Numeric(12, 4), nullable=True)
+
+    __table_args__ = (
+        Index("ix_options_greeks_history_symbol_timestamp", "symbol", "timestamp"),
+    )
+
+
+class EarningsCalendar(Base):
+    """Earnings dates and surprises for event-driven ML features."""
+    __tablename__ = "earnings_calendar"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String(10), nullable=False)
+    earnings_date: Mapped[date] = mapped_column(Date, nullable=False)
+    timing: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # BMO/AMC
+    eps_estimate: Mapped[Optional[float]] = mapped_column(Numeric(10, 4), nullable=True)
+    eps_actual: Mapped[Optional[float]] = mapped_column(Numeric(10, 4), nullable=True)
+    eps_surprise_pct: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    revenue_estimate: Mapped[Optional[float]] = mapped_column(Numeric(16, 2), nullable=True)
+    revenue_actual: Mapped[Optional[float]] = mapped_column(Numeric(16, 2), nullable=True)
+    revenue_surprise_pct: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    price_change_1d_pct: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    iv_rank_before: Mapped[Optional[float]] = mapped_column(Numeric(8, 4), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "earnings_date", name="uq_earnings_calendar_symbol_date"),
+        Index("ix_earnings_calendar_symbol_date", "symbol", "earnings_date"),
+    )
+
+
+class DailyBar(Base):
+    """Daily OHLCV bars cached from IBKR for historical data lookups."""
+    __tablename__ = "daily_bars"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String(10), nullable=False)
+    bar_date: Mapped[date] = mapped_column(Date, nullable=False)
+    open: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
+    high: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
+    low: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
+    close: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
+    volume: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "bar_date", name="uq_daily_bars_symbol_date"),
+        Index("ix_daily_bars_symbol_date", "symbol", "bar_date"),
+    )

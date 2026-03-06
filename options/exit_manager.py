@@ -13,8 +13,9 @@ Monitors open options positions and triggers exits based on:
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from loguru import logger
+from utils.timezone import get_eastern_time
 
-from options.models import OptionsStrategy, IVRegime
+from options.models import OptionAction, OptionsStrategy, IVRegime
 from options.config import OptionsConfig
 from options.chain import OptionsChainManager
 
@@ -34,7 +35,7 @@ class ExitSignal:
         self.reason = reason
         self.priority = priority
         self.action = action
-        self.timestamp = datetime.now()
+        self.timestamp = get_eastern_time()
 
     def __repr__(self):
         return f"ExitSignal({self.symbol}, {self.reason}, priority={self.priority})"
@@ -199,7 +200,7 @@ class OptionsExitManager:
 
         try:
             expiry_date = datetime.strptime(expiry_str, "%Y%m%d").date()
-            today = datetime.now().date()
+            today = get_eastern_time().date()
             dte = (expiry_date - today).days
 
             if dte < self._config.time_stop_dte:
@@ -263,12 +264,13 @@ class OptionsExitManager:
 
         try:
             expiry_date = datetime.strptime(expiry_str, "%Y%m%d").date()
-            today = datetime.now().date()
+            today = get_eastern_time().date()
             dte = (expiry_date - today).days
 
             if dte < self._config.roll_dte_threshold:
-                # Only recommend roll if profitable
-                if current_premium > entry_premium:
+                # Only recommend roll if profitable (handles both credit and debit strategies)
+                pnl = self._calculate_pnl(strategy, entry_premium, current_premium, 1)
+                if pnl > 0:
                     return ExitSignal(
                         symbol, f"Roll recommended: {dte} DTE, currently profitable",
                         priority=6, action="roll"
@@ -299,12 +301,12 @@ class OptionsExitManager:
                 return None
 
             mid = greeks.mid_price
-            if leg.action.value == "BUY":
+            if leg.action == OptionAction.BUY:
                 total_premium += mid  # We hold this, it's worth mid
             else:
                 total_premium -= mid  # We're short, closing costs mid
 
-            sign = 1 if leg.action.value == "BUY" else -1
+            sign = 1 if leg.action == OptionAction.BUY else -1
             total_delta += greeks.delta * leg.quantity * sign
 
             if greeks.implied_vol > 0:
@@ -322,14 +324,21 @@ class OptionsExitManager:
         self, strategy: OptionsStrategy,
         entry_premium: float, current_premium: float, contracts: int
     ) -> float:
-        """Calculate current P&L for a strategy."""
+        """Calculate current P&L for a strategy.
+
+        For debit strategies: we paid entry_premium, position is now worth current_premium.
+            PnL = (current_premium - entry_premium) * multiplier * contracts
+        For credit strategies: we received entry_premium, current_premium is the net
+            position value (negative because we'd pay to close).
+            PnL = (entry_premium + current_premium) * multiplier * contracts
+        """
         multiplier = strategy.legs[0].contract.multiplier if strategy.legs else 100
 
         if strategy.is_credit:
-            # Credit spread: profit when premium decreases
-            pnl = (entry_premium - current_premium) * multiplier * contracts
+            # Credit spread: received entry_premium, current_premium is negative (liability)
+            pnl = (entry_premium + current_premium) * multiplier * contracts
         else:
-            # Debit spread: profit when premium increases
+            # Debit spread: paid entry_premium, current_premium is current value
             pnl = (current_premium - entry_premium) * multiplier * contracts
 
         return pnl

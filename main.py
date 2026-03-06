@@ -78,7 +78,7 @@ def get_default_watchlist(size: str = "full") -> list:
             'BA', 'CAT', 'GE', 'IBM', 'WMT', 'CVX', 'XOM', 'QCOM',
             'GOOG', 'BAC', 'WFC', 'GS', 'MS', 'BLK', 'C', 'AXP',
             'LLY', 'ABBV', 'BMY', 'GILD', 'AMGN', 'MDT', 'SYK', 'ISRG',
-            'XOM', 'CVX', 'COP', 'SLB', 'EOG', 'MPC', 'VLO', 'PSX',
+            'COP', 'SLB', 'EOG', 'MPC', 'VLO', 'PSX',
             'HON', 'UPS', 'RTX', 'LMT', 'DE', 'MMM', 'UNP', 'FDX'
         ]
 
@@ -123,43 +123,57 @@ async def run_bot_mode(settings, watchlist: list, auto_trade: bool = False):
         logger.warning("*** LIVE TRADING MODE - REAL MONEY AT RISK ***")
 
     # Create DataProvider early so paper broker can use its cache
-    data_provider = DataProvider(cache_ttl_seconds=settings.scanner.scan_interval_seconds)
+    # Cache TTL slightly shorter than scan interval so each scan gets fresh quotes
+    cache_ttl = max(5, settings.scanner.scan_interval_seconds - 5)
+    data_provider = DataProvider(cache_ttl_seconds=cache_ttl)
 
     # Create broker based on BROKER_TYPE setting
     broker_type = getattr(settings.broker, 'broker_type', 'paper').lower()
 
     if broker_type == "ibkr":
-        ibkr_connected = False
-        for attempt in range(3):
+        ibkr_broker = get_broker(
+            "ibkr",
+            from_env=True,
+            host=settings.broker.ibkr_host,
+            port=settings.broker.ibkr_port,
+            client_id=settings.broker.ibkr_client_id,
+            paper_trading=settings.trading.paper_trading,
+            timeout=getattr(settings.broker, 'ibkr_timeout', 20),
+        )
+
+        max_attempts = 20  # ~10 min with backoff (5, 10, 15, ... 60, 60, ...)
+        attempt = 0
+        while attempt < max_attempts:
+            attempt += 1
             try:
-                ibkr_broker = get_broker(
-                    "ibkr",
-                    host=settings.broker.ibkr_host,
-                    port=settings.broker.ibkr_port,
-                    client_id=settings.broker.ibkr_client_id,
-                    paper_trading=settings.trading.paper_trading,
-                    timeout=getattr(settings.broker, 'ibkr_timeout', 20),
-                )
                 await ibkr_broker.connect_async()
-                broker = ibkr_broker
-                ibkr_connected = True
                 break
             except Exception as e:
-                logger.warning(f"IBKR connection attempt {attempt + 1}/3 failed: {e}")
-                if attempt < 2:
-                    await asyncio.sleep(5 * (attempt + 1))
+                delay = min(5 * attempt, 60)
+                if attempt >= max_attempts:
+                    logger.error(
+                        f"IBKR connection failed after {max_attempts} attempts. "
+                        f"Last error: {e}. Aborting."
+                    )
+                    raise RuntimeError(f"Could not connect to IBKR after {max_attempts} attempts") from e
+                logger.warning(
+                    f"IBKR connection attempt {attempt}/{max_attempts} failed: {e}. "
+                    f"Retrying in {delay}s..."
+                )
+                await asyncio.sleep(delay)
 
-        if not ibkr_connected:
-            logger.error(
-                "*** IBKR CONNECTION FAILED AFTER 3 ATTEMPTS — "
-                "FALLING BACK TO PAPER BROKER. NO REAL TRADES WILL EXECUTE. ***"
-            )
-            broker = get_broker("paper", initial_balance=settings.trading.account_size,
-                                data_provider=data_provider)
-            broker.connect()
-        else:
-            # Wire IBKR broker into DataProvider for fast snapshot quotes
-            data_provider.set_broker(broker)
+        broker = ibkr_broker
+        data_provider.set_broker(broker)
+
+        # Start streaming market data for the watchlist
+        # This subscribes in groups of 95, rotating through all symbols.
+        # After warmup, scans read cached prices instantly (0ms vs ~55s).
+        try:
+            logger.info(f"Starting streaming market data for {len(watchlist)} symbols...")
+            broker.start_streaming(watchlist + ["SPY"])
+        except Exception as e:
+            logger.warning(f"Streaming start failed, will use snapshots: {e}")
+
     elif broker_type == "schwab" and not settings.trading.paper_trading:
         broker = get_broker(
             "schwab",
@@ -189,15 +203,23 @@ async def run_bot_mode(settings, watchlist: list, auto_trade: bool = False):
         'rrs_threshold': settings.rrs.strong_threshold
     }
 
-    # Run the system
-    await run_trading_system(
-        broker=broker,
-        risk_manager=risk_manager,
-        data_provider=data_provider,
-        watchlist=watchlist,
-        config=config,
-        auto_trade=auto_trade
-    )
+    # Run the system, ensuring broker is disconnected on exit
+    try:
+        await run_trading_system(
+            broker=broker,
+            risk_manager=risk_manager,
+            data_provider=data_provider,
+            watchlist=watchlist,
+            config=config,
+            auto_trade=auto_trade
+        )
+    finally:
+        try:
+            if hasattr(broker, 'disconnect'):
+                broker.disconnect()
+                logger.info("Broker disconnected cleanly")
+        except Exception as e:
+            logger.warning(f"Error disconnecting broker: {e}")
 
 
 async def run_backtest_mode(settings, watchlist: list, days: int = 365, use_optimized: bool = True):

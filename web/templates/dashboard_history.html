@@ -1,232 +1,350 @@
-{% extends "base.html" %}
+{% extends "dashboard_base.html" %}
+{% set active_page = "history" %}
 
 {% block title %}Trade History - RDT Trading{% endblock %}
 
-{% block extra_css %}
-<style>
-    .dashboard-layout {
-        display: grid;
-        grid-template-columns: 240px 1fr;
-        min-height: calc(100vh - 60px);
-    }
-    .sidebar {
-        background: var(--primary);
-        padding: 20px;
-        position: sticky;
-        top: 60px;
-        height: calc(100vh - 60px);
-    }
-    .sidebar-nav { list-style: none; }
-    .sidebar-nav li { margin-bottom: 5px; }
-    .sidebar-nav a {
-        display: block;
-        padding: 12px 15px;
-        color: rgba(255,255,255,0.7);
-        border-radius: 5px;
-        transition: all 0.3s;
-    }
-    .sidebar-nav a:hover, .sidebar-nav a.active {
-        background: rgba(255,255,255,0.1);
-        color: white;
-        text-decoration: none;
-    }
-    .sidebar-section {
-        color: rgba(255,255,255,0.5);
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        margin: 20px 0 10px;
-        padding-left: 15px;
-    }
-    .main-content { padding: 25px; }
+{% block page_content %}
+<div class="page-header">
+    <h1 class="page-title">Trade History</h1>
+    <button class="btn btn-secondary" onclick="exportHistory()">Export CSV</button>
+</div>
 
-    .page-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 25px;
-    }
-    .page-title { font-size: 1.5rem; font-weight: 600; }
+<!-- Filters -->
+<div class="filters-bar">
+    <select class="form-control" style="width: auto;" id="filter-period">
+        <option value="7">Last 7 days</option>
+        <option value="30" selected>Last 30 days</option>
+        <option value="90">Last 90 days</option>
+        <option value="365">Last year</option>
+    </select>
+    <select class="form-control" style="width: auto;" id="filter-result">
+        <option value="all">All Trades</option>
+        <option value="win">Wins Only</option>
+        <option value="loss">Losses Only</option>
+    </select>
+    <select class="form-control" style="width: auto;" id="filter-direction">
+        <option value="all">All Directions</option>
+        <option value="long">Long Only</option>
+        <option value="short">Short Only</option>
+    </select>
+    <select class="form-control" style="width: auto;" id="filter-strategy">
+        <option value="all">All Strategies</option>
+        <option value="rrs_momentum">RRS Momentum</option>
+        <option value="rsi2_mean_reversion">RSI(2) Mean Rev</option>
+        <option value="trend_breakout">Trend Breakout</option>
+        <option value="pead">Post-Earnings</option>
+        <option value="gap_fill">Gap Fill</option>
+    </select>
+</div>
 
-    .filters-bar {
-        display: flex;
-        gap: 15px;
-        margin-bottom: 20px;
-        flex-wrap: wrap;
-    }
+<!-- Stats Summary -->
+<div class="history-stats">
+    <div class="stat-card stat-card-accent info">
+        <div class="stat-label">Total Trades</div>
+        <div class="stat-value" id="total-trades">0</div>
+    </div>
+    <div class="stat-card stat-card-accent warning">
+        <div class="stat-label">Win Rate</div>
+        <div class="stat-value" id="win-rate">0%</div>
+    </div>
+    <div class="stat-card stat-card-accent success">
+        <div class="stat-label">Total P&L</div>
+        <div class="stat-value" id="total-pnl">$0</div>
+    </div>
+    <div class="stat-card stat-card-accent">
+        <div class="stat-label">Avg Trade</div>
+        <div class="stat-value" id="avg-trade">$0</div>
+    </div>
+</div>
 
-    .history-stats {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 15px;
-        margin-bottom: 25px;
-    }
-
-    .history-table-container {
-        overflow-x: auto;
-    }
-
-    .empty-state {
-        text-align: center;
-        padding: 60px 20px;
-        color: var(--text-light);
-    }
-
-    @media (max-width: 1024px) {
-        .dashboard-layout { grid-template-columns: 1fr; }
-        .sidebar { display: none; }
-        .history-stats { grid-template-columns: repeat(2, 1fr); }
-    }
-</style>
-{% endblock %}
-
-{% block content %}
-<div class="dashboard-layout">
-    <aside class="sidebar">
-        <ul class="sidebar-nav">
-            <li><a href="/dashboard">Overview</a></li>
-            <li><a href="/dashboard/signals">Active Signals</a></li>
-            <li><a href="/dashboard/positions">Positions</a></li>
-            <li><a href="/dashboard/history" class="active">History</a></li>
-        </ul>
-        <div class="sidebar-section">Analysis</div>
-        <ul class="sidebar-nav">
-            <li><a href="/dashboard/scanner">Live Scanner</a></li>
-            <li><a href="/dashboard/backtest">Backtest</a></li>
-            <li><a href="/performance">Performance</a></li>
-        </ul>
-        <div class="sidebar-section">Settings</div>
-        <ul class="sidebar-nav">
-            <li><a href="/dashboard/alerts">Alerts</a></li>
-            <li><a href="/dashboard/settings">Settings</a></li>
-            <li><a href="/api/v1/health" target="_blank">API Status</a></li>
-        </ul>
-    </aside>
-
-    <main class="main-content">
-        <div class="page-header">
-            <h1 class="page-title">Trade History</h1>
-            <button class="btn btn-secondary" onclick="exportHistory()">Export CSV</button>
+<!-- Charts Row -->
+<div class="grid grid-2 mb-2">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Cumulative P&L</h3>
         </div>
-
-        <!-- Filters -->
-        <div class="filters-bar">
-            <select class="form-control" style="width: auto;" id="filter-period">
-                <option value="7">Last 7 days</option>
-                <option value="30" selected>Last 30 days</option>
-                <option value="90">Last 90 days</option>
-                <option value="365">Last year</option>
-            </select>
-            <select class="form-control" style="width: auto;" id="filter-result">
-                <option value="all">All Trades</option>
-                <option value="win">Wins Only</option>
-                <option value="loss">Losses Only</option>
-            </select>
-            <select class="form-control" style="width: auto;" id="filter-direction">
-                <option value="all">All Directions</option>
-                <option value="long">Long Only</option>
-                <option value="short">Short Only</option>
-            </select>
+        <div class="chart-container chart-container-md">
+            <canvas id="cumulative-pnl-chart"></canvas>
         </div>
-
-        <!-- Stats Summary -->
-        <div class="history-stats">
-            <div class="stat-card">
-                <div class="stat-label">Total Trades</div>
-                <div class="stat-value" id="total-trades">0</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Win Rate</div>
-                <div class="stat-value" id="win-rate">0%</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Total P&L</div>
-                <div class="stat-value" id="total-pnl">$0</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Avg Trade</div>
-                <div class="stat-value" id="avg-trade">$0</div>
-            </div>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">P&L by Strategy</h3>
         </div>
-
-        <!-- History Table -->
-        <div class="card">
-            <div class="history-table-container">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Symbol</th>
-                            <th>Direction</th>
-                            <th>Entry Date</th>
-                            <th>Entry Price</th>
-                            <th>Exit Date</th>
-                            <th>Exit Price</th>
-                            <th>Shares</th>
-                            <th>P&L</th>
-                            <th>Result</th>
-                        </tr>
-                    </thead>
-                    <tbody id="history-body">
-                        <tr>
-                            <td colspan="9" class="text-center text-muted" style="padding: 40px;">
-                                Loading trade history...
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+        <div class="chart-container chart-container-md">
+            <canvas id="strategy-pnl-chart"></canvas>
         </div>
-    </main>
+    </div>
+</div>
+
+<!-- History Table -->
+<div class="card">
+    <div class="history-table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Direction</th>
+                    <th>Strategy</th>
+                    <th>Entry Date</th>
+                    <th>Entry Price</th>
+                    <th>Exit Date</th>
+                    <th>Exit Price</th>
+                    <th>Shares</th>
+                    <th>P&L</th>
+                    <th>Result</th>
+                </tr>
+            </thead>
+            <tbody id="history-body">
+                <tr>
+                    <td colspan="10" class="text-center text-muted" style="padding: 40px;">
+                        Loading trade history...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Per-Strategy Stats -->
+<div id="strategy-stats-section" style="margin-top:25px;">
+    <h2 style="font-size:1.2rem;font-weight:600;margin-bottom:15px;">Performance by Strategy</h2>
+    <div id="strategy-stats-grid" class="history-stats">
+        <!-- Rendered by JS -->
+    </div>
 </div>
 {% endblock %}
 
-{% block extra_js %}
+{% block dashboard_js %}
 <script>
-    let historyData = [
-        { symbol: 'NVDA', direction: 'long', entry_date: '2024-01-10', entry_price: 472.50, exit_date: '2024-01-14', exit_price: 495.30, shares: 20, pnl: 456.00, pnl_pct: 4.83 },
-        { symbol: 'AAPL', direction: 'long', entry_date: '2024-01-08', entry_price: 185.20, exit_date: '2024-01-11', exit_price: 182.50, shares: 50, pnl: -135.00, pnl_pct: -1.46 },
-        { symbol: 'TSLA', direction: 'long', entry_date: '2024-01-05', entry_price: 238.00, exit_date: '2024-01-09', exit_price: 245.80, shares: 15, pnl: 117.00, pnl_pct: 3.28 },
-        { symbol: 'META', direction: 'long', entry_date: '2024-01-03', entry_price: 495.00, exit_date: '2024-01-08', exit_price: 512.40, shares: 10, pnl: 174.00, pnl_pct: 3.52 },
-        { symbol: 'AMD', direction: 'long', entry_date: '2024-01-02', entry_price: 148.30, exit_date: '2024-01-05', exit_price: 145.60, shares: 30, pnl: -81.00, pnl_pct: -1.82 }
-    ];
+    let historyData = {{ trades | tojson }};
+    let tradeStats = {{ trade_stats | tojson }};
+    let strategyStats = {{ strategy_stats | tojson }};
+
+    // Normalize from DB schema
+    historyData = historyData.map(t => ({
+        symbol: t.symbol,
+        direction: (t.direction || '').toLowerCase(),
+        strategy_name: t.strategy_name || 'rrs_momentum',
+        entry_date: (t.entry_time || '').substring(0, 10),
+        entry_price: Number(t.entry_price) || 0,
+        exit_date: (t.exit_time || '').substring(0, 10),
+        exit_price: Number(t.exit_price) || 0,
+        shares: t.shares || 0,
+        pnl: Number(t.pnl) || 0,
+        pnl_pct: Number(t.pnl_percent) || 0,
+        exit_reason: t.exit_reason || ''
+    }));
 
     function renderHistory() {
         const tbody = document.getElementById('history-body');
-        let wins = 0, totalPnl = 0;
 
-        historyData.forEach(t => {
-            if (t.pnl > 0) wins++;
-            totalPnl += t.pnl;
-        });
+        document.getElementById('total-trades').textContent = tradeStats.total_trades;
+        document.getElementById('win-rate').textContent = tradeStats.win_rate + '%';
+        document.getElementById('total-pnl').textContent =
+            (tradeStats.total_pnl >= 0 ? '+' : '') + '$' + tradeStats.total_pnl.toFixed(2);
+        document.getElementById('avg-trade').textContent =
+            (tradeStats.avg_pnl >= 0 ? '+' : '') + '$' + tradeStats.avg_pnl.toFixed(2);
 
-        document.getElementById('total-trades').textContent = historyData.length;
-        document.getElementById('win-rate').textContent = ((wins / historyData.length) * 100).toFixed(1) + '%';
-        document.getElementById('total-pnl').textContent = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2);
-        document.getElementById('avg-trade').textContent = (totalPnl >= 0 ? '+' : '') + '$' + (totalPnl / historyData.length).toFixed(2);
+        if (historyData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted" style="padding: 40px;">No closed trades yet.</td></tr>';
+            return;
+        }
 
         let html = '';
         historyData.forEach(t => {
             const isWin = t.pnl > 0;
-            html += `
-                <tr>
-                    <td><strong>${t.symbol}</strong></td>
-                    <td><span class="badge badge-${t.direction}">${t.direction.toUpperCase()}</span></td>
-                    <td>${t.entry_date}</td>
-                    <td>$${t.entry_price.toFixed(2)}</td>
-                    <td>${t.exit_date}</td>
-                    <td>$${t.exit_price.toFixed(2)}</td>
-                    <td>${t.shares}</td>
-                    <td class="${isWin ? 'text-success' : 'text-danger'}">${isWin ? '+' : ''}$${t.pnl.toFixed(2)} (${isWin ? '+' : ''}${t.pnl_pct.toFixed(2)}%)</td>
-                    <td><span class="badge badge-${isWin ? 'success' : 'danger'}">${isWin ? 'WIN' : 'LOSS'}</span></td>
-                </tr>
-            `;
+            html += '<tr>' +
+                '<td><strong>' + escapeHtml(t.symbol) + '</strong></td>' +
+                '<td><span class="badge badge-' + escapeHtml(t.direction) + '">' + escapeHtml(t.direction.toUpperCase()) + '</span></td>' +
+                '<td>' + formatStrategyBadge(t.strategy_name) + '</td>' +
+                '<td>' + escapeHtml(t.entry_date) + '</td>' +
+                '<td>$' + t.entry_price.toFixed(2) + '</td>' +
+                '<td>' + escapeHtml(t.exit_date) + '</td>' +
+                '<td>$' + t.exit_price.toFixed(2) + '</td>' +
+                '<td>' + t.shares + '</td>' +
+                '<td class="' + (isWin ? 'text-success' : 'text-danger') + '">' + (isWin ? '+' : '') + '$' + t.pnl.toFixed(2) + ' (' + (isWin ? '+' : '') + t.pnl_pct.toFixed(2) + '%)</td>' +
+                '<td><span class="badge badge-' + (isWin ? 'success' : 'danger') + '">' + (isWin ? 'WIN' : 'LOSS') + '</span></td>' +
+                '</tr>';
         });
         tbody.innerHTML = html;
+
+        // Build charts
+        buildCumulativePnlChart();
+        buildStrategyPnlChart();
+    }
+
+    // --- Charts ---
+    let cumulativeChart = null;
+    let stratPnlChart = null;
+
+    function buildCumulativePnlChart() {
+        if (historyData.length === 0) return;
+
+        // Sort by exit date ascending
+        const sorted = [...historyData].sort((a, b) => a.exit_date.localeCompare(b.exit_date));
+        const labels = [];
+        const cumData = [];
+        let cumulative = 0;
+        sorted.forEach((t, i) => {
+            cumulative += t.pnl;
+            labels.push('#' + (i + 1));
+            cumData.push(cumulative);
+        });
+
+        if (cumulativeChart) cumulativeChart.destroy();
+        cumulativeChart = createChart('cumulative-pnl-chart', 'line', {
+            labels: labels,
+            datasets: [{
+                label: 'Cumulative P&L',
+                data: cumData,
+                borderColor: '#3498db',
+                backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: cumData.length > 30 ? 0 : 3,
+                pointHoverRadius: 5,
+                borderWidth: 2,
+            }]
+        }, {
+            plugins: { legend: { display: false } },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { color: '#666', maxTicksLimit: 10 }
+                },
+                y: {
+                    grid: { color: 'rgba(0,0,0,0.05)' },
+                    ticks: { color: '#666', callback: function(v) { return '$' + v; } }
+                }
+            }
+        });
+    }
+
+    function buildStrategyPnlChart() {
+        const entries = Object.entries(strategyStats);
+        if (entries.length === 0) return;
+
+        const names = [];
+        const wins = [];
+        const losses = [];
+        const bgWins = [];
+        const bgLosses = [];
+        entries.forEach(([name, s]) => {
+            names.push(STRATEGY_SHORT[name] || name);
+            const totalWins = Math.round((s.win_rate || 0) * (s.total_trades || 0) / 100);
+            const totalLosses = (s.total_trades || 0) - totalWins;
+            wins.push(totalWins);
+            losses.push(totalLosses);
+            bgWins.push(STRATEGY_COLORS[name] || '#95a5a6');
+            bgLosses.push('rgba(231, 76, 60, 0.6)');
+        });
+
+        if (stratPnlChart) stratPnlChart.destroy();
+        stratPnlChart = createChart('strategy-pnl-chart', 'bar', {
+            labels: names,
+            datasets: [
+                {
+                    label: 'Wins',
+                    data: wins,
+                    backgroundColor: '#27ae60',
+                    borderRadius: 4,
+                },
+                {
+                    label: 'Losses',
+                    data: losses,
+                    backgroundColor: '#e74c3c',
+                    borderRadius: 4,
+                }
+            ]
+        }, {
+            plugins: { legend: { position: 'bottom' } },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#666' } },
+                y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color: '#666', stepSize: 1 } }
+            }
+        });
+    }
+
+    // Filter change handlers
+    document.getElementById('filter-period').addEventListener('change', fetchFilteredHistory);
+    document.getElementById('filter-result').addEventListener('change', fetchFilteredHistory);
+    document.getElementById('filter-direction').addEventListener('change', fetchFilteredHistory);
+    document.getElementById('filter-strategy').addEventListener('change', fetchFilteredHistory);
+
+    async function fetchFilteredHistory() {
+        const days = document.getElementById('filter-period').value;
+        const result = document.getElementById('filter-result').value;
+        const direction = document.getElementById('filter-direction').value;
+        const strategy = document.getElementById('filter-strategy').value;
+        try {
+            const params = new URLSearchParams({days, result, direction, strategy});
+            const response = await dashboardFetch('/dashboard/api/trades?' + params);
+            if (response.ok) {
+                const data = await response.json();
+                historyData = (data.trades || []).map(t => ({
+                    symbol: t.symbol,
+                    direction: (t.direction || '').toLowerCase(),
+                    strategy_name: t.strategy_name || 'rrs_momentum',
+                    entry_date: (t.entry_time || '').substring(0, 10),
+                    entry_price: Number(t.entry_price) || 0,
+                    exit_date: (t.exit_time || '').substring(0, 10),
+                    exit_price: Number(t.exit_price) || 0,
+                    shares: t.shares || 0,
+                    pnl: Number(t.pnl) || 0,
+                    pnl_pct: Number(t.pnl_percent) || 0,
+                    exit_reason: t.exit_reason || ''
+                }));
+                tradeStats = data.stats || tradeStats;
+                strategyStats = data.strategy_stats || strategyStats;
+                renderHistory();
+                renderStrategyStats();
+            }
+        } catch (error) {
+            console.error('Error fetching filtered history:', error);
+        }
     }
 
     function exportHistory() {
-        alert('Export functionality - would generate CSV download');
+        if (historyData.length === 0) { alert('No trades to export'); return; }
+        const headers = ['Symbol','Direction','Strategy','Entry Date','Entry Price','Exit Date','Exit Price','Shares','P&L','P&L %','Exit Reason'];
+        const rows = historyData.map(t => [
+            t.symbol, t.direction, t.strategy_name || '', t.entry_date, t.entry_price.toFixed(2),
+            t.exit_date, t.exit_price.toFixed(2), t.shares,
+            t.pnl.toFixed(2), t.pnl_pct.toFixed(2), t.exit_reason
+        ]);
+        let csv = headers.join(',') + '\n';
+        rows.forEach(r => { csv += r.join(',') + '\n'; });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'trade_history_' + new Date().toISOString().split('T')[0] + '.csv';
+        a.click();
+    }
+
+    function renderStrategyStats() {
+        const grid = document.getElementById('strategy-stats-grid');
+        const entries = Object.entries(strategyStats);
+        if (entries.length === 0) {
+            grid.innerHTML = '<div style="color:var(--text-light);padding:10px;">No per-strategy data yet.</div>';
+            return;
+        }
+        grid.innerHTML = entries.map(([name, s]) => {
+            const color = STRATEGY_COLORS[name] || '#95a5a6';
+            const label = STRATEGY_SHORT[name] || name;
+            const pnlClass = (s.total_pnl || 0) >= 0 ? 'text-success' : 'text-danger';
+            return '<div class="stat-card" style="border-left:3px solid ' + color + '">' +
+                '<div class="stat-label">' + escapeHtml(label) + '</div>' +
+                '<div style="font-size:0.85rem;margin-top:5px;">' +
+                '<span style="font-weight:600">' + (s.total_trades || 0) + '</span> trades | ' +
+                '<span style="font-weight:600">' + (s.win_rate || 0) + '%</span> win | ' +
+                '<span class="' + pnlClass + '" style="font-weight:600">$' + (s.total_pnl || 0).toFixed(2) + '</span> P&L' +
+                '</div></div>';
+        }).join('');
     }
 
     renderHistory();
+    renderStrategyStats();
 </script>
 {% endblock %}

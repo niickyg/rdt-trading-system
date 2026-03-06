@@ -5,14 +5,23 @@ Executes trades through the broker
 
 import asyncio
 import os
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from loguru import logger
 
 from agents.base import BaseAgent, AgentState
 from agents.events import Event, EventType
-from brokers.base import AbstractBroker, OrderSide, OrderType
+from brokers.base import AbstractBroker, OrderSide, OrderType, Order
 from data.database import get_trades_repository
+
+# ib_insync for dedicated order connection
+try:
+    from ib_insync import IB, Stock, MarketOrder, LimitOrder, StopOrder
+    from brokers.ibkr.orders import create_bracket_order, convert_order_side, map_ibkr_order_status
+    IB_ORDER_AVAILABLE = True
+except ImportError:
+    IB_ORDER_AVAILABLE = False
 
 # Trailing stop support
 try:
@@ -63,6 +72,15 @@ except ImportError:
     OPTIONS_AVAILABLE = False
     logger.debug("Options trading module not available")
 
+# Intraday exit manager
+try:
+    from shared.intraday_data import IntradayDataService
+    from trading.intraday_exit_manager import IntradayExitManager
+    INTRADAY_EXIT_AVAILABLE = True
+except ImportError:
+    INTRADAY_EXIT_AVAILABLE = False
+    logger.debug("Intraday exit manager not available")
+
 # Limit order timeout for entry timing pullback orders (30 minutes)
 ENTRY_TIMING_LIMIT_TIMEOUT_MINUTES = 30
 
@@ -90,6 +108,15 @@ class ExecutorAgent(BaseAgent):
         self.broker = broker
         self.auto_execute = auto_execute
 
+        # Dedicated IB connection for order execution (on agent thread's event loop)
+        self._order_ib: Optional[object] = None  # ib_insync IB instance
+
+        # Event loop reference (set in start()) for cross-thread scheduling
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+
+        # Track background tasks to prevent GC of fire-and-forget coroutines
+        self._background_tasks: set = set()
+
         # Pending setups awaiting execution
         self.pending_setups: Dict[str, Dict] = {}
 
@@ -100,6 +127,10 @@ class ExecutorAgent(BaseAgent):
         self.orders_placed = 0
         self.orders_filled = 0
         self.orders_rejected = 0
+
+        # Fill quality tracking
+        self.cumulative_slippage = 0.0
+        self.fill_count = 0
 
         # Trailing stop configuration (enabled by default when available)
         self.trailing_stop_enabled = TRAILING_STOP_AVAILABLE
@@ -198,6 +229,34 @@ class ExecutorAgent(BaseAgent):
                 logger.warning(f"Failed to initialize options trading: {e}")
                 self._options_enabled = False
 
+        # Intraday exit manager
+        self._intraday_exit_manager: Optional["IntradayExitManager"] = None
+        self._intraday_data: Optional["IntradayDataService"] = None
+        self._intraday_enabled = False
+        self._intraday_last_check: Optional[datetime] = None
+        self._intraday_check_interval = 300  # seconds (default, overridden by config)
+
+        if INTRADAY_EXIT_AVAILABLE:
+            try:
+                from config.settings import get_settings
+                intraday_cfg = get_settings().intraday
+                if intraday_cfg.enabled:
+                    self._intraday_data = IntradayDataService(
+                        cache_ttl_seconds=intraday_cfg.bars_5m_cache_ttl
+                    )
+                    self._intraday_exit_manager = IntradayExitManager(
+                        intraday_data=self._intraday_data,
+                        rs_loss_threshold=intraday_cfg.rs_loss_threshold,
+                        vwap_confirm_bars=intraday_cfg.vwap_confirm_bars,
+                        time_stop_minutes=intraday_cfg.time_stop_minutes,
+                        breakeven_r_threshold=intraday_cfg.breakeven_r_threshold,
+                    )
+                    self._intraday_enabled = True
+                    self._intraday_check_interval = intraday_cfg.bar_refresh_interval
+                    logger.info("IntradayExitManager initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize intraday exit manager: {e}")
+
         # Database repository for trade persistence
         self._trades_repo = None
 
@@ -213,14 +272,46 @@ class ExecutorAgent(BaseAgent):
         return self._trades_repo
 
     async def initialize(self):
-        """Initialize executor"""
+        """Initialize executor and reload existing positions from DB."""
         logger.info(f"Executor initialized (auto_execute={self.auto_execute})")
         self.metrics.custom_metrics["orders_placed"] = 0
         self.metrics.custom_metrics["fill_rate"] = 0
 
+        # Reload open positions into _position_risk so price updates work after restart
+        try:
+            positions = self.trades_repo.get_open_positions()
+            for pos in positions:
+                symbol = pos.get('symbol')
+                if not symbol:
+                    continue
+                self._position_risk[symbol] = {
+                    'entry_price': float(pos.get('entry_price', 0)),
+                    'stop_price': float(pos.get('stop_loss', 0) or 0),
+                    'target_price': float(pos.get('take_profit', 0) or 0),
+                    'atr': 0,  # Not stored in DB, trailing stops won't activate without it
+                    'direction': pos.get('direction', 'long'),
+                    'shares': int(pos.get('shares', 0)),
+                }
+            if positions:
+                logger.info(f"Reloaded {len(positions)} open positions into risk tracker")
+        except Exception as e:
+            logger.warning(f"Could not reload positions from DB: {e}")
+
+        # Create dedicated IB connection for order execution on this (agent) thread's event loop.
+        # The main broker._ib connection is bound to the main thread's loop and hangs
+        # when called from the agent thread because responses arrive on the wrong loop.
+        if IB_ORDER_AVAILABLE and hasattr(self.broker, 'create_order_connection'):
+            try:
+                self._order_ib = await self.broker.create_order_connection()
+                logger.info("Executor: dedicated order connection ready (client_id=21)")
+            except Exception as e:
+                logger.warning(f"Executor: could not create dedicated order connection: {e}")
+                self._order_ib = None
+
     async def start(self):
         """Start executor and launch periodic position monitor."""
         await super().start()
+        self._loop = asyncio.get_running_loop()
         self._monitor_task = asyncio.create_task(self._position_monitor_loop())
         logger.info(f"Position monitor loop started (interval={self._monitor_interval}s)")
 
@@ -233,6 +324,14 @@ class ExecutorAgent(BaseAgent):
             except asyncio.CancelledError:
                 pass
             self._monitor_task = None
+        # Disconnect dedicated order connection
+        if self._order_ib:
+            try:
+                self._order_ib.disconnect()
+                logger.info("Executor: dedicated order connection closed")
+            except Exception:
+                pass
+            self._order_ib = None
         await super().stop()
 
     async def _position_monitor_loop(self):
@@ -262,14 +361,45 @@ class ExecutorAgent(BaseAgent):
         4. Entry timing limit order timeout cancellation
         """
         # Collect current prices for all tracked positions
+        # Prefer streaming quotes (instant, no API calls) over per-symbol get_quote()
         price_updates: Dict[str, float] = {}
-        for symbol in list(self._position_risk.keys()):
-            try:
-                quote = self.broker.get_quote(symbol)
-                if quote and hasattr(quote, 'last') and quote.last:
-                    price_updates[symbol] = quote.last
-            except Exception as e:
-                logger.debug(f"Could not fetch price for {symbol}: {e}")
+        tracked_symbols = list(self._position_risk.keys())
+
+        if tracked_symbols:
+            # Try streaming quotes first (eliminates N×1s latency)
+            if hasattr(self.broker, 'has_streaming') and self.broker.has_streaming:
+                try:
+                    streaming_quotes = self.broker.get_streaming_quotes(tracked_symbols)
+                    for sym, q in streaming_quotes.items():
+                        price = q.last if q.last and q.last > 0 else (q.bid if q.bid and q.bid > 0 else 0)
+                        if price > 0:
+                            price_updates[sym] = price
+                except Exception as e:
+                    logger.debug(f"Streaming quotes failed, falling back to individual: {e}")
+
+            # Fall back to dedicated order connection for symbols missing from streaming
+            missing = [s for s in tracked_symbols if s not in price_updates]
+            if missing and self._order_ib and IB_ORDER_AVAILABLE:
+                for symbol in missing:
+                    try:
+                        normalized = symbol.upper().replace("-", " ")
+                        contract = Stock(normalized, "SMART", "USD")
+                        self._order_ib.qualifyContracts(contract)
+                        ticker = self._order_ib.reqMktData(contract, '', True, False)
+                        self._order_ib.sleep(1)
+                        price = ticker.last if ticker.last and ticker.last > 0 else (
+                            ticker.close if ticker.close and ticker.close > 0 else 0)
+                        self._order_ib.cancelMktData(contract)
+                        if price > 0:
+                            price_updates[symbol] = price
+                    except Exception as e:
+                        logger.debug(f"Position monitor: could not fetch price for {symbol}: {e}")
+
+        # 0. Persist current prices to DB so dashboard can display live P&L
+        if price_updates:
+            self._update_position_prices_in_db(price_updates)
+        elif tracked_symbols:
+            logger.warning(f"Position monitor: no price updates for {len(tracked_symbols)} tracked symbols: {tracked_symbols[:5]}")
 
         # 1. Check trailing stop activation for each position
         for symbol, price in price_updates.items():
@@ -283,6 +413,72 @@ class ExecutorAgent(BaseAgent):
 
         # 4. Check entry timing limit orders for timeouts
         await self.check_entry_timing_timeouts()
+
+        # 5. Check intraday exits — DISABLED: IntradayDataService fetches 5m bars
+        # via ProviderManager/IBKR which deadlocks from the agent thread (main
+        # IB connection transport is on the main thread's event loop).
+        # TODO: Re-enable once IntradayDataService uses the dedicated order connection.
+        # if self._intraday_enabled and self._intraday_exit_manager and price_updates:
+        #     ...
+        pass
+
+    def _update_position_prices_in_db(self, price_updates: Dict[str, float]):
+        """Write current prices and unrealized P&L to DB for dashboard display."""
+        try:
+            updated_count = 0
+            for symbol, current_price in price_updates.items():
+                risk_data = self._position_risk.get(symbol)
+                if not risk_data:
+                    continue
+
+                entry_price = risk_data.get('entry_price', 0)
+                direction = risk_data.get('direction', 'long')
+                shares = risk_data.get('shares', 0)
+
+                if entry_price > 0:
+                    if direction == 'long':
+                        unrealized_pnl = (current_price - entry_price) * shares
+                    else:
+                        unrealized_pnl = (entry_price - current_price) * shares
+                else:
+                    unrealized_pnl = 0
+
+                result = self.trades_repo.update_position_price(
+                    symbol, current_price, unrealized_pnl
+                )
+                if result:
+                    updated_count += 1
+            if updated_count > 0:
+                logger.info(f"Position prices updated in DB: {updated_count} positions")
+        except Exception as e:
+            logger.warning(f"Error updating position prices in DB: {e}")
+
+    def _update_options_prices_in_db(self, positions: Dict[str, Dict]):
+        """Write current options premiums and P&L to DB for dashboard display."""
+        try:
+            for symbol, position in positions.items():
+                strategy = position.get("strategy")
+                if not strategy or not self._options_exit_manager:
+                    continue
+
+                current_value = self._options_exit_manager._get_current_strategy_value(strategy)
+                if current_value is None:
+                    continue
+
+                current_premium, _ = current_value
+                entry_premium = position.get("entry_premium", 0)
+                contracts = position.get("contracts", 1)
+                # P&L = (current - entry) * contracts * 100 for long positions
+                # For credit strategies (negative entry = credit received):
+                #   entry_premium is negative (credit), current_premium is negative (cost to close)
+                #   PnL = (entry_credit - close_cost) * contracts * 100
+                unrealized_pnl = (current_premium - entry_premium) * contracts * 100
+
+                self.trades_repo.update_options_position_price(
+                    symbol, current_premium, unrealized_pnl
+                )
+        except Exception as e:
+            logger.debug(f"Error updating options prices in DB: {e}")
 
     async def cleanup(self):
         """Cleanup executor"""
@@ -324,7 +520,13 @@ class ExecutorAgent(BaseAgent):
             await self.cancel_orders_for_symbol(symbol)
 
     async def _handle_position_closed(self, data: Dict):
-        """Handle position close event and update database"""
+        """Handle position close event: persist to DB and clean up state.
+
+        These DB calls are idempotent — if PositionTracker already closed
+        the trade/position, close_trade_by_symbol finds no open trade and
+        close_position is a no-op.  But for executor-initiated closes
+        (intraday exits, trailing stops) this is the only DB write path.
+        """
         symbol = data.get("symbol")
         exit_price = data.get("exit_price")
         exit_reason = data.get("exit_reason", "manual")
@@ -334,7 +536,7 @@ class ExecutorAgent(BaseAgent):
             logger.warning("Position closed event missing symbol")
             return
 
-        # Close the trade in database
+        # Close the trade in database (idempotent — skips if already closed)
         if exit_price:
             closed_trade = self.trades_repo.close_trade_by_symbol(
                 symbol=symbol,
@@ -348,15 +550,18 @@ class ExecutorAgent(BaseAgent):
                 # Record trade result for dynamic position sizer's rolling stats
                 self._record_dynamic_sizer_outcome(symbol, closed_trade, data)
 
-        # Remove position from database
+        # Remove position from database (idempotent)
         self.trades_repo.close_position(symbol)
-        logger.info(f"Position removed from database: {symbol}")
 
         # Clean up options executor in-memory positions
         if self._options_enabled and self._options_executor:
             if symbol in self._options_executor._positions:
                 del self._options_executor._positions[symbol]
                 logger.info(f"Options in-memory position cleaned up: {symbol}")
+
+        # Clean up intraday exit manager tracking
+        if self._intraday_enabled and self._intraday_exit_manager:
+            self._intraday_exit_manager.unregister_position(symbol)
 
         # Clean up entry timing limit tracking
         self._entry_timing_limits.pop(symbol, None)
@@ -417,7 +622,12 @@ class ExecutorAgent(BaseAgent):
             if entry_price <= 0 or atr <= 0:
                 return setup
 
-            stop_distance = atr * 0.75  # Standard 0.75x ATR stop
+            # Use actual risk from the setup's stop price (set by analyzer)
+            stop_price = setup.get('stop_price') or 0
+            if stop_price > 0 and entry_price > 0:
+                stop_distance = abs(entry_price - stop_price)
+            else:
+                stop_distance = atr * 0.75  # Fallback if no stop defined
 
             # Apply predicted strategy to target and trailing stop params
             if prediction.strategy == 'quick_scalp':
@@ -547,6 +757,121 @@ class ExecutorAgent(BaseAgent):
             logger.warning(f"EntryTiming failed for {setup.get('symbol')}: {e}")
             return None
 
+    async def _place_bracket_order_ib(
+        self, symbol, entry_side, shares, target_price, stop_price, entry_type=OrderType.MARKET
+    ):
+        """Place a bracket order using the dedicated IB connection (agent thread's event loop).
+
+        Falls back to self.broker if no dedicated connection is available.
+        """
+        if not self._order_ib or not IB_ORDER_AVAILABLE:
+            # Fallback for non-IBKR brokers (e.g. PaperBroker)
+            return self.broker.place_bracket_order(
+                symbol=symbol, side=entry_side, quantity=shares,
+                entry_price=None, take_profit_price=target_price,
+                stop_loss_price=stop_price, entry_type=entry_type
+            )
+
+        # Use dedicated connection directly
+        normalized = symbol.upper().replace("-", " ")
+        contract = Stock(normalized, "SMART", "USD")
+        self._order_ib.qualifyContracts(contract)
+
+        action = convert_order_side(entry_side)
+        entry_order, tp_order, sl_order = create_bracket_order(
+            action=action, quantity=shares,
+            entry_price=None, take_profit_price=target_price,
+            stop_loss_price=stop_price, entry_type=entry_type,
+        )
+
+        entry_trade = self._order_ib.placeOrder(contract, entry_order)
+        tp_order.parentId = entry_trade.order.orderId
+        sl_order.parentId = entry_trade.order.orderId
+        tp_trade = self._order_ib.placeOrder(contract, tp_order)
+        sl_trade = self._order_ib.placeOrder(contract, sl_order)
+
+        self._order_ib.sleep(0.5)
+
+        exit_side = OrderSide.SELL if entry_side == OrderSide.BUY else OrderSide.BUY
+        entry = Order(
+            order_id=str(entry_trade.order.orderId), symbol=symbol.upper(),
+            side=entry_side, quantity=shares, order_type=entry_type, price=None,
+            status=map_ibkr_order_status(entry_trade.orderStatus.status),
+        )
+        take_profit = Order(
+            order_id=str(tp_trade.order.orderId), symbol=symbol.upper(),
+            side=exit_side, quantity=shares, order_type=OrderType.LIMIT,
+            price=target_price,
+            status=map_ibkr_order_status(tp_trade.orderStatus.status),
+        )
+        stop_loss = Order(
+            order_id=str(sl_trade.order.orderId), symbol=symbol.upper(),
+            side=exit_side, quantity=shares, order_type=OrderType.STOP,
+            stop_price=stop_price,
+            status=map_ibkr_order_status(sl_trade.orderStatus.status),
+        )
+
+        logger.info(
+            f"Bracket order placed via dedicated connection: {action} {shares} {symbol}, "
+            f"TP={target_price}, SL={stop_price}"
+        )
+        return entry, take_profit, stop_loss
+
+    async def _place_order_ib(
+        self, symbol, side, quantity, order_type=OrderType.MARKET,
+        price=None, stop_price=None, time_in_force="DAY"
+    ):
+        """Place a single order using the dedicated IB connection.
+
+        Falls back to self.broker if no dedicated connection is available.
+        """
+        if not self._order_ib or not IB_ORDER_AVAILABLE:
+            return self.broker.place_order(
+                symbol=symbol, side=side, quantity=quantity,
+                order_type=order_type, price=price, stop_price=stop_price,
+                time_in_force=time_in_force
+            )
+
+        normalized = symbol.upper().replace("-", " ")
+        contract = Stock(normalized, "SMART", "USD")
+        self._order_ib.qualifyContracts(contract)
+
+        action = convert_order_side(side)
+
+        if order_type == OrderType.MARKET:
+            ib_order = MarketOrder(action, quantity)
+        elif order_type == OrderType.LIMIT:
+            ib_order = LimitOrder(action, quantity, price)
+        elif order_type == OrderType.STOP:
+            ib_order = StopOrder(action, quantity, stop_price)
+        else:
+            ib_order = MarketOrder(action, quantity)
+
+        ib_order.tif = time_in_force
+
+        trade = self._order_ib.placeOrder(contract, ib_order)
+        self._order_ib.sleep(0.5)
+
+        order = Order(
+            order_id=str(trade.order.orderId), symbol=symbol.upper(),
+            side=side, quantity=quantity, order_type=order_type,
+            price=price, stop_price=stop_price,
+            status=map_ibkr_order_status(trade.orderStatus.status),
+            filled_quantity=int(trade.orderStatus.filled),
+            avg_fill_price=(
+                trade.orderStatus.avgFillPrice
+                if trade.orderStatus.avgFillPrice > 0 else None
+            ),
+            created_at=datetime.now(), time_in_force=time_in_force,
+            broker_order_id=str(trade.order.orderId),
+        )
+
+        logger.info(
+            f"Order placed via dedicated connection: {order_type.value} {side.value} "
+            f"{quantity} {symbol} @ {price or 'market'}, id={order.order_id}"
+        )
+        return order
+
     async def execute_trade(self, setup: Dict):
         """Execute a trade setup"""
         symbol = setup.get("symbol")
@@ -555,6 +880,19 @@ class ExecutorAgent(BaseAgent):
         entry_price = setup.get("entry_price")
         stop_price = setup.get("stop_price")
         target_price = setup.get("target_price")
+
+        # --- Duplicate position check ---
+        try:
+            existing = self.trades_repo.get_position_by_symbol(symbol)
+        except Exception as e:
+            logger.error(f"DB error checking existing position for {symbol}: {e} — skipping trade for safety")
+            return
+        if existing:
+            logger.info(
+                f"Skipping {symbol}: already have open {existing['direction']} position "
+                f"({existing['shares']} shares @ ${existing['entry_price']:.2f})"
+            )
+            return
 
         # --- Entry timing check ---
         timing = self._apply_entry_timing(setup)
@@ -596,7 +934,7 @@ class ExecutorAgent(BaseAgent):
             # If options_result is None, fall through to stock execution
             logger.info(f"Options path returned None for {symbol} — falling back to stock execution")
 
-        logger.info(f"Executing: {direction.upper()} {shares} {symbol} @ ${entry_price:.2f}")
+        logger.info(f"Executing: {(direction or 'unknown').upper()} {shares} {symbol} @ ${entry_price:.2f}")
 
         try:
             # Determine order side
@@ -609,31 +947,27 @@ class ExecutorAgent(BaseAgent):
 
             # Place bracket order (entry + stop-loss + take-profit as OCO)
             try:
-                entry_order, tp_order, sl_order = self.broker.place_bracket_order(
-                    symbol=symbol,
-                    side=entry_side,
-                    quantity=shares,
-                    entry_price=None,
-                    take_profit_price=target_price,
-                    stop_loss_price=stop_price,
+                entry_order, tp_order, sl_order = await self._place_bracket_order_ib(
+                    symbol=symbol, entry_side=entry_side, shares=shares,
+                    target_price=target_price, stop_price=stop_price,
                     entry_type=OrderType.MARKET
                 )
             except Exception:
                 # Fallback to individual orders if bracket order fails for any reason
                 logger.warning(f"Bracket order not supported, falling back to individual orders for {symbol}")
-                entry_order = self.broker.place_order(
+                entry_order = await self._place_order_ib(
                     symbol=symbol, side=entry_side,
                     quantity=shares, order_type=OrderType.MARKET
                 )
                 tp_order = None
                 sl_order = None
                 if entry_order:
-                    sl_order = self.broker.place_order(
+                    sl_order = await self._place_order_ib(
                         symbol=symbol, side=exit_side,
                         quantity=shares, order_type=OrderType.STOP,
                         stop_price=stop_price
                     )
-                    tp_order = self.broker.place_order(
+                    tp_order = await self._place_order_ib(
                         symbol=symbol, side=exit_side,
                         quantity=shares, order_type=OrderType.LIMIT,
                         price=target_price
@@ -693,12 +1027,31 @@ class ExecutorAgent(BaseAgent):
 
         fill_time = datetime.now()
 
+        # Use actual broker fill price if available, fall back to signal price
+        # (paper broker fills instantly at signal price, IBKR provides real fill)
+        actual_fill_price = setup["entry_price"]  # default fallback
+        if order.avg_fill_price and order.avg_fill_price > 0:
+            actual_fill_price = order.avg_fill_price
+
+        # Log fill quality (slippage between signal and actual fill)
+        signal_price = setup["entry_price"]
+        slippage = actual_fill_price - signal_price
+        self.fill_count += 1
+        self.cumulative_slippage += slippage * setup.get("shares", 0)
+        if actual_fill_price != signal_price and signal_price > 0:
+            slippage_pct = (slippage / signal_price) * 100
+            logger.info(
+                f"FILL QUALITY: {setup['symbol']} signal=${signal_price:.2f} "
+                f"fill=${actual_fill_price:.2f} slippage=${slippage:.2f} ({slippage_pct:+.3f}%) "
+                f"cumulative=${self.cumulative_slippage:.2f} over {self.fill_count} fills"
+            )
+
         await self.publish(EventType.ORDER_FILLED, {
             "order_id": order.order_id,
             "symbol": setup["symbol"],
             "direction": setup["direction"],
             "shares": setup["shares"],
-            "fill_price": setup["entry_price"],  # Would be actual fill price
+            "fill_price": actual_fill_price,
             "timestamp": fill_time.isoformat()
         })
 
@@ -706,7 +1059,7 @@ class ExecutorAgent(BaseAgent):
         trade_data = {
             "symbol": setup["symbol"],
             "direction": setup["direction"],
-            "entry_price": setup["entry_price"],
+            "entry_price": actual_fill_price,
             "shares": setup["shares"],
             "stop_loss": setup.get("stop_price"),
             "take_profit": setup.get("target_price"),
@@ -729,6 +1082,7 @@ class ExecutorAgent(BaseAgent):
             "vix_position_size_mult": setup.get("vix_position_size_multiplier"),  # signal uses longer name
             "sector_boost": setup.get("sector_boost"),
             "first_hour_filtered": setup.get("first_hour_filtered", False),
+            "strategy_name": setup.get("strategy_name", "rrs_momentum"),
         }
         saved_trade = self.trades_repo.save_trade(trade_data)
         if saved_trade:
@@ -747,12 +1101,13 @@ class ExecutorAgent(BaseAgent):
         position_data = {
             "symbol": setup["symbol"],
             "direction": setup["direction"],
-            "entry_price": setup["entry_price"],
+            "entry_price": actual_fill_price,
             "shares": setup["shares"],
             "stop_price": setup.get("stop_price"),
             "target_price": setup.get("target_price"),
             "rrs": setup.get("rrs"),
-            "entry_time": fill_time
+            "entry_time": fill_time,
+            "strategy_name": setup.get("strategy_name", "rrs_momentum"),
         }
         saved_position = self.trades_repo.save_position(position_data)
         if saved_position:
@@ -763,7 +1118,7 @@ class ExecutorAgent(BaseAgent):
         if self.trailing_stop_enabled and setup.get("atr"):
             exit_pred = setup.get('exit_prediction', {})
             self._position_risk[setup["symbol"]] = {
-                'entry_price': setup["entry_price"],
+                'entry_price': actual_fill_price,
                 'stop_price': setup["stop_price"],
                 'target_price': setup["target_price"],
                 'atr': setup["atr"],
@@ -780,12 +1135,20 @@ class ExecutorAgent(BaseAgent):
                 ),
             }
 
+        # Add entry_time to position risk for intraday time stop
+        if setup["symbol"] in self._position_risk:
+            self._position_risk[setup["symbol"]]['entry_time'] = fill_time
+
+        # Register with intraday exit manager
+        if self._intraday_enabled and self._intraday_exit_manager:
+            self._intraday_exit_manager.register_position(setup["symbol"])
+
         # Publish position opened
         await self.publish(EventType.POSITION_OPENED, {
             "symbol": setup["symbol"],
             "direction": setup["direction"],
             "shares": setup["shares"],
-            "entry_price": setup["entry_price"],
+            "entry_price": actual_fill_price,
             "stop_price": setup["stop_price"],
             "target_price": setup["target_price"],
             "rrs": setup.get("rrs"),
@@ -813,7 +1176,7 @@ class ExecutorAgent(BaseAgent):
             else:
                 entry_side = OrderSide.SELL_SHORT
 
-            limit_order = self.broker.place_order(
+            limit_order = await self._place_order_ib(
                 symbol=symbol,
                 side=entry_side,
                 quantity=shares,
@@ -914,8 +1277,8 @@ class ExecutorAgent(BaseAgent):
 
         Returns:
             True if options order placed successfully,
-            False if options rejected (don't fall back to stocks),
-            None if options not applicable (fall through to stocks).
+            False if options rejected by risk manager (don't fall back to stocks),
+            None if options not viable (fall through to stock execution).
         """
         symbol = setup.get("symbol", "")
         direction = setup.get("direction", "long")
@@ -941,8 +1304,7 @@ class ExecutorAgent(BaseAgent):
                     f"Options: cannot size {strategy.name} for {symbol} — "
                     f"{size_result.reason}"
                 )
-                await self._order_rejected(setup, f"Options sizing failed: {size_result.reason}")
-                return False
+                return None  # Fall through to stock execution
 
             # 3. Portfolio risk check
             existing_positions = self._options_executor.get_all_positions()
@@ -951,10 +1313,11 @@ class ExecutorAgent(BaseAgent):
             )
 
             if not risk_check:
+                reason = getattr(risk_check, 'reason', 'unknown') if risk_check else 'unknown'
                 logger.warning(
-                    f"Options: risk check failed for {symbol} — {risk_check.reason}"
+                    f"Options: risk check failed for {symbol} — {reason}"
                 )
-                await self._order_rejected(setup, f"Options risk check: {risk_check.reason}")
+                await self._order_rejected(setup, f"Options risk check: {reason}")
                 return False
 
             if risk_check.warnings:
@@ -989,43 +1352,15 @@ class ExecutorAgent(BaseAgent):
                 f"net_premium=${strategy.net_premium:.2f}"
             )
 
-            # Persist options trade to database
-            fill_time = datetime.now()
-            trade_data = {
-                "symbol": symbol,
-                "direction": direction,
-                "entry_price": abs(strategy.net_premium) / max(size_result.contracts, 1),
-                "shares": size_result.contracts,  # contracts mapped to shares column
-                "stop_loss": strategy.max_loss / max(size_result.contracts, 1) if strategy.max_loss else None,
-                "take_profit": strategy.max_profit / max(size_result.contracts, 1) if strategy.max_profit else None,
-                "entry_time": fill_time,
-                "signal_strategy": f"options_{strategy.name}",
-                "vix_regime": setup.get("vix_regime"),
-                "vix_value": setup.get("vix_value"),
-                "market_regime": setup.get("market_regime"),
-                "sector_name": setup.get("sector"),
-                "ml_confidence": setup.get("ml_probability"),
-            }
-            saved_trade = self.trades_repo.save_trade(trade_data)
-            if saved_trade:
-                logger.info(
-                    f"Options trade saved to database: {symbol} "
-                    f"(ID: {saved_trade.get('id')}, strategy: {strategy.name})"
-                )
-
-            # Persist options position to database
-            position_data = {
-                "symbol": symbol,
-                "direction": direction,
-                "entry_price": abs(strategy.net_premium) / max(size_result.contracts, 1),
-                "shares": size_result.contracts,
-                "stop_price": strategy.max_loss / max(size_result.contracts, 1) if strategy.max_loss else None,
-                "target_price": strategy.max_profit / max(size_result.contracts, 1) if strategy.max_profit else None,
-                "entry_time": fill_time,
-            }
-            saved_position = self.trades_repo.save_position(position_data)
-            if saved_position:
-                logger.info(f"Options position saved to database: {symbol}")
+            # Options trades are tracked in options_positions/options_trades tables
+            # (persisted inside the broker executor's execute_strategy()). Do NOT
+            # duplicate into the stock positions/trades tables — the option premium
+            # stored as "entry_price" produces nonsensical stock-level P&L and
+            # breaks the dashboard.
+            logger.info(
+                f"Options trade saved to options tables: {symbol} "
+                f"(strategy: {strategy.name})"
+            )
 
             self._update_metrics()
             return True
@@ -1055,6 +1390,9 @@ class ExecutorAgent(BaseAgent):
             if not positions:
                 return
 
+            # Update options prices in DB for dashboard display
+            self._update_options_prices_in_db(positions)
+
             exit_signals = self._options_exit_manager.check_exits(positions)
 
             for signal in exit_signals:
@@ -1078,11 +1416,15 @@ class ExecutorAgent(BaseAgent):
                     else:
                         db_exit_reason = "manual"
 
-                    # Close trade in database
+                    # Use current premium from the exit manager if available
+                    current_premium = None
+                    if opt_position:
+                        current_premium = opt_position.get("current_value")
+                    exit_premium = current_premium if current_premium else entry_premium
                     exit_time = datetime.now()
                     closed_trade = self.trades_repo.close_trade_by_symbol(
                         symbol=signal.symbol,
-                        exit_price=entry_premium,
+                        exit_price=exit_premium,
                         exit_reason=db_exit_reason,
                         exit_time=exit_time,
                     )
@@ -1096,18 +1438,166 @@ class ExecutorAgent(BaseAgent):
                     self.trades_repo.close_position(signal.symbol)
                     logger.info(f"Options position removed from database: {signal.symbol}")
 
-                    await self.publish(EventType.POSITION_CLOSED, {
-                        "symbol": signal.symbol,
-                        "exit_reason": f"options_{signal.reason}",
-                        "exit_price": entry_premium,
-                        "timestamp": datetime.now().isoformat(),
-                    })
+                    # Clean up tracking state (event handler would duplicate this)
+                    self._position_risk.pop(signal.symbol, None)
+                    if getattr(self, '_intraday_exit_manager', None):
+                        self._intraday_exit_manager.unregister_position(signal.symbol)
                 elif signal.action == "roll":
                     logger.info(f"Options roll recommended: {signal.symbol} — {signal.reason}")
                     # Roll is advisory — log but don't auto-execute
 
         except Exception as e:
             logger.error(f"Options exit check failed: {e}")
+
+    async def _check_intraday_exits(self, price_updates: Dict[str, float]):
+        """
+        Run intraday exit checks and handle the resulting signals.
+
+        Called every bar_refresh_interval (typically 5 min) from
+        _run_periodic_checks().
+        """
+        try:
+            exit_signals = await self._intraday_exit_manager.check_exits(
+                self._position_risk, price_updates
+            )
+
+            for signal in exit_signals:
+                if signal.action == "close":
+                    logger.info(
+                        f"Intraday exit triggered: {signal.symbol} — {signal.reason}"
+                    )
+
+                    # Place market exit order
+                    risk_data = self._position_risk.get(signal.symbol, {})
+                    direction = risk_data.get('direction', 'long')
+                    shares = risk_data.get('shares', 0)
+                    current_price = price_updates.get(signal.symbol, 0)
+
+                    exit_order = None
+                    if shares > 0:
+                        exit_side = (
+                            OrderSide.SELL if direction == 'long'
+                            else OrderSide.BUY_TO_COVER
+                        )
+                        try:
+                            exit_order = await self._place_order_ib(
+                                symbol=signal.symbol,
+                                side=exit_side,
+                                quantity=shares,
+                                order_type=OrderType.MARKET,
+                            )
+                            if exit_order:
+                                logger.info(
+                                    f"Intraday exit order placed: {signal.symbol} "
+                                    f"{exit_side.value} {shares} shares"
+                                )
+                                # Use actual fill price if available
+                                if exit_order.avg_fill_price and exit_order.avg_fill_price > 0:
+                                    current_price = exit_order.avg_fill_price
+                        except Exception as e:
+                            logger.error(
+                                f"Failed to place intraday exit order for "
+                                f"{signal.symbol}: {e}"
+                            )
+
+                    # Only cancel OCO and clean up state if exit order was placed successfully
+                    # If exit fails, keep the protective stop in place
+                    if exit_order is not None and exit_order.order_id:
+                        # Cancel existing stop/target orders
+                        await self.cancel_orders_for_symbol(signal.symbol)
+
+                        # Clean up state to prevent duplicate exits
+                        self._position_risk.pop(signal.symbol, None)
+                        self._intraday_exit_manager.unregister_position(signal.symbol)
+                    else:
+                        logger.error(
+                            f"Intraday exit order failed for {signal.symbol} — "
+                            f"keeping protective stop in place"
+                        )
+                        continue
+
+                    # Map intraday reason to valid ExitReason enum value
+                    reason_lower = signal.reason.lower()
+                    if "rs" in reason_lower or "rrs" in reason_lower:
+                        exit_reason = "intraday_rs_loss"
+                    elif "vwap" in reason_lower:
+                        exit_reason = "intraday_vwap"
+                    elif "time" in reason_lower:
+                        exit_reason = "intraday_time_stop"
+                    elif "breakeven" in reason_lower:
+                        exit_reason = "intraday_breakeven"
+                    else:
+                        exit_reason = "intraday_other"
+
+                    # Calculate P&L from position risk data
+                    entry_price = risk_data.get('entry_price', 0)
+                    if direction == 'long':
+                        pnl = (current_price - entry_price) * shares
+                    else:
+                        pnl = (entry_price - current_price) * shares
+                    cost_basis = entry_price * shares
+                    pnl_pct = (pnl / cost_basis * 100) if cost_basis else 0
+
+                    # Publish position closed event with full data
+                    await self.publish(EventType.POSITION_CLOSED, {
+                        "symbol": signal.symbol,
+                        "direction": direction,
+                        "shares": shares,
+                        "entry_price": entry_price,
+                        "exit_price": current_price,
+                        "pnl": round(pnl, 2),
+                        "pnl_percent": round(pnl_pct, 2),
+                        "exit_reason": exit_reason,
+                        "exit_detail": signal.reason[:100],
+                        "timestamp": datetime.now().isoformat(),
+                    })
+
+                elif signal.action == "tighten_stop" and signal.new_stop_price:
+                    logger.info(
+                        f"Intraday stop tightened: {signal.symbol} — {signal.reason} "
+                        f"new_stop=${signal.new_stop_price:.2f}"
+                    )
+
+                    # Update stop price in position risk tracking
+                    if signal.symbol in self._position_risk:
+                        self._position_risk[signal.symbol]['stop_price'] = (
+                            signal.new_stop_price
+                        )
+
+                    # Update the stop order on the broker
+                    risk_data = self._position_risk.get(signal.symbol, {})
+                    direction = risk_data.get('direction', 'long')
+                    shares = risk_data.get('shares', 0)
+
+                    if shares > 0:
+                        # Cancel only the stop-loss order (preserve take-profit)
+                        await self._cancel_stop_orders_for_symbol(signal.symbol)
+                        exit_side = (
+                            OrderSide.SELL if direction == 'long'
+                            else OrderSide.BUY_TO_COVER
+                        )
+                        try:
+                            new_stop = await self._place_order_ib(
+                                symbol=signal.symbol,
+                                side=exit_side,
+                                quantity=shares,
+                                order_type=OrderType.STOP,
+                                stop_price=signal.new_stop_price,
+                            )
+                            if new_stop:
+                                self.active_orders[new_stop.order_id] = {
+                                    "order": new_stop,
+                                    "type": "stop_loss",
+                                    "setup": {"symbol": signal.symbol},
+                                }
+                        except Exception as e:
+                            logger.error(
+                                f"Failed to place tightened stop for "
+                                f"{signal.symbol}: {e}"
+                            )
+
+        except Exception as e:
+            logger.error(f"Intraday exit check failed: {e}")
 
     async def _order_rejected(self, setup: Dict, reason: str):
         """Handle order rejection"""
@@ -1141,6 +1631,29 @@ class ExecutorAgent(BaseAgent):
             except Exception as e:
                 logger.error(f"Error canceling order {order_id}: {e}")
 
+    async def _cancel_stop_orders_for_symbol(self, symbol: str):
+        """Cancel only stop-loss orders for a symbol (preserves take-profit)."""
+        orders_to_cancel = []
+
+        for order_id, order_data in self.active_orders.items():
+            if (order_data["setup"].get("symbol") == symbol
+                    and order_data.get("type") == "stop_loss"):
+                orders_to_cancel.append(order_id)
+
+        for order_id in orders_to_cancel:
+            try:
+                self.broker.cancel_order(order_id)
+                del self.active_orders[order_id]
+
+                await self.publish(EventType.ORDER_CANCELLED, {
+                    "order_id": order_id,
+                    "symbol": symbol,
+                    "reason": "stop_replaced",
+                    "timestamp": datetime.now().isoformat()
+                })
+            except Exception as e:
+                logger.error(f"Error canceling stop order {order_id}: {e}")
+
     async def execute_order(self, order_request: Dict):
         """Execute a manual order request"""
         if "setup" in order_request:
@@ -1148,12 +1661,20 @@ class ExecutorAgent(BaseAgent):
             await self.execute_trade(setup)
 
     def confirm_pending_setup(self, symbol: str) -> bool:
-        """Confirm and execute a pending setup"""
+        """Confirm and execute a pending setup."""
         if symbol in self.pending_setups:
+            if not self._loop:
+                logger.error(f"Cannot confirm pending setup for {symbol}: executor not started")
+                return False
             setup = self.pending_setups.pop(symbol)
-            # Use event loop to execute
-            import asyncio
-            asyncio.create_task(self.execute_trade(setup))
+            future = asyncio.run_coroutine_threadsafe(
+                self.execute_trade(setup), self._loop
+            )
+            future.add_done_callback(
+                lambda f: logger.error(
+                    f"confirm_pending_setup({symbol}) failed: {f.exception()}"
+                ) if f.exception() else None
+            )
             return True
         return False
 
@@ -1197,6 +1718,9 @@ class ExecutorAgent(BaseAgent):
         atr = risk_data['atr']
         direction = risk_data['direction']
         initial_risk = abs(entry_price - stop_price)  # 1R
+        if initial_risk <= 0:
+            logger.warning(f"Trailing stop skipped for {symbol}: stop == entry (initial_risk=0)")
+            return
 
         # Use per-position activation R if set by ExitPredictor, else global default
         activation_r = risk_data.get('trail_activation_r', self.trailing_stop_activation_r)
@@ -1240,8 +1764,8 @@ class ExecutorAgent(BaseAgent):
 
             logger.info(
                 f"TRAILING STOP ACTIVATED: {symbol} {direction} "
-                f"trail=${trail_amount:.2f} (0.75x ATR=${atr:.2f}) "
-                f"after reaching +1R (${unrealized:.2f} profit)"
+                f"trail=${trail_amount:.2f} ({trail_multiplier}x ATR=${atr:.2f}) "
+                f"after reaching +{activation_r}R (${unrealized:.2f} profit)"
             )
         except Exception as e:
             logger.error(f"Failed to create trailing stop for {symbol}: {e}")
@@ -1264,11 +1788,89 @@ class ExecutorAgent(BaseAgent):
                 _, triggered = trail.update_trail(current_price)
                 if triggered:
                     logger.info(f"Trailing stop triggered for {symbol}")
-                    del self._trailing_stops[symbol]
-                    # Clean up position risk tracking
-                    self._position_risk.pop(symbol, None)
+                    # Schedule the full close lifecycle (async)
+                    loop = asyncio.get_running_loop()
+                    task = loop.create_task(self._handle_trailing_stop_triggered(
+                        symbol, current_price or 0
+                    ))
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
             except Exception as e:
                 logger.error(f"Error updating trailing stop for {symbol}: {e}")
+
+    async def _handle_trailing_stop_triggered(self, symbol: str, current_price: float):
+        """
+        Handle a trailing stop trigger: place exit order, cancel OCO,
+        publish POSITION_CLOSED, and clean up state.
+        """
+        risk_data = self._position_risk.get(symbol, {})
+        direction = risk_data.get('direction', 'long')
+        shares = risk_data.get('shares', 0)
+        entry_price = risk_data.get('entry_price', 0)
+
+        # Place market exit order
+        exit_placed = False
+        if shares > 0:
+            exit_side = (
+                OrderSide.SELL if direction == 'long'
+                else OrderSide.BUY_TO_COVER
+            )
+            try:
+                exit_order = await self._place_order_ib(
+                    symbol=symbol,
+                    side=exit_side,
+                    quantity=shares,
+                    order_type=OrderType.MARKET,
+                )
+                if exit_order:
+                    exit_placed = True
+                    logger.info(
+                        f"Trailing stop exit order placed: {symbol} "
+                        f"{exit_side.value} {shares} shares"
+                    )
+                    # Use actual fill price if available
+                    if exit_order.avg_fill_price and exit_order.avg_fill_price > 0:
+                        current_price = exit_order.avg_fill_price
+                else:
+                    logger.error(f"Trailing stop exit order failed for {symbol}")
+            except Exception as e:
+                logger.error(f"Failed to place trailing stop exit for {symbol}: {e}")
+
+        if not exit_placed:
+            logger.error(f"Trailing stop exit NOT placed for {symbol} — keeping OCO bracket intact")
+            return
+
+        # Only cancel OCO and clean up if exit order was successfully placed
+        await self.cancel_orders_for_symbol(symbol)
+
+        # Clean up trailing stop and position risk tracking
+        self._trailing_stops.pop(symbol, None)
+        self._position_risk.pop(symbol, None)
+
+        # Unregister from intraday exit manager
+        if self._intraday_enabled and self._intraday_exit_manager:
+            self._intraday_exit_manager.unregister_position(symbol)
+
+        # Calculate P&L
+        if direction == 'long':
+            pnl = (current_price - entry_price) * shares
+        else:
+            pnl = (entry_price - current_price) * shares
+        cost_basis = entry_price * shares
+        pnl_pct = (pnl / cost_basis * 100) if cost_basis else 0
+
+        # Publish position closed event
+        await self.publish(EventType.POSITION_CLOSED, {
+            "symbol": symbol,
+            "direction": direction,
+            "shares": shares,
+            "entry_price": entry_price,
+            "exit_price": current_price,
+            "pnl": round(pnl, 2),
+            "pnl_percent": round(pnl_pct, 2),
+            "exit_reason": "trailing_stop",
+            "timestamp": datetime.now().isoformat(),
+        })
 
     def _record_dynamic_sizer_outcome(
         self, symbol: str, closed_trade: Dict, event_data: Dict

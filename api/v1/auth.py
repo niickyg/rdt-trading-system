@@ -353,8 +353,9 @@ class APIKeyManager:
         with db_manager.get_session() as session:
             db_user = session.query(APIUserModel).filter_by(id=user_id).first()
             if db_user:
-                db_user.api_key = hashlib.sha256(new_api_key.encode()).hexdigest()
-                db_user.api_secret_hash = new_api_key[:8]
+                new_api_key_hash = hashlib.sha256(new_api_key.encode()).hexdigest()
+                db_user.api_key = new_api_key_hash
+                db_user.api_secret_hash = new_api_key_hash[:8]
                 logger.info(f"Regenerated API key for user {user_id}")
                 return new_api_key
         return None

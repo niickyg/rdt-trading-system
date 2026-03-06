@@ -1,0 +1,813 @@
+{% extends "dashboard_base.html" %}
+{% set active_page = "options" %}
+
+{% block title %}Options Trading - RDT Trading{% endblock %}
+
+{% block dashboard_css %}
+<style>
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 25px;
+    }
+    .page-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 5px; }
+    .page-subtitle { color: var(--text-light); font-size: 0.9rem; }
+
+    /* Tabs */
+    .options-tabs {
+        display: flex;
+        gap: 0;
+        border-bottom: 2px solid var(--border);
+        margin-bottom: 25px;
+    }
+    .options-tab {
+        padding: 12px 24px;
+        cursor: pointer;
+        border: none;
+        background: none;
+        color: var(--text-light);
+        font-size: 0.9rem;
+        font-weight: 500;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -2px;
+        transition: all 0.3s;
+    }
+    .options-tab:hover { color: var(--text); }
+    .options-tab.active {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Summary cards */
+    .summary-cards {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 15px;
+        margin-bottom: 25px;
+    }
+    .summary-card {
+        background: var(--card);
+        border-radius: 10px;
+        padding: 20px;
+        border: 1px solid var(--border);
+    }
+    .summary-card .label {
+        color: var(--text-light);
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+    }
+    .summary-card .value {
+        font-size: 1.5rem;
+        font-weight: 600;
+    }
+
+    /* Tables */
+    .options-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+    }
+    .options-table th {
+        background: var(--card);
+        padding: 10px 8px;
+        text-align: left;
+        font-weight: 600;
+        border-bottom: 2px solid var(--border);
+        white-space: nowrap;
+    }
+    .options-table td {
+        padding: 8px;
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+    }
+    .options-table tr:hover { background: rgba(255,255,255,0.02); }
+    .options-table .num { text-align: right; font-family: monospace; }
+
+    /* Chain viewer */
+    .chain-controls {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+    .chain-controls input, .chain-controls select {
+        padding: 8px 12px;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        background: var(--card);
+        color: var(--text);
+        font-size: 0.9rem;
+    }
+    .chain-controls button {
+        padding: 8px 20px;
+        background: var(--accent);
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 0.9rem;
+    }
+    .chain-controls button:hover { opacity: 0.9; }
+
+    .chain-grid {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        gap: 0;
+        overflow-x: auto;
+    }
+    .chain-grid .strike-col {
+        background: var(--card);
+        padding: 0;
+        min-width: 80px;
+    }
+    .chain-grid .strike-col td, .chain-grid .strike-col th {
+        text-align: center;
+        font-weight: 700;
+        background: var(--primary);
+        color: white;
+    }
+
+    .itm { background: rgba(46, 204, 113, 0.05); }
+    .otm { background: transparent; }
+
+    /* IV gauge */
+    .iv-gauge-container {
+        display: flex;
+        align-items: center;
+        gap: 30px;
+        margin-bottom: 25px;
+    }
+    .iv-gauge {
+        width: 200px;
+        height: 20px;
+        background: linear-gradient(to right, #2ecc71, #f39c12, #e74c3c, #8e44ad);
+        border-radius: 10px;
+        position: relative;
+    }
+    .iv-gauge-marker {
+        position: absolute;
+        top: -5px;
+        width: 4px;
+        height: 30px;
+        background: white;
+        border-radius: 2px;
+        transform: translateX(-50%);
+    }
+    .iv-stat { text-align: center; }
+    .iv-stat .val { font-size: 1.8rem; font-weight: 700; }
+    .iv-stat .lbl { color: var(--text-light); font-size: 0.8rem; }
+
+    .regime-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .regime-low { background: #27ae60; color: white; }
+    .regime-normal { background: #2980b9; color: white; }
+    .regime-high { background: #e67e22; color: white; }
+    .regime-very_high { background: #c0392b; color: white; }
+
+    /* Risk bars */
+    .risk-bar-container {
+        margin-bottom: 15px;
+    }
+    .risk-bar-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 5px;
+        font-size: 0.85rem;
+    }
+    .risk-bar {
+        height: 8px;
+        background: var(--border);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    .risk-bar-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.5s;
+    }
+
+    .positive { color: #2ecc71; }
+    .negative { color: #e74c3c; }
+
+    .loading-spinner {
+        text-align: center;
+        padding: 40px;
+        color: var(--text-light);
+    }
+
+    .no-data {
+        text-align: center;
+        padding: 40px;
+        color: var(--text-light);
+        font-style: italic;
+    }
+
+    @media (max-width: 1024px) {
+        .summary-cards { grid-template-columns: repeat(2, 1fr); }
+        .chain-grid { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
+
+{% block page_content %}
+        <div class="page-header">
+            <div>
+                <div class="page-title">Options Trading</div>
+                <div class="page-subtitle">Chain analysis, IV tracking, and position management</div>
+            </div>
+            <div id="options-status" style="font-size: 0.85rem; color: var(--text-light);">{{ options_positions|length }} position{{ 's' if options_positions|length != 1 }}</div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="options-tabs">
+            <button class="options-tab active" data-tab="overview">Overview</button>
+            <button class="options-tab" data-tab="chain">Chain Viewer</button>
+            <button class="options-tab" data-tab="iv">IV Analysis</button>
+            <button class="options-tab" data-tab="risk">Risk Dashboard</button>
+        </div>
+
+        <!-- Tab 1: Overview -->
+        <div id="tab-overview" class="tab-content active">
+            <div class="summary-cards">
+                <div class="summary-card">
+                    <div class="label">Total Premium</div>
+                    <div class="value" id="total-premium-risk">
+                        {% set total_prem = options_positions|rejectattr('total_premium', 'none')|sum(attribute='total_premium')|default(0, true) %}
+                        ${{ '%.0f'|format(total_prem|abs) }}
+                    </div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">Avg Entry Delta</div>
+                    <div class="value" id="net-delta">
+                        {% if options_positions and options_positions[0].entry_delta is not none %}
+                            {{ '%.3f'|format(options_positions[0].entry_delta) }}
+                        {% else %}—{% endif %}
+                    </div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">Avg Entry IV</div>
+                    <div class="value" id="daily-theta">
+                        {% if options_positions and options_positions[0].entry_iv is not none %}
+                            {{ '%.1f'|format(options_positions[0].entry_iv * 100) }}%
+                        {% else %}—{% endif %}
+                    </div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">Open Positions</div>
+                    <div class="value" id="open-positions">{{ options_positions|length }}</div>
+                </div>
+            </div>
+
+            <h3 style="margin-bottom: 15px;">Active Options Positions</h3>
+            <div id="positions-container">
+                {% if options_positions %}
+                <table class="options-table">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Strategy</th>
+                            <th>Direction</th>
+                            <th>Contracts</th>
+                            <th class="num">Entry Premium</th>
+                            <th class="num">Total Premium</th>
+                            <th class="num">Entry IV</th>
+                            <th class="num">Entry Delta</th>
+                            <th>Opened</th>
+                            <th>Legs</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for pos in options_positions %}
+                        <tr>
+                            <td><strong>{{ pos.symbol }}</strong></td>
+                            <td>{{ pos.strategy_name }}</td>
+                            <td>{{ pos.direction|upper }}</td>
+                            <td>{{ pos.contracts }}</td>
+                            <td class="num">${{ '%.2f'|format(pos.entry_premium) }}</td>
+                            <td class="num">${{ '%.2f'|format(pos.total_premium) }}</td>
+                            <td class="num">{{ '%.1f'|format(pos.entry_iv * 100) if pos.entry_iv else '—' }}%</td>
+                            <td class="num">{{ '%.3f'|format(pos.entry_delta) if pos.entry_delta else '—' }}</td>
+                            <td>{{ pos.entry_time[:10] if pos.entry_time else '—' }}</td>
+                            <td>
+                                {% for leg in pos.legs %}
+                                <div style="font-size: 0.8rem;">
+                                    {% if leg.expiry %}{{ leg.expiry }}{% endif %}
+                                    {% if leg.strike %}${{ leg.strike }}{% endif %}
+                                    {% if leg.right %}{{ leg.right }}{% endif %}
+                                    {% if leg.action %}({{ leg.action }}){% endif %}
+                                    {% if leg.greeks %}
+                                        <span style="color:var(--text-light)">
+                                            D={{ '%.2f'|format(leg.greeks.delta) if leg.greeks.delta else '—' }}
+                                            T={{ '%.3f'|format(leg.greeks.theta) if leg.greeks.theta else '—' }}
+                                        </span>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="no-data">No open options positions.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Tab 2: Chain Viewer -->
+        <div id="tab-chain" class="tab-content">
+            <div class="chain-controls">
+                <input type="text" id="chain-symbol" placeholder="Symbol (e.g. AAPL)" style="width: 150px;">
+                <button id="chain-load-btn">Load Chain</button>
+                <select id="chain-expiry" style="min-width: 160px;">
+                    <option value="">Select Expiration</option>
+                </select>
+                <button id="chain-load-greeks-btn" style="background: var(--primary);">Load Greeks</button>
+            </div>
+
+            <div id="chain-container">
+                <div class="no-data">
+                    <strong>Requires live broker connection.</strong><br>
+                    Chain data is fetched from IBKR in real-time. Start the trading system with broker enabled to use this feature.
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 3: IV Analysis -->
+        <div id="tab-iv" class="tab-content">
+            <div class="chain-controls">
+                <input type="text" id="iv-symbol" placeholder="Symbol (e.g. AAPL)" style="width: 150px;">
+                <button id="iv-load-btn">Analyze IV</button>
+            </div>
+
+            <div id="iv-container">
+                <div class="no-data">
+                    <strong>Requires live broker connection.</strong><br>
+                    IV analysis uses real-time market data. Start the trading system with broker enabled to use this feature.
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 4: Risk Dashboard -->
+        <div id="tab-risk" class="tab-content">
+            <div id="risk-container">
+                <div class="loading-spinner">Loading risk data...</div>
+            </div>
+        </div>
+{% endblock %}
+
+{% block dashboard_js %}
+<script>
+(function() {
+    // Tab switching
+    document.querySelectorAll('.options-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.options-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            tab.classList.add('active');
+            document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+        });
+    });
+
+    const fmt = (n, decimals=2) => {
+        if (n === null || n === undefined || isNaN(n)) return '-';
+        const num = Number(n);
+        if (!isFinite(num)) return '-';
+        return num.toFixed(decimals);
+    };
+    const fmtCurrency = (n) => {
+        if (n === null || n === undefined || isNaN(n)) return '$0';
+        const num = Number(n);
+        if (!isFinite(num)) return '$0';
+        return '$' + num.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+    };
+
+    // ---- Overview Tab ----
+    // Overview is rendered server-side via Jinja2. AJAX refresh uses dashboard API.
+    function loadOverview() {
+        dashboardFetch('/dashboard/api/options')
+            .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(data => {
+                document.getElementById('open-positions').textContent = data.total || 0;
+                document.getElementById('options-status').textContent =
+                    'Last updated: ' + new Date().toLocaleTimeString();
+            })
+            .catch(err => {
+                console.debug('Options refresh error:', err);
+                document.getElementById('options-status').textContent = 'Data from page load';
+            });
+    }
+
+    function renderPositions(positions) {
+        const container = document.getElementById('positions-container');
+        if (!positions || positions.length === 0) {
+            container.innerHTML = '<div class="no-data">No open options positions.</div>';
+            return;
+        }
+
+        let html = '<table class="options-table"><thead><tr>';
+        html += '<th>Symbol</th><th>Strategy</th><th>Direction</th><th>Contracts</th>';
+        html += '<th class="num">Entry</th><th class="num">Current</th>';
+        html += '<th class="num">P&L</th><th class="num">P&L %</th>';
+        html += '<th class="num">Delta</th><th class="num">Theta</th>';
+        html += '<th>Expiry</th><th>Action</th>';
+        html += '</tr></thead><tbody>';
+
+        positions.forEach(pos => {
+            const pnlClass = pos.unrealized_pnl >= 0 ? 'positive' : 'negative';
+            const strat = pos.strategy || {};
+            const safeSymbol = escapeHtml(pos.symbol || '');
+            html += '<tr>';
+            html += '<td><strong>' + safeSymbol + '</strong></td>';
+            html += '<td>' + escapeHtml(strat.name || '-') + '</td>';
+            html += '<td>' + escapeHtml(strat.direction || '-') + '</td>';
+            html += '<td>' + (pos.contracts || 0) + '</td>';
+            html += '<td class="num">' + fmtCurrency(pos.entry_premium) + '</td>';
+            html += '<td class="num">' + fmtCurrency(pos.current_value) + '</td>';
+            html += '<td class="num ' + pnlClass + '">' + fmtCurrency(pos.unrealized_pnl) + '</td>';
+            html += '<td class="num ' + pnlClass + '">' + fmt(pos.unrealized_pnl_pct, 1) + '%</td>';
+            html += '<td class="num">' + fmt(strat.net_delta, 2) + '</td>';
+            html += '<td class="num">' + fmt(strat.net_theta, 2) + '</td>';
+            html += '<td>' + escapeHtml(strat.expiry || '-') + '</td>';
+            html += '<td><button onclick="closePosition(\'' + safeSymbol + '\')" style="padding:4px 10px;background:var(--danger);color:white;border:none;border-radius:4px;cursor:pointer;font-size:0.8rem;">Close</button></td>';
+            html += '</tr>';
+        });
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    window.closePosition = function(symbol) {
+        if (!confirm('Close options position for ' + symbol + '?')) return;
+        fetch('/api/options/positions/' + symbol + '/close', {method: 'POST'})
+            .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(resp => {
+                if (resp.status === 'success') {
+                    loadOverview();
+                } else {
+                    alert('Error: ' + (resp.message || 'Failed to close'));
+                }
+            })
+            .catch(err => alert('Error: ' + err));
+    };
+
+    // ---- Chain Viewer Tab ----
+    document.getElementById('chain-load-btn').addEventListener('click', function() {
+        const symbol = document.getElementById('chain-symbol').value.trim().toUpperCase();
+        if (!symbol) return;
+
+        document.getElementById('chain-container').innerHTML = '<div class="loading-spinner">Loading chain for ' + symbol + '...</div>';
+
+        fetch('/api/options/chain/' + symbol)
+            .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(resp => {
+                if (resp.status !== 'success') {
+                    document.getElementById('chain-container').innerHTML =
+                        '<div class="no-data">' + escapeHtml(resp.message || 'Error loading chain') + '</div>';
+                    return;
+                }
+
+                const data = resp.data;
+                const expirySelect = document.getElementById('chain-expiry');
+                expirySelect.innerHTML = '<option value="">Select Expiration</option>';
+                data.expirations.forEach(exp => {
+                    const opt = document.createElement('option');
+                    opt.value = exp;
+                    // Format YYYYMMDD -> YYYY-MM-DD
+                    opt.textContent = exp.substring(0,4) + '-' + exp.substring(4,6) + '-' + exp.substring(6,8);
+                    expirySelect.appendChild(opt);
+                });
+
+                document.getElementById('chain-container').innerHTML =
+                    '<div class="no-data">Found ' + data.expirations.length + ' expirations and ' + data.strikes.length + ' strikes. Select an expiration and click "Load Greeks".</div>';
+            })
+            .catch(err => {
+                document.getElementById('chain-container').innerHTML =
+                    '<div class="no-data">Error: ' + err + '</div>';
+            });
+    });
+
+    document.getElementById('chain-load-greeks-btn').addEventListener('click', function() {
+        const symbol = document.getElementById('chain-symbol').value.trim().toUpperCase();
+        const expiry = document.getElementById('chain-expiry').value;
+        if (!symbol || !expiry) {
+            alert('Select a symbol and expiration first.');
+            return;
+        }
+
+        document.getElementById('chain-container').innerHTML = '<div class="loading-spinner">Loading Greeks for ' + symbol + ' ' + expiry + '...</div>';
+
+        fetch('/api/options/chain/' + symbol + '/' + expiry)
+            .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(resp => {
+                if (resp.status !== 'success') {
+                    document.getElementById('chain-container').innerHTML =
+                        '<div class="no-data">' + (resp.message || 'Error') + '</div>';
+                    return;
+                }
+                renderChainGrid(resp.data);
+            })
+            .catch(err => {
+                document.getElementById('chain-container').innerHTML =
+                    '<div class="no-data">Error: ' + err + '</div>';
+            });
+    });
+
+    function renderChainGrid(data) {
+        const underlying = data.underlying_price;
+        let html = '<div style="margin-bottom:10px;font-size:0.9rem;">Underlying: <strong>' + data.symbol + '</strong> @ $' + fmt(underlying) + ' | Expiry: ' + data.expiry + '</div>';
+
+        html += '<div style="overflow-x:auto;">';
+        html += '<table class="options-table"><thead><tr>';
+        // Call columns
+        html += '<th class="num">OI</th><th class="num">Vol</th><th class="num">Bid</th><th class="num">Ask</th>';
+        html += '<th class="num">Delta</th><th class="num">Gamma</th><th class="num">Theta</th><th class="num">Vega</th><th class="num">IV</th>';
+        // Strike
+        html += '<th style="text-align:center;background:var(--primary);color:white;">Strike</th>';
+        // Put columns
+        html += '<th class="num">IV</th><th class="num">Vega</th><th class="num">Theta</th><th class="num">Gamma</th><th class="num">Delta</th>';
+        html += '<th class="num">Bid</th><th class="num">Ask</th><th class="num">Vol</th><th class="num">OI</th>';
+        html += '</tr></thead><tbody>';
+
+        const callMap = {};
+        data.calls.forEach(c => { callMap[c.strike] = c.greeks; });
+        const putMap = {};
+        data.puts.forEach(p => { putMap[p.strike] = p.greeks; });
+
+        // Collect all unique strikes
+        const strikes = [...new Set([...data.calls.map(c => c.strike), ...data.puts.map(p => p.strike)])].sort((a,b) => a-b);
+
+        strikes.forEach(strike => {
+            const cg = callMap[strike];
+            const pg = putMap[strike];
+            const callItm = strike < underlying;
+            const putItm = strike > underlying;
+
+            html += '<tr>';
+            // Call side
+            if (cg) {
+                const cls = callItm ? 'itm' : 'otm';
+                html += '<td class="num ' + cls + '">' + (cg.open_interest || 0) + '</td>';
+                html += '<td class="num ' + cls + '">' + (cg.volume || 0) + '</td>';
+                html += '<td class="num ' + cls + '">' + fmt(cg.bid) + '</td>';
+                html += '<td class="num ' + cls + '">' + fmt(cg.ask) + '</td>';
+                html += '<td class="num ' + cls + '">' + fmt(cg.delta, 3) + '</td>';
+                html += '<td class="num ' + cls + '">' + fmt(cg.gamma, 4) + '</td>';
+                html += '<td class="num ' + cls + '">' + fmt(cg.theta, 3) + '</td>';
+                html += '<td class="num ' + cls + '">' + fmt(cg.vega, 3) + '</td>';
+                html += '<td class="num ' + cls + '">' + fmt(cg.implied_vol * 100, 1) + '%</td>';
+            } else {
+                html += '<td colspan="9" class="num">-</td>';
+            }
+
+            // Strike column
+            html += '<td style="text-align:center;font-weight:700;background:var(--primary);color:white;">' + fmt(strike) + '</td>';
+
+            // Put side
+            if (pg) {
+                const cls = putItm ? 'itm' : 'otm';
+                html += '<td class="num ' + cls + '">' + fmt(pg.implied_vol * 100, 1) + '%</td>';
+                html += '<td class="num ' + cls + '">' + fmt(pg.vega, 3) + '</td>';
+                html += '<td class="num ' + cls + '">' + fmt(pg.theta, 3) + '</td>';
+                html += '<td class="num ' + cls + '">' + fmt(pg.gamma, 4) + '</td>';
+                html += '<td class="num ' + cls + '">' + fmt(pg.delta, 3) + '</td>';
+                html += '<td class="num ' + cls + '">' + fmt(pg.bid) + '</td>';
+                html += '<td class="num ' + cls + '">' + fmt(pg.ask) + '</td>';
+                html += '<td class="num ' + cls + '">' + (pg.volume || 0) + '</td>';
+                html += '<td class="num ' + cls + '">' + (pg.open_interest || 0) + '</td>';
+            } else {
+                html += '<td colspan="9" class="num">-</td>';
+            }
+
+            html += '</tr>';
+        });
+
+        html += '</tbody></table></div>';
+
+        // Strategy recommendations
+        html += '<div style="margin-top:20px;">';
+        html += '<button onclick="loadStrategies(\'' + data.symbol + '\')" style="padding:8px 20px;background:var(--accent);color:white;border:none;border-radius:5px;cursor:pointer;">Get Strategy Recommendations</button>';
+        html += '</div>';
+        html += '<div id="strategy-recommendations"></div>';
+
+        document.getElementById('chain-container').innerHTML = html;
+    }
+
+    window.loadStrategies = function(symbol) {
+        const container = document.getElementById('strategy-recommendations');
+        container.innerHTML = '<div class="loading-spinner">Loading strategies...</div>';
+
+        fetch('/api/options/strategies/' + symbol)
+            .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(resp => {
+                if (resp.status !== 'success') {
+                    container.innerHTML = '<div class="no-data">' + (resp.message || 'Error') + '</div>';
+                    return;
+                }
+
+                const d = resp.data;
+                let html = '<div style="margin-top:15px;">';
+                html += '<h4>Strategy Recommendations for ' + d.symbol + ' (IV Regime: <span class="regime-badge regime-' + d.iv_regime + '">' + d.iv_regime + '</span>, IV Rank: ' + d.iv_rank + ')</h4>';
+
+                for (const [dir, strat] of Object.entries(d.strategies)) {
+                    html += '<div class="summary-card" style="margin-top:10px;">';
+                    html += '<div class="label">' + dir.toUpperCase() + ' Strategy</div>';
+                    html += '<div style="font-size:1.1rem;font-weight:600;margin-bottom:8px;">' + strat.name + '</div>';
+                    html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;font-size:0.85rem;">';
+                    html += '<div>Max Loss: <strong>$' + fmt(strat.max_loss) + '</strong></div>';
+                    html += '<div>Max Profit: <strong>$' + fmt(strat.max_profit) + '</strong></div>';
+                    html += '<div>Net Premium: <strong>$' + fmt(strat.net_premium) + '</strong></div>';
+                    html += '<div>R/R: <strong>' + fmt(strat.risk_reward_ratio) + '</strong></div>';
+                    html += '</div>';
+
+                    if (strat.legs && strat.legs.length > 0) {
+                        html += '<table class="options-table" style="margin-top:10px;"><thead><tr><th>Leg</th><th>Action</th><th>Strike</th><th>Right</th><th>Expiry</th><th class="num">Delta</th></tr></thead><tbody>';
+                        strat.legs.forEach((leg, i) => {
+                            html += '<tr><td>' + (i+1) + '</td><td>' + leg.action + '</td><td>$' + fmt(leg.contract.strike) + '</td><td>' + leg.contract.right + '</td><td>' + leg.contract.expiry + '</td><td class="num">' + (leg.greeks ? fmt(leg.greeks.delta, 3) : '-') + '</td></tr>';
+                        });
+                        html += '</tbody></table>';
+                    }
+                    html += '</div>';
+                }
+
+                html += '</div>';
+                container.innerHTML = html;
+            })
+            .catch(err => {
+                container.innerHTML = '<div class="no-data">Error: ' + err + '</div>';
+            });
+    };
+
+    // ---- IV Analysis Tab ----
+    document.getElementById('iv-load-btn').addEventListener('click', function() {
+        const symbol = document.getElementById('iv-symbol').value.trim().toUpperCase();
+        if (!symbol) return;
+
+        document.getElementById('iv-container').innerHTML = '<div class="loading-spinner">Analyzing IV for ' + symbol + '...</div>';
+
+        fetch('/api/options/iv/' + symbol)
+            .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(resp => {
+                if (resp.status !== 'success') {
+                    document.getElementById('iv-container').innerHTML =
+                        '<div class="no-data">' + (resp.message || 'Error') + '</div>';
+                    return;
+                }
+                renderIVAnalysis(resp.data);
+            })
+            .catch(err => {
+                document.getElementById('iv-container').innerHTML =
+                    '<div class="no-data">Error: ' + err + '</div>';
+            });
+    });
+
+    function renderIVAnalysis(data) {
+        let html = '<div class="iv-gauge-container">';
+
+        // IV Rank gauge
+        html += '<div class="iv-stat"><div class="val">' + fmt(data.iv_rank, 1) + '</div><div class="lbl">IV Rank</div></div>';
+        html += '<div style="flex:1;max-width:400px;">';
+        html += '<div style="font-size:0.8rem;color:var(--text-light);margin-bottom:5px;">IV Rank (0 = Low, 100 = High)</div>';
+        html += '<div class="iv-gauge"><div class="iv-gauge-marker" style="left:' + Math.min(100, Math.max(0, data.iv_rank)) + '%;"></div></div>';
+        html += '<div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--text-light);margin-top:3px;"><span>0</span><span>30</span><span>50</span><span>80</span><span>100</span></div>';
+        html += '</div>';
+
+        // IV Percentile
+        html += '<div class="iv-stat"><div class="val">' + fmt(data.iv_percentile, 1) + '</div><div class="lbl">IV Percentile</div></div>';
+
+        // Regime badge
+        html += '<div class="iv-stat"><div class="regime-badge regime-' + data.regime + '">' + data.regime.replace('_', ' ') + '</div><div class="lbl" style="margin-top:5px;">IV Regime</div></div>';
+
+        html += '</div>';
+
+        // Detail cards
+        html += '<div class="summary-cards" style="grid-template-columns:repeat(6,1fr);">';
+        html += '<div class="summary-card"><div class="label">Current IV</div><div class="value">' + fmt(data.current_iv * 100, 1) + '%</div></div>';
+        html += '<div class="summary-card"><div class="label">HV 20-Day</div><div class="value">' + fmt(data.hv_20 * 100, 1) + '%</div></div>';
+        html += '<div class="summary-card"><div class="label">IV/HV Ratio</div><div class="value">' + fmt(data.iv_hv_ratio, 2) + 'x</div></div>';
+        html += '<div class="summary-card"><div class="label">52w IV High</div><div class="value">' + fmt(data.iv_high_52w * 100, 1) + '%</div></div>';
+        html += '<div class="summary-card"><div class="label">52w IV Low</div><div class="value">' + fmt(data.iv_low_52w * 100, 1) + '%</div></div>';
+        html += '<div class="summary-card"><div class="label">IV Premium</div><div class="value">' + (data.has_iv_premium ? 'Yes' : 'No') + '</div></div>';
+        html += '</div>';
+
+        // Strategy recommendation based on regime
+        const regimeStrategies = {
+            'low': 'Buy options (long calls/puts) - IV is cheap, options are underpriced',
+            'normal': 'Vertical spreads - balanced risk/reward with moderate IV',
+            'high': 'Sell premium (credit spreads) - IV is elevated, collect premium',
+            'very_high': 'Iron condors - extremely high IV, sell premium on both sides',
+        };
+
+        html += '<div class="summary-card" style="margin-top:15px;">';
+        html += '<div class="label">Recommended Approach for ' + data.regime.replace('_', ' ').toUpperCase() + ' IV</div>';
+        html += '<div style="font-size:1rem;margin-top:5px;">' + (regimeStrategies[data.regime] || 'N/A') + '</div>';
+        html += '</div>';
+
+        document.getElementById('iv-container').innerHTML = html;
+    }
+
+    // ---- Risk Dashboard Tab ----
+    function loadRisk() {
+        // Risk calculations require live broker data
+        document.getElementById('risk-container').innerHTML =
+            '<div class="no-data"><strong>Requires live broker connection.</strong><br>' +
+            'Real-time risk metrics (Greeks, delta exposure) need an active IBKR connection.</div>';
+    }
+
+    function renderRisk(data) {
+        if (!data) { document.getElementById('risk-container').innerHTML = '<div class="no-data">No risk data available.</div>'; return; }
+        const limits = data.limits || {};
+        let html = '';
+
+        // Summary cards
+        html += '<div class="summary-cards">';
+        html += '<div class="summary-card"><div class="label">Net Portfolio Delta</div><div class="value">' + fmt(data.net_portfolio_delta || 0, 1) + '</div></div>';
+        html += '<div class="summary-card"><div class="label">Daily Theta</div><div class="value">' + fmtCurrency(data.daily_theta || 0) + '</div></div>';
+        html += '<div class="summary-card"><div class="label">Premium at Risk</div><div class="value">' + fmtCurrency(data.total_premium_at_risk || 0) + '</div></div>';
+        html += '<div class="summary-card"><div class="label">Open Positions</div><div class="value">' + (data.position_count || 0) + '</div></div>';
+        html += '</div>';
+
+        // Risk bars
+        html += '<h3 style="margin:25px 0 15px;">Risk Utilization</h3>';
+
+        // Premium at risk bar
+        const premRiskPct = (data.premium_risk_pct || 0) * 100;
+        const premLimit = (limits.max_premium_risk_pct || 0.1) * 100;
+        const premColor = premRiskPct > premLimit * 0.8 ? '#e74c3c' : premRiskPct > premLimit * 0.5 ? '#f39c12' : '#2ecc71';
+        html += '<div class="risk-bar-container">';
+        html += '<div class="risk-bar-header"><span>Premium at Risk</span><span>' + fmt(premRiskPct, 1) + '% / ' + fmt(premLimit, 0) + '% limit</span></div>';
+        html += '<div class="risk-bar"><div class="risk-bar-fill" style="width:' + Math.min(100, premRiskPct / premLimit * 100) + '%;background:' + premColor + ';"></div></div>';
+        html += '</div>';
+
+        // Delta bar
+        const absDelta = Math.abs(data.net_portfolio_delta || 0);
+        const deltaLimit = limits.max_portfolio_delta || 200;
+        const deltaColor = absDelta > deltaLimit * 0.8 ? '#e74c3c' : absDelta > deltaLimit * 0.5 ? '#f39c12' : '#2ecc71';
+        html += '<div class="risk-bar-container">';
+        html += '<div class="risk-bar-header"><span>Portfolio Delta</span><span>' + fmt(absDelta, 0) + ' / ' + fmt(deltaLimit, 0) + ' limit</span></div>';
+        html += '<div class="risk-bar"><div class="risk-bar-fill" style="width:' + Math.min(100, absDelta / deltaLimit * 100) + '%;background:' + deltaColor + ';"></div></div>';
+        html += '</div>';
+
+        // Theta bar
+        const thetaPct = (data.theta_pct || 0) * 100;
+        const thetaLimit = (limits.max_daily_theta_pct || 0.005) * 100;
+        const thetaColor = thetaPct > thetaLimit * 0.8 ? '#e74c3c' : thetaPct > thetaLimit * 0.5 ? '#f39c12' : '#2ecc71';
+        html += '<div class="risk-bar-container">';
+        html += '<div class="risk-bar-header"><span>Daily Theta</span><span>' + fmt(thetaPct, 3) + '% / ' + fmt(thetaLimit, 2) + '% limit</span></div>';
+        html += '<div class="risk-bar"><div class="risk-bar-fill" style="width:' + Math.min(100, thetaPct / thetaLimit * 100) + '%;background:' + thetaColor + ';"></div></div>';
+        html += '</div>';
+
+        // Expiration distribution
+        const expDist = data.expiration_distribution || {};
+        const expEntries = Object.entries(expDist).sort();
+        if (expEntries.length > 0) {
+            html += '<h3 style="margin:25px 0 15px;">Expiration Distribution</h3>';
+            html += '<div style="display:flex;gap:10px;flex-wrap:wrap;">';
+            expEntries.forEach(([exp, count]) => {
+                const expFmt = exp.substring(0,4) + '-' + exp.substring(4,6) + '-' + exp.substring(6,8);
+                const warn = count >= 3 ? 'background:#e74c3c;color:white;' : '';
+                html += '<div class="summary-card" style="min-width:120px;text-align:center;' + warn + '"><div class="label">Expiry</div><div class="value">' + expFmt + '</div><div style="font-size:0.85rem;">' + count + ' position' + (count > 1 ? 's' : '') + '</div></div>';
+            });
+            html += '</div>';
+        }
+
+        document.getElementById('risk-container').innerHTML = html;
+    }
+
+    // Auto-refresh
+    function refreshAll() {
+        loadOverview();
+        // Only refresh risk if tab is visible
+        if (document.getElementById('tab-risk').classList.contains('active')) {
+            loadRisk();
+        }
+    }
+
+    // Initial load
+    loadOverview();
+    loadRisk();
+
+    // Refresh every 30s
+    setInterval(refreshAll, 30000);
+
+    // Load risk when tab becomes active
+    document.querySelectorAll('.options-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            if (tab.dataset.tab === 'risk') loadRisk();
+        });
+    });
+
+})();
+</script>
+{% endblock %}

@@ -56,7 +56,7 @@ Direction: LONG
 ```
 
 ### 4. Manually Execute Trade (in your broker)
-- Open Schwab/TOS
+- Open IBKR Trader Workstation or web portal
 - Look at 5-minute chart for entry
 - Enter position with stop 1.5x ATR below entry
 - Target 3x ATR above entry (2:1 R/R)
@@ -68,29 +68,41 @@ Direction: LONG
 ### Prerequisites:
 - [ ] 6+ months paper trading manually
 - [ ] 75%+ win rate proven
-- [ ] Schwab developer account created
-- [ ] API credentials obtained
+- [ ] IBKR account created and funded
+- [ ] IB Gateway or TWS installed
+- [ ] Market data subscriptions active in IBKR Account Management
 
-### 1. Add Schwab Credentials to .env
+### 1. Configure IBKR in .env
 ```bash
-SCHWAB_APP_KEY=your_app_key_here
-SCHWAB_APP_SECRET=your_secret_here
-SCHWAB_CALLBACK_URL=https://localhost:8080
+BROKER_TYPE=ibkr
+IBKR_HOST=127.0.0.1
+IBKR_PORT=4000               # IB Gateway paper trading port
+IBKR_CLIENT_ID=20
+IBKR_PAPER_TRADING=true
+IBKR_MARKET_DATA_TYPE=1      # Live data (requires subscriptions)
 
 # Set these:
-PAPER_TRADING=false  # ⚠️ REAL MONEY
-AUTO_TRADE=true      # ⚠️ AUTO EXECUTE
+PAPER_TRADING=true            # Start with paper trading
+AUTO_TRADE=true               # Enable auto execution
 ```
 
-### 2. Run Trading Bot
+### 2. Start IB Gateway
 ```bash
-python automation/trading_bot.py
+# If using systemd (recommended):
+systemctl --user start ibgateway
+
+# Or manually:
+~/ibc/gatewaystart.sh
 ```
 
-**First time:** Browser will open for OAuth. Login to Schwab and authorize.
+### 3. Run Trading Bot
+```bash
+python main.py bot --auto --watchlist sp500
+```
 
 **Bot will:**
-- Scan every 5 minutes
+- Connect to IB Gateway on port 4000
+- Scan all ~503 S&P 500 symbols every scan interval
 - Calculate position sizes automatically
 - Enter trades when RRS + daily criteria met
 - Set stops and targets
@@ -115,14 +127,17 @@ Bot will log what it WOULD do without executing.
 
 ## Customize Watchlist
 
-Edit `scanner/realtime_scanner.py`, line ~45:
+Use the `--watchlist` flag:
 
-```python
-def load_watchlist(self) -> List[str]:
-    return [
-        'AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA',
-        # Add your stocks here
-    ]
+```bash
+# Full S&P 500 (~503 symbols, recommended)
+python main.py bot --auto --watchlist sp500
+
+# Core watchlist (50 symbols, faster scans)
+python main.py bot --auto --watchlist core
+
+# Extended watchlist (150+ symbols)
+python main.py bot --auto --watchlist full
 ```
 
 ---

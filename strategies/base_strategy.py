@@ -147,7 +147,7 @@ class StrategyResult:
         days = (self.end_date - self.start_date).days
         if days == 0:
             return 0
-        return (self.total_return_pct / days) * 365
+        return ((1 + self.total_return_pct / 100) ** (365 / days) - 1) * 100
 
     def to_dict(self) -> Dict:
         """Convert to dictionary for serialization"""
@@ -290,6 +290,38 @@ class BaseStrategy(ABC):
         """Remove a tracked position"""
         if symbol in self.positions:
             del self.positions[symbol]
+
+    def get_position_params(self, signal: 'StrategySignal') -> Dict:
+        """
+        Return strategy-specific position parameters for a signal.
+
+        Override in subclasses to provide custom stop/target/sizing params.
+
+        Returns:
+            Dict with keys like stop_atr_mult, target_atr_mult, time_stop_days, etc.
+        """
+        return {
+            'stop_atr_mult': 1.0,
+            'target_atr_mult': 1.5,
+            'time_stop_days': 10,
+            'risk_per_trade': self.risk_per_trade,
+        }
+
+    def get_regime_allocation(self, regime: str) -> float:
+        """
+        Return allocation fraction for the given market regime.
+
+        Override in subclasses to define regime-specific allocations.
+
+        Args:
+            regime: Market regime string (e.g. 'bull_trending', 'low_vol',
+                    'bear_trending', 'high_vol')
+
+        Returns:
+            Fraction of capital allocated in this regime (0.0 - 1.0)
+        """
+        # Default: equal allocation regardless of regime
+        return self.capital_allocation
 
     def get_metrics(self) -> Dict:
         """Get current strategy metrics"""

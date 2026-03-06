@@ -1,555 +1,429 @@
-{% extends "base.html" %}
+{% extends "dashboard_base.html" %}
+{% set active_page = "overview" %}
 
 {% block title %}Dashboard - RDT Trading{% endblock %}
 
-{% block extra_css %}
-<style>
-    .dashboard-layout {
-        display: grid;
-        grid-template-columns: 240px 1fr;
-        min-height: calc(100vh - 60px);
-    }
-    .sidebar {
-        background: var(--primary);
-        padding: 20px;
-        position: sticky;
-        top: 60px;
-        height: calc(100vh - 60px);
-    }
-    .sidebar-nav { list-style: none; }
-    .sidebar-nav li { margin-bottom: 5px; }
-    .sidebar-nav a {
-        display: block;
-        padding: 12px 15px;
-        color: rgba(255,255,255,0.7);
-        border-radius: 5px;
-        transition: all 0.3s;
-    }
-    .sidebar-nav a:hover, .sidebar-nav a.active {
-        background: rgba(255,255,255,0.1);
-        color: white;
-        text-decoration: none;
-    }
-    .sidebar-section {
-        color: rgba(255,255,255,0.5);
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        margin: 20px 0 10px;
-        padding-left: 15px;
-    }
-    .main-content { padding: 25px; }
+{% block page_content %}
+<!-- Orchestrator Offline Banner -->
+<div class="offline-banner" id="orch-offline-banner" style="display:none;background:#fff3e0;color:#e65100;padding:12px 20px;border-radius:8px;margin-bottom:20px;font-weight:500;">
+    Orchestrator is not running. Trading agents are inactive and data may be stale.
+</div>
 
-    .market-bar {
-        background: var(--card);
-        padding: 15px 25px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-radius: 10px;
-        margin-bottom: 25px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    .market-item { display: flex; align-items: center; gap: 15px; }
-    .market-label { color: var(--text-light); font-size: 0.85rem; }
-    .market-value { font-weight: 600; font-size: 1.1rem; }
+<!-- Market Status Bar -->
+<div class="market-bar">
+    <div class="market-item">
+        <div>
+            <div class="market-label">Market Status</div>
+            <div class="market-value">
+                <span class="status-dot {% if market_status == 'open' %}online{% else %}offline{% endif %}" id="market-status-dot"></span>
+                <span id="market-status" style="color: var({% if market_status == 'open' %}--success{% else %}--danger{% endif %});">
+                    {{ market_status|upper if market_status else 'UNKNOWN' }}
+                </span>
+            </div>
+        </div>
+    </div>
+    <div class="market-item">
+        <div>
+            <div class="market-label">Positions</div>
+            <div class="market-value">
+                {{ (positions|length) + (options_positions|length) }} open
+            </div>
+        </div>
+    </div>
+    <div class="market-item">
+        <div>
+            <div class="market-label">Last Updated</div>
+            <div class="market-value" id="last-scan">Just now</div>
+        </div>
+    </div>
+    <div class="market-item">
+        <button class="btn btn-primary" onclick="refreshData()">
+            <span id="refresh-text">Refresh</span>
+        </button>
+    </div>
+</div>
 
-    .signal-row {
-        display: flex;
-        align-items: center;
-        padding: 15px;
-        border-bottom: 1px solid var(--border);
-        transition: background 0.2s;
-    }
-    .signal-row:hover { background: var(--bg); }
-    .signal-row:last-child { border-bottom: none; }
-    .signal-symbol {
-        font-weight: 600;
-        font-size: 1.1rem;
-        width: 80px;
-    }
-    .signal-direction { width: 80px; }
-    .signal-prices {
-        flex: 1;
-        display: flex;
-        gap: 30px;
-    }
-    .signal-price-item { text-align: center; }
-    .signal-price-label { font-size: 0.75rem; color: var(--text-light); }
-    .signal-price-value { font-weight: 500; }
-    .signal-meta { width: 150px; text-align: right; }
-    .signal-rrs { font-weight: 600; }
-    .signal-time { font-size: 0.8rem; color: var(--text-light); }
+<!-- Stats Grid -->
+{% set total_pnl = positions|rejectattr('unrealized_pnl', 'none')|sum(attribute='unrealized_pnl')|default(0, true) %}
+<div class="grid grid-4 mb-2">
+    <div class="stat-card stat-card-accent info">
+        <div class="stat-label">Active Signals</div>
+        <div class="stat-value" id="stat-signals">{{ recent_signals|length }}</div>
+        <div class="stat-change positive">Recent</div>
+    </div>
+    <div class="stat-card stat-card-accent">
+        <div class="stat-label">Open Positions</div>
+        <div class="stat-value" id="stat-positions">{{ positions|length }}</div>
+        <div class="stat-change" id="stat-positions-value">{{ options_positions|length }} options</div>
+    </div>
+    <div class="stat-card stat-card-accent {% if total_pnl >= 0 %}success{% else %}danger{% endif %}">
+        <div class="stat-label">Unrealized P&L</div>
+        <div class="stat-value {% if total_pnl >= 0 %}text-success{% else %}text-danger{% endif %}" id="stat-pnl">
+            {% if total_pnl %}${{ '%+.2f'|format(total_pnl) }}{% else %}$0{% endif %}
+        </div>
+        <div class="stat-change">Stock positions</div>
+    </div>
+    <div class="stat-card stat-card-accent warning">
+        <div class="stat-label">Win Rate</div>
+        <div class="stat-value" id="stat-winrate">{{ stats.win_rate }}%</div>
+        <div class="stat-change">{{ stats.total_trades }} closed trades</div>
+    </div>
+</div>
 
-    .position-card {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 15px;
-        background: var(--bg);
-        border-radius: 8px;
-        margin-bottom: 10px;
-    }
-    .position-info { display: flex; align-items: center; gap: 15px; }
-    .position-pnl { font-weight: 600; font-size: 1.1rem; }
+<!-- Charts Row -->
+<div class="grid grid-2 mb-2">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Strategy P&L</h3>
+        </div>
+        <div class="chart-container chart-container-sm">
+            <canvas id="strategy-pnl-chart"></canvas>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Win / Loss Ratio</h3>
+        </div>
+        <div class="chart-container chart-container-sm">
+            <canvas id="win-rate-chart"></canvas>
+        </div>
+    </div>
+</div>
 
-    .activity-item {
-        display: flex;
-        align-items: center;
-        padding: 10px 0;
-        border-bottom: 1px solid var(--border);
-    }
-    .activity-item:last-child { border-bottom: none; }
-    .activity-icon {
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-right: 12px;
-        font-size: 0.9rem;
-    }
-    .activity-icon.signal { background: #e3f2fd; color: #1565c0; }
-    .activity-icon.trade { background: #e8f5e9; color: #2e7d32; }
-    .activity-icon.alert { background: #fff3e0; color: #e65100; }
-    .activity-text { flex: 1; }
-    .activity-time { font-size: 0.8rem; color: var(--text-light); }
+<!-- Training Phase Progress -->
+<div class="training-phase mb-2" id="training-phase-section" style="display:none;">
+    <div class="training-phase-title">
+        Training Phase Progress
+        <span style="font-size:0.75rem;color:var(--text-light);font-weight:400;">Strategies graduate after enough closed trades</span>
+    </div>
+    <div id="training-phase-bars">
+        <!-- Rendered by JS -->
+    </div>
+</div>
 
-    @media (max-width: 1024px) {
-        .dashboard-layout { grid-template-columns: 1fr; }
-        .sidebar { display: none; }
-    }
-</style>
-{% endblock %}
-
-{% block content %}
-<div class="dashboard-layout">
-    <aside class="sidebar">
-        {% if user %}
-        <div style="padding: 15px; margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-            <div style="color: rgba(255,255,255,0.5); font-size: 0.75rem; text-transform: uppercase; margin-bottom: 5px;">Logged in as</div>
-            <div style="color: white; font-weight: 600;">{{ user.username }}</div>
-            {% if user.is_admin %}
-            <span style="display: inline-block; background: var(--accent); color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; margin-top: 5px;">ADMIN</span>
+<!-- Main Content Grid -->
+<div class="grid grid-2">
+    <!-- Active Signals -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Recent Signals</h3>
+            <a href="/dashboard/signals" class="btn btn-secondary btn-sm">View All</a>
+        </div>
+        <div id="signals-container">
+            {% if recent_signals %}
+            {% for signal in recent_signals[:5] %}
+            <div class="signal-row">
+                <div class="signal-symbol">{{ signal.symbol }}</div>
+                <div class="signal-direction">
+                    <span class="badge {% if signal.direction|upper == 'LONG' %}badge-long{% else %}badge-short{% endif %}">{{ signal.direction|upper }}</span>
+                </div>
+                <div class="signal-prices">
+                    <div class="signal-price-item">
+                        <div class="signal-price-label">Price</div>
+                        <div class="signal-price-value">${{ '%.2f'|format(signal.price or 0) }}</div>
+                    </div>
+                </div>
+                <div class="signal-meta">
+                    <div class="signal-rrs">RRS: {{ '%.2f'|format(signal.rrs or 0) }}</div>
+                    <div class="signal-time">{{ (signal.timestamp or '')[:16] }}</div>
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="text-center text-muted" style="padding: 40px;">
+                No recent signals
+            </div>
             {% endif %}
         </div>
-        {% endif %}
-        <ul class="sidebar-nav">
-            <li><a href="/dashboard" class="active">Overview</a></li>
-            <li><a href="/dashboard/signals">Active Signals</a></li>
-            <li><a href="/dashboard/positions">Positions</a></li>
-            <li><a href="/dashboard/history">History</a></li>
-        </ul>
-        <div class="sidebar-section">Analysis</div>
-        <ul class="sidebar-nav">
-            <li><a href="/dashboard/scanner">Live Scanner</a></li>
-            <li><a href="/dashboard/backtest">Backtest</a></li>
-            <li><a href="/performance">Performance</a></li>
-        </ul>
-        <div class="sidebar-section">Settings</div>
-        <ul class="sidebar-nav">
-            <li><a href="/dashboard/alerts">Alerts</a></li>
-            <li><a href="/dashboard/settings">Settings</a></li>
-            <li><a href="/api/v1/health" target="_blank">API Status</a></li>
-        </ul>
-        <div class="sidebar-section">Account</div>
-        <ul class="sidebar-nav">
-            <li><a href="/logout" style="color: #e74c3c;">Logout</a></li>
-        </ul>
-    </aside>
+    </div>
 
-    <main class="main-content">
-        <!-- Market Status Bar -->
-        <div class="market-bar">
-            <div class="market-item">
-                <div>
-                    <div class="market-label">Market Status</div>
-                    <div class="market-value">
-                        <span class="status-dot" id="market-status-dot"></span>
-                        <span id="market-status">Loading...</span>
-                    </div>
-                </div>
-            </div>
-            <div class="market-item">
-                <div>
-                    <div class="market-label">SPY</div>
-                    <div class="market-value">
-                        $<span id="spy-price">---</span>
-                        <span id="spy-change" class="text-muted">(---%)</span>
-                    </div>
-                </div>
-            </div>
-            <div class="market-item">
-                <div>
-                    <div class="market-label">Last Scan</div>
-                    <div class="market-value" id="last-scan">Never</div>
-                </div>
-            </div>
-            <div class="market-item">
-                <button class="btn btn-primary" onclick="refreshData()">
-                    <span id="refresh-text">Refresh</span>
-                </button>
-            </div>
+    <!-- Open Positions -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Open Positions</h3>
+            <a href="/dashboard/positions" class="btn btn-secondary btn-sm">Manage</a>
         </div>
-
-        <!-- Stats Grid -->
-        <div class="grid grid-4 mb-2">
-            <div class="stat-card">
-                <div class="stat-label">Active Signals</div>
-                <div class="stat-value" id="stat-signals">0</div>
-                <div class="stat-change positive" id="stat-signals-change">+0 today</div>
+        <div id="positions-container">
+            {% if positions %}
+            {% for pos in positions %}
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:15px;background:var(--bg);border-radius:8px;margin-bottom:10px;">
+                <div class="position-info" style="display:flex;align-items:center;gap:15px;">
+                    <span class="badge {% if pos.direction|upper == 'LONG' %}badge-long{% else %}badge-short{% endif %}">
+                        {{ pos.direction|upper }}
+                    </span>
+                    <strong>{{ pos.symbol }}</strong>
+                    <span>{{ pos.shares }} @ ${{ '%.2f'|format(pos.entry_price) }}</span>
+                </div>
+                <div style="font-weight:600;font-size:1.1rem;" class="{% if pos.unrealized_pnl and pos.unrealized_pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    {% if pos.unrealized_pnl is not none %}
+                        {{ '%+.2f'|format(pos.unrealized_pnl) }}
+                    {% else %}
+                        —
+                    {% endif %}
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-label">Open Positions</div>
-                <div class="stat-value" id="stat-positions">0</div>
-                <div class="stat-change" id="stat-positions-value">$0 exposure</div>
+            {% endfor %}
+            {% if options_positions %}
+            <div style="padding: 10px 15px; color: var(--text-light); font-size: 0.85rem; border-top: 1px solid var(--border);">
+                + {{ options_positions|length }} options position{{ 's' if options_positions|length != 1 }}
             </div>
-            <div class="stat-card">
-                <div class="stat-label">Today's P&L</div>
-                <div class="stat-value" id="stat-pnl">$0</div>
-                <div class="stat-change" id="stat-pnl-pct">0.00%</div>
+            {% endif %}
+            {% else %}
+            <div class="text-center text-muted" style="padding: 40px;">
+                No open positions
             </div>
-            <div class="stat-card">
-                <div class="stat-label">Win Rate (30d)</div>
-                <div class="stat-value" id="stat-winrate">52.4%</div>
-                <div class="stat-change positive">Target: 50%+</div>
-            </div>
+            {% endif %}
         </div>
+    </div>
+</div>
 
-        <!-- Main Content Grid -->
-        <div class="grid grid-2">
-            <!-- Active Signals -->
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Active Signals</h3>
-                    <a href="/dashboard/signals" class="btn btn-secondary btn-sm">View All</a>
-                </div>
-                <div id="signals-container">
-                    <div class="text-center text-muted" style="padding: 40px;">
-                        <div class="spinner" style="margin: 0 auto 15px;"></div>
-                        Loading signals...
-                    </div>
-                </div>
-            </div>
+<!-- Agent Health Strip -->
+<div class="card mt-2">
+    <div class="card-header">
+        <h3 class="card-title">Agent Health</h3>
+        <a href="/dashboard/agents" class="btn btn-secondary btn-sm">Details</a>
+    </div>
+    <div id="agent-health-strip" style="display:flex;flex-wrap:wrap;gap:10px;padding:15px;">
+        <span style="color:var(--text-light)">Loading...</span>
+    </div>
+</div>
 
-            <!-- Open Positions -->
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Open Positions</h3>
-                    <a href="/dashboard/positions" class="btn btn-secondary btn-sm">Manage</a>
-                </div>
-                <div id="positions-container">
-                    <div class="text-center text-muted" style="padding: 40px;">
-                        No open positions
-                    </div>
-                </div>
-            </div>
+<!-- Strategy Breakdown -->
+<div class="card mt-2">
+    <div class="card-header">
+        <h3 class="card-title">Strategy Breakdown</h3>
+        <a href="/dashboard/strategies" class="btn btn-secondary btn-sm">Manage</a>
+    </div>
+    <div id="strategy-breakdown" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:15px;padding:15px;">
+        <span style="color:var(--text-light)">Loading...</span>
+    </div>
+</div>
+
+<!-- Recent Activity -->
+<div class="card mt-2">
+    <div class="card-header">
+        <h3 class="card-title">Recent Activity</h3>
+        <span class="text-muted" id="activity-count">0 events today</span>
+    </div>
+    <div id="activity-container">
+        <div class="text-center text-muted" style="padding: 30px;">
+            No recent activity
         </div>
-
-        <!-- Recent Activity -->
-        <div class="card mt-2">
-            <div class="card-header">
-                <h3 class="card-title">Recent Activity</h3>
-                <span class="text-muted" id="activity-count">0 events today</span>
-            </div>
-            <div id="activity-container">
-                <div class="text-center text-muted" style="padding: 30px;">
-                    No recent activity
-                </div>
-            </div>
-        </div>
-    </main>
+    </div>
 </div>
 {% endblock %}
 
-{% block extra_js %}
-<script src="{{ url_for('static', filename='js/websocket.js') }}"></script>
+{% block dashboard_js %}
 <script>
-    // Dashboard state
-    let dashboardData = {
-        signals: [],
-        positions: [],
-        activity: [],
-        stats: {}
-    };
-
-    // WebSocket connection
-    let dashboardSocket = null;
-
-    // Fetch dashboard data
-    async function fetchDashboardData() {
-        try {
-            const res = await fetch('/api/v1/dashboard');
-            if (!res.ok) throw new Error(`Dashboard API returned ${res.status}`);
-            const data = await res.json();
-
-            // Update market status
-            updateMarketStatus({
-                market_status: data.market_status,
-                active_signals: data.active_signals_count,
-                last_scan: data.timestamp
-            });
-
-            // Update signals
-            dashboardData.signals = data.recent_signals || [];
-            renderSignals();
-
-            // Update performance stats
-            updateStats(data.performance);
-
-        } catch (error) {
-            console.error('Error fetching data:', error);
-        }
-    }
-
-    function updateMarketStatus(status) {
-        const dot = document.getElementById('market-status-dot');
-        const text = document.getElementById('market-status');
-        const lastScan = document.getElementById('last-scan');
-
-        if (status.market_status === 'open') {
-            dot.className = 'status-dot online';
-            text.textContent = 'OPEN';
-            text.style.color = 'var(--success)';
-        } else {
-            dot.className = 'status-dot offline';
-            text.textContent = 'CLOSED';
-            text.style.color = 'var(--danger)';
-        }
-
-        if (status.last_scan) {
-            const scanTime = new Date(status.last_scan);
-            lastScan.textContent = scanTime.toLocaleTimeString();
-        }
-
-        document.getElementById('stat-signals').textContent = status.active_signals || 0;
-    }
-
-    function updateStats(perf) {
-        if (!perf) return;
-
-        const winRate = (perf.win_rate * 100).toFixed(1);
-        document.getElementById('stat-winrate').textContent = winRate + '%';
-
-        const winRateChange = document.getElementById('stat-winrate')
-            .parentElement.querySelector('.stat-change');
-        if (perf.win_rate >= 0.5) {
-            winRateChange.className = 'stat-change positive';
-        } else {
-            winRateChange.className = 'stat-change negative';
-        }
-    }
-
-    function renderSignals() {
-        const container = document.getElementById('signals-container');
-
-        if (dashboardData.signals.length === 0) {
-            container.innerHTML = `
-                <div class="text-center text-muted" style="padding: 40px;">
-                    No active signals right now
-                </div>
-            `;
-            return;
-        }
-
-        function escapeHtml(str) {
-            if (str === null || str === undefined) return '';
-            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-        }
-
-        let html = '';
-        dashboardData.signals.slice(0, 5).forEach(signal => {
-            const dirClass = signal.direction === 'long' ? 'badge-long' : 'badge-short';
-            const strengthClass = signal.strength === 'strong' ? 'badge-strong' : 'badge-moderate';
-
-            html += `
-                <div class="signal-row">
-                    <div class="signal-symbol">${escapeHtml(signal.symbol)}</div>
-                    <div class="signal-direction">
-                        <span class="badge ${dirClass}">${escapeHtml((signal.direction || '').toUpperCase())}</span>
-                    </div>
-                    <div class="signal-prices">
-                        <div class="signal-price-item">
-                            <div class="signal-price-label">Entry</div>
-                            <div class="signal-price-value">$${signal.entry_price.toFixed(2)}</div>
-                        </div>
-                        <div class="signal-price-item">
-                            <div class="signal-price-label">Stop</div>
-                            <div class="signal-price-value text-danger">$${signal.stop_price.toFixed(2)}</div>
-                        </div>
-                        <div class="signal-price-item">
-                            <div class="signal-price-label">Target</div>
-                            <div class="signal-price-value text-success">$${signal.target_price.toFixed(2)}</div>
-                        </div>
-                    </div>
-                    <div class="signal-meta">
-                        <div class="signal-rrs">RRS: ${signal.rrs.toFixed(2)}</div>
-                        <div class="signal-time">${new Date(signal.generated_at).toLocaleTimeString()}</div>
-                    </div>
-                </div>
-            `;
-        });
-
-        container.innerHTML = html;
-    }
-
+    // --- Refresh ---
     function refreshData() {
         const btn = document.getElementById('refresh-text');
         btn.textContent = 'Refreshing...';
-        fetchDashboardData().then(() => {
-            btn.textContent = 'Refresh';
-        });
-    }
-
-    // Initialize WebSocket connection
-    function initWebSocket() {
-        try {
-            dashboardSocket = new RDTDashboardSocket({
-                debug: false
-            });
-
-            // Subscribe to relevant rooms
-            dashboardSocket.ws.on('connect', function() {
-                console.log('WebSocket connected');
-                dashboardSocket.subscribe(['signals', 'positions', 'alerts', 'scanner']);
-            });
-
-            // Handle new signals
-            dashboardSocket.ws.on('signal', function(data) {
-                console.log('New signal received:', data);
-                const signal = data.data || data;
-
-                // Add to dashboard signals
-                dashboardData.signals.unshift(signal);
-                if (dashboardData.signals.length > 20) {
-                    dashboardData.signals.pop();
-                }
-
-                // Update UI
-                renderSignals();
-
-                // Add to activity
-                addActivity('signal', `New ${signal.direction.toUpperCase()} signal: ${signal.symbol}`);
-            });
-
-            // Handle position updates
-            dashboardSocket.ws.on('position', function(data) {
-                console.log('Position update:', data);
-                const position = data.data || data;
-
-                // Update positions
-                const index = dashboardData.positions.findIndex(p => p.position_id === position.position_id);
-                if (index >= 0) {
-                    dashboardData.positions[index] = position;
+        dashboardFetch('/dashboard/api/positions')
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('stat-positions').textContent = data.stock_positions ? data.stock_positions.length : 0;
+                const dot = document.getElementById('market-status-dot');
+                const text = document.getElementById('market-status');
+                if (data.market_status === 'open') {
+                    dot.className = 'status-dot online';
+                    text.textContent = 'OPEN';
+                    text.style.color = 'var(--success)';
                 } else {
-                    dashboardData.positions.push(position);
+                    dot.className = 'status-dot offline';
+                    text.textContent = 'CLOSED';
+                    text.style.color = 'var(--danger)';
                 }
+                document.getElementById('last-scan').textContent = new Date().toLocaleTimeString();
+            })
+            .catch(err => console.error('Refresh error:', err))
+            .finally(() => { btn.textContent = 'Refresh'; });
+    }
 
-                renderPositions();
-            });
+    // --- Overview fetch (agents + strategies + charts) ---
+    let strategyPnlChart = null;
+    let winRateChart = null;
 
-            // Handle scanner updates
-            dashboardSocket.ws.on('scanner', function(data) {
-                console.log('Scanner update:', data);
-                const scanner = data.data || data;
+    async function fetchOverview() {
+        try {
+            const resp = await dashboardFetch('/dashboard/api/overview');
+            if (!resp.ok) return;
+            const data = await resp.json();
 
-                if (scanner.status === 'completed') {
-                    document.getElementById('last-scan').textContent = new Date().toLocaleTimeString();
-                }
-            });
+            // Orchestrator offline banner
+            const orchBanner = document.getElementById('orch-offline-banner');
+            if (orchBanner) {
+                orchBanner.style.display = data.orchestrator_running ? 'none' : 'block';
+            }
 
-            // Handle alerts
-            dashboardSocket.ws.on('alert', function(data) {
-                console.log('Alert:', data);
-                const alert = data.data || data;
-                addActivity('alert', alert.message || alert.title);
-            });
+            // Agent health strip
+            const strip = document.getElementById('agent-health-strip');
+            if (data.agent_health && data.agent_health.length > 0) {
+                strip.innerHTML = data.agent_health.map(a => {
+                    const color = STATE_COLORS[a.state] || '#95a5a6';
+                    return '<a href="/dashboard/agents" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:var(--bg);border-radius:8px;text-decoration:none;color:var(--text);font-size:0.85rem;border:1px solid var(--border);">' +
+                        '<span style="width:8px;height:8px;border-radius:50%;background:' + color + ';display:inline-block;' + (a.state==='running'?'animation:pulse 2s infinite':'') + '"></span>' +
+                        escapeHtml(a.name) + '</a>';
+                }).join('');
+            } else {
+                strip.innerHTML = '<span style="color:var(--text-light);padding:5px;">Orchestrator not running</span>';
+            }
 
-        } catch (error) {
-            console.error('WebSocket initialization error:', error);
+            // Strategy breakdown cards
+            const breakdown = document.getElementById('strategy-breakdown');
+            if (data.strategy_breakdown && data.strategy_breakdown.length > 0) {
+                breakdown.innerHTML = data.strategy_breakdown.map(s => {
+                    const color = STRATEGY_COLORS[s.name] || '#95a5a6';
+                    const label = STRATEGY_LABELS[s.name] || s.name;
+                    const stats = s.stats || {};
+                    const pnl = stats.total_pnl || 0;
+                    const pnlColor = pnl >= 0 ? 'var(--success)' : 'var(--danger)';
+                    return '<div style="background:var(--bg);border-radius:8px;padding:15px;border-left:3px solid ' + color + ';">' +
+                        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+                        '<strong style="font-size:0.9rem;">' + escapeHtml(label) + '</strong>' +
+                        '<span style="font-size:0.75rem;padding:2px 8px;border-radius:10px;background:' + (s.is_active?'#e8f5e9':'#f5f5f5') + ';color:' + (s.is_active?'#2e7d32':'#999') + '">' + (s.is_active?'Active':'Inactive') + '</span>' +
+                        '</div>' +
+                        '<div style="font-size:0.8rem;color:var(--text-light);">' +
+                        'Alloc: ' + (s.capital_allocation*100).toFixed(0) + '% | Pos: ' + s.open_positions + '/' + s.max_positions +
+                        '</div>' +
+                        '<div style="font-size:0.85rem;margin-top:5px;">' +
+                        'P&L: <span style="color:' + pnlColor + ';font-weight:600;">$' + pnl.toFixed(2) + '</span> | ' +
+                        (stats.total_trades||0) + ' trades' +
+                        '</div></div>';
+                }).join('');
+
+                // Build Strategy P&L chart
+                buildStrategyPnlChart(data.strategy_breakdown);
+            } else {
+                breakdown.innerHTML = '<span style="color:var(--text-light);">No strategies registered</span>';
+            }
+
+            // Win rate chart from stats
+            buildWinRateChart(data.stats);
+
+        } catch (err) {
+            console.error('Overview fetch error:', err);
         }
     }
 
-    // Add activity to the feed
-    function addActivity(type, message) {
-        const container = document.getElementById('activity-container');
-        const countEl = document.getElementById('activity-count');
-
-        // Clear empty state
-        const emptyState = container.querySelector('.empty-state, .text-center');
-        if (emptyState) {
-            emptyState.remove();
-        }
-
-        // Create activity element
-        const iconClass = type === 'signal' ? 'signal' : (type === 'trade' ? 'trade' : 'alert');
-        const iconSymbol = type === 'signal' ? 'S' : (type === 'trade' ? 'T' : '!');
-
-        const activityHtml = `
-            <div class="activity-item" style="animation: highlightNew 2s ease;">
-                <div class="activity-icon ${iconClass}">${iconSymbol}</div>
-                <div class="activity-text">${message}</div>
-                <div class="activity-time">${new Date().toLocaleTimeString()}</div>
-            </div>
-        `;
-
-        container.insertAdjacentHTML('afterbegin', activityHtml);
-
-        // Keep only last 10 activities
-        while (container.children.length > 10) {
-            container.lastElementChild.remove();
-        }
-
-        // Update count
-        const count = container.querySelectorAll('.activity-item').length;
-        countEl.textContent = `${count} events today`;
-    }
-
-    // Render positions
-    function renderPositions() {
-        const container = document.getElementById('positions-container');
-
-        if (dashboardData.positions.length === 0) {
-            container.innerHTML = `
-                <div class="text-center text-muted" style="padding: 40px;">
-                    No open positions
-                </div>
-            `;
-            return;
-        }
-
-        let html = '';
-        dashboardData.positions.forEach(position => {
-            const pnlClass = position.unrealized_pnl >= 0 ? 'text-success' : 'text-danger';
-            const pnlSign = position.unrealized_pnl >= 0 ? '+' : '';
-
-            html += `
-                <div class="position-card">
-                    <div class="position-info">
-                        <span class="badge ${position.direction === 'long' ? 'badge-long' : 'badge-short'}">
-                            ${position.direction.toUpperCase()}
-                        </span>
-                        <strong>${position.symbol}</strong>
-                        <span>${position.quantity} @ $${position.entry_price.toFixed(2)}</span>
-                    </div>
-                    <div class="position-pnl ${pnlClass}">
-                        ${pnlSign}$${position.unrealized_pnl.toFixed(2)}
-                    </div>
-                </div>
-            `;
+    function buildStrategyPnlChart(strategies) {
+        const names = [];
+        const pnls = [];
+        const colors = [];
+        strategies.forEach(s => {
+            names.push(STRATEGY_SHORT[s.name] || s.name);
+            const pnl = (s.stats && s.stats.total_pnl) || 0;
+            pnls.push(pnl);
+            colors.push(STRATEGY_COLORS[s.name] || '#95a5a6');
         });
 
-        container.innerHTML = html;
-        document.getElementById('stat-positions').textContent = dashboardData.positions.length;
+        if (strategyPnlChart) strategyPnlChart.destroy();
+        strategyPnlChart = createChart('strategy-pnl-chart', 'bar', {
+            labels: names,
+            datasets: [{
+                label: 'P&L ($)',
+                data: pnls,
+                backgroundColor: colors,
+                borderRadius: 6,
+                borderSkipped: false,
+            }]
+        }, {
+            indexAxis: 'y',
+            plugins: {
+                legend: { display: false },
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(0,0,0,0.05)' },
+                    ticks: {
+                        callback: function(v) { return '$' + v; },
+                        color: '#666',
+                    }
+                },
+                y: {
+                    grid: { display: false },
+                    ticks: { color: '#666' }
+                }
+            }
+        });
     }
 
-    // Initial load
-    fetchDashboardData();
+    function buildWinRateChart(stats) {
+        if (!stats || !stats.total_trades) return;
+        const wins = Math.round(stats.win_rate * stats.total_trades / 100);
+        const losses = stats.total_trades - wins;
 
-    // Initialize WebSocket
-    initWebSocket();
+        if (winRateChart) winRateChart.destroy();
+        winRateChart = createChart('win-rate-chart', 'doughnut', {
+            labels: ['Wins', 'Losses'],
+            datasets: [{
+                data: [wins, losses],
+                backgroundColor: ['#27ae60', '#e74c3c'],
+                borderWidth: 0,
+                spacing: 2,
+            }]
+        }, {
+            cutout: '65%',
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                            const pct = ((ctx.raw / total) * 100).toFixed(1);
+                            return ctx.label + ': ' + ctx.raw + ' (' + pct + '%)';
+                        }
+                    }
+                }
+            }
+        });
+    }
 
-    // Auto-refresh every 30 seconds (as fallback)
-    setInterval(fetchDashboardData, 30000);
+    // --- Training Phase ---
+    async function fetchTrainingPhase() {
+        try {
+            const resp = await dashboardFetch('/dashboard/api/strategies/detail');
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const strategies = data.strategies || [];
+            const section = document.getElementById('training-phase-section');
+            const bars = document.getElementById('training-phase-bars');
+
+            const hasTraining = strategies.some(s => s.training_phase);
+            if (!hasTraining) {
+                section.style.display = 'none';
+                return;
+            }
+
+            section.style.display = '';
+            bars.innerHTML = strategies.map(s => {
+                const tp = s.training_phase;
+                if (!tp) return '';
+                const color = STRATEGY_COLORS[s.name] || '#95a5a6';
+                const label = STRATEGY_LABELS[s.name] || s.name;
+                const pct = tp.progress_pct || 0;
+                const graduated = !tp.is_training;
+                const statusBadge = graduated
+                    ? '<span class="training-badge-graduated">GRADUATED</span>'
+                    : '<span class="training-badge-training">TRAINING</span>';
+
+                return '<div class="training-item">' +
+                    '<div class="training-label" style="color:' + color + '">' + escapeHtml(label) + '</div>' +
+                    '<div class="training-bar"><div class="training-bar-fill" style="width:' + pct.toFixed(0) + '%;background:' + color + '"></div></div>' +
+                    '<div class="training-status">' + tp.closed_trades + '/' + tp.graduation_target + ' trades ' + statusBadge + '</div>' +
+                    '</div>';
+            }).join('');
+        } catch (err) {
+            console.error('Training phase error:', err);
+        }
+    }
+
+    // Init
+    fetchOverview();
+    fetchTrainingPhase();
+
+    setInterval(refreshData, 60000);
+    setInterval(fetchOverview, 60000);
+    setInterval(fetchTrainingPhase, 60000);
 </script>
 {% endblock %}

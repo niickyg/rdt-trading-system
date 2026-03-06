@@ -37,10 +37,7 @@ RUN pip install --no-cache-dir -r ${REQUIREMENTS_FILE}
 RUN if [ "$INSTALL_ML" = "true" ]; then \
     pip install --no-cache-dir \
     xgboost>=2.0.0 \
-    lightgbm>=4.0.0 \
-    hmmlearn>=0.3.0 \
-    optuna>=3.0.0 \
-    tensorflow-cpu>=2.15.0; \
+    lightgbm>=4.0.0; \
     fi
 
 # Fix curl_cffi impersonation issue (pin to compatible version)

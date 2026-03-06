@@ -181,8 +181,9 @@ class LoggingConfig:
 
         # Loki config
         loki_url = os.environ.get('LOKI_URL', '')
+        loki_enabled = os.environ.get('LOKI_ENABLED', 'false').lower() == 'true'
         loki = LokiConfig(
-            enabled=bool(loki_url),
+            enabled=bool(loki_url) and loki_enabled,
             url=loki_url or 'http://localhost:3100',
             level=get_level('LOKI_LEVEL', default_level),
             labels={'app': service_name, 'env': os.environ.get('RDT_ENV', 'development')},
@@ -242,8 +243,12 @@ def _create_context_format(config: LoggingConfig, format_type: LogFormat) -> Cal
                 context = get_full_context()
                 record['extra'].update(context)
             # Escape curly braces so Loguru doesn't interpret them as format placeholders
+            # Also escape angle brackets to prevent loguru color tag parsing
+            # (Python 3.14: <module> in function names triggers ValueError)
             json_output = formatter.format(record)
-            return json_output.replace('{', '{{').replace('}', '}}') + '\n'
+            json_output = json_output.replace('{', '{{').replace('}', '}}')
+            json_output = json_output.replace('<', r'\<')
+            return json_output + '\n'
 
         return json_format
 
@@ -287,7 +292,7 @@ def _create_context_format(config: LoggingConfig, format_type: LogFormat) -> Cal
             return (
                 f"<green>{{time:YYYY-MM-DD HH:mm:ss.SSS}}</green> | "
                 f"<level>{{level: <8}}</level> | "
-                f"<cyan>{{name}}</cyan>:<cyan>{{function}}</cyan>:<cyan>{{line}}</cyan>"
+                f"<cyan>{{name}}:{{function}}:{{line}}</cyan>"
                 f"{context_str} - <level>{{message}}</level>\n"
             )
 
@@ -339,15 +344,26 @@ def configure_logging(config: LoggingConfig = None) -> None:
             file_handler.start()
             _handlers.append(file_handler)
 
-            format_func = _create_context_format(config, config.file.format)
+            # Force TEXT or JSON format for file handlers — COLORED format contains
+            # color tags like <cyan> which loguru parses even with colorize=False,
+            # causing ValueError on Python 3.14 when {function} resolves to <module>
+            file_format = config.file.format
+            if file_format == LogFormat.COLORED:
+                file_format = LogFormat.TEXT
+            format_func = _create_context_format(config, file_format)
             logger.add(
                 file_handler,
                 level=config.file.level.value,
                 format=format_func,
+                colorize=False,
             )
         else:
             # Use Loguru's built-in file rotation
-            format_func = _create_context_format(config, config.file.format)
+            # Force TEXT or JSON format — see above comment
+            file_format = config.file.format
+            if file_format == LogFormat.COLORED:
+                file_format = LogFormat.TEXT
+            format_func = _create_context_format(config, file_format)
             logger.add(
                 str(log_path),
                 level=config.file.level.value,
@@ -355,6 +371,7 @@ def configure_logging(config: LoggingConfig = None) -> None:
                 rotation=config.file.rotation,
                 retention=config.file.retention,
                 compression=config.file.compression,
+                colorize=False,
                 backtrace=True,
                 diagnose=False,  # SECURITY: Never enable - exposes local variables including secrets
             )

@@ -9,6 +9,7 @@ Provides real-time position management with:
 """
 
 import asyncio
+import threading
 from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional, Any
@@ -28,13 +29,6 @@ try:
 except ImportError:
     DATABASE_AVAILABLE = False
     logger.warning("Database not available for position persistence")
-
-try:
-    import yfinance as yf
-    YFINANCE_AVAILABLE = True
-except ImportError:
-    YFINANCE_AVAILABLE = False
-    logger.warning("yfinance not available for price updates")
 
 # Prometheus metrics support (optional)
 try:
@@ -169,9 +163,9 @@ class Position:
             return None
 
         if self.direction == PositionDirection.LONG or self.direction == "long":
-            return (self.exit_price - self.entry_price) * self.shares
+            return (self.exit_price - self.entry_price) * abs(self.shares)
         else:
-            return (self.entry_price - self.exit_price) * self.shares
+            return (self.entry_price - self.exit_price) * abs(self.shares)
 
     @property
     def realized_pnl_pct(self) -> Optional[float]:
@@ -185,17 +179,17 @@ class Position:
     def risk_to_stop(self) -> float:
         """Risk amount to stop loss"""
         if self.direction == PositionDirection.LONG or self.direction == "long":
-            return (self.entry_price - self.stop_price) * self.shares
+            return (self.entry_price - self.stop_price) * abs(self.shares)
         else:
-            return (self.stop_price - self.entry_price) * self.shares
+            return (self.stop_price - self.entry_price) * abs(self.shares)
 
     @property
     def reward_to_target(self) -> float:
         """Potential reward to target"""
         if self.direction == PositionDirection.LONG or self.direction == "long":
-            return (self.target_price - self.entry_price) * self.shares
+            return (self.target_price - self.entry_price) * abs(self.shares)
         else:
-            return (self.entry_price - self.target_price) * self.shares
+            return (self.entry_price - self.target_price) * abs(self.shares)
 
     @property
     def risk_reward_ratio(self) -> float:
@@ -335,7 +329,7 @@ class Position:
             "unrealized_pnl": self.unrealized_pnl,
             "unrealized_pnl_pct": round(self.unrealized_pnl_pct, 2),
             "realized_pnl": self.realized_pnl,
-            "realized_pnl_pct": round(self.realized_pnl_pct, 2) if self.realized_pnl_pct else None,
+            "realized_pnl_pct": round(self.realized_pnl_pct, 2) if self.realized_pnl_pct is not None else None,
             "risk_to_stop": self.risk_to_stop,
             "reward_to_target": self.reward_to_target,
             "risk_reward_ratio": round(self.risk_reward_ratio, 2),
@@ -372,6 +366,7 @@ class PositionTracker:
         """
         self._positions: Dict[str, Position] = {}
         self._closed_positions: List[Position] = []
+        self._lock = threading.Lock()
         self.auto_update_prices = auto_update_prices
         self.update_interval = update_interval
         self._update_task: Optional[asyncio.Task] = None
@@ -411,9 +406,9 @@ class PositionTracker:
                         shares=int(pos_data.get('shares', 0)),
                         stop_price=float(pos_data.get('stop_loss', 0) or 0),
                         target_price=float(pos_data.get('take_profit', 0) or 0),
-                        current_price=pos_data.get('current_price'),
-                        rrs_at_entry=pos_data.get('rrs_at_entry'),
-                        entry_time=datetime.fromisoformat(pos_data['entry_time']) if pos_data.get('entry_time') else datetime.utcnow()
+                        current_price=float(pos_data['current_price']) if pos_data.get('current_price') is not None else None,
+                        rrs_at_entry=float(pos_data['rrs_at_entry']) if pos_data.get('rrs_at_entry') is not None else None,
+                        entry_time=datetime.fromisoformat(pos_data['entry_time']).replace(tzinfo=None) if pos_data.get('entry_time') else datetime.utcnow()
                     )
                     self._positions[symbol] = position
 
@@ -510,11 +505,6 @@ class PositionTracker:
         """
         symbol = symbol.upper()
 
-        # Check if position already exists
-        if symbol in self._positions:
-            logger.warning(f"Position already exists for {symbol}")
-            return {"error": f"Position already exists for {symbol}"}
-
         # Validate direction
         if direction.lower() == 'long':
             dir_enum = PositionDirection.LONG
@@ -543,21 +533,27 @@ class PositionTracker:
             if target_price >= entry_price:
                 return {"error": "Target price must be below entry for short positions"}
 
-        # Create position
-        position = Position(
-            symbol=symbol,
-            direction=dir_enum,
-            entry_price=entry_price,
-            shares=shares,
-            stop_price=stop_price,
-            target_price=target_price,
-            current_price=entry_price,
-            rrs_at_entry=rrs_at_entry
-        )
+        with self._lock:
+            # Check if position already exists
+            if symbol in self._positions:
+                logger.warning(f"Position already exists for {symbol}")
+                return {"error": f"Position already exists for {symbol}"}
 
-        self._positions[symbol] = position
+            # Create position
+            position = Position(
+                symbol=symbol,
+                direction=dir_enum,
+                entry_price=entry_price,
+                shares=shares,
+                stop_price=stop_price,
+                target_price=target_price,
+                current_price=entry_price,
+                rrs_at_entry=rrs_at_entry
+            )
 
-        # Persist to database
+            self._positions[symbol] = position
+
+        # Persist to database (outside lock to avoid holding it during I/O)
         self._save_position_to_db(position)
 
         logger.info(f"Opened {direction} position: {shares} {symbol} @ ${entry_price:.2f}")
@@ -583,20 +579,23 @@ class PositionTracker:
         """
         symbol = symbol.upper()
 
-        if symbol not in self._positions:
-            return {"error": f"No open position for {symbol}"}
+        with self._lock:
+            if symbol not in self._positions:
+                return {"error": f"No open position for {symbol}"}
 
-        position = self._positions[symbol]
-        position.close(exit_price, reason)
+            position = self._positions[symbol]
+            position.close(exit_price, reason)
 
-        # Move to closed positions
-        self._closed_positions.append(position)
-        del self._positions[symbol]
+            # Move to closed positions (cap at 500 to prevent memory leak)
+            self._closed_positions.append(position)
+            if len(self._closed_positions) > 500:
+                self._closed_positions = self._closed_positions[-500:]
+            del self._positions[symbol]
 
-        # Update database
+        # Update database (outside lock)
         self._close_position_in_db(position)
 
-        pnl = position.realized_pnl
+        pnl = position.realized_pnl or 0.0
         logger.info(f"Closed {symbol} position @ ${exit_price:.2f} - P&L: ${pnl:.2f} ({reason})")
 
         return position.to_dict()
@@ -614,14 +613,18 @@ class PositionTracker:
         """
         symbol = symbol.upper()
 
-        if symbol not in self._positions:
-            return {"error": f"No open position for {symbol}"}
+        with self._lock:
+            if symbol not in self._positions:
+                return {"error": f"No open position for {symbol}"}
 
-        position = self._positions[symbol]
-        old_stop = position.stop_price
-        position.update_stop(new_stop_price)
+            position = self._positions[symbol]
+            old_stop = position.stop_price
+            try:
+                position.update_stop(new_stop_price)
+            except ValueError as e:
+                return {"error": str(e)}
 
-        # Persist to database
+        # Persist to database (outside lock)
         self._save_position_to_db(position)
 
         logger.info(f"Updated {symbol} stop: ${old_stop:.2f} -> ${new_stop_price:.2f}")
@@ -641,14 +644,18 @@ class PositionTracker:
         """
         symbol = symbol.upper()
 
-        if symbol not in self._positions:
-            return {"error": f"No open position for {symbol}"}
+        with self._lock:
+            if symbol not in self._positions:
+                return {"error": f"No open position for {symbol}"}
 
-        position = self._positions[symbol]
-        old_target = position.target_price
-        position.update_target(new_target_price)
+            position = self._positions[symbol]
+            old_target = position.target_price
+            try:
+                position.update_target(new_target_price)
+            except ValueError as e:
+                return {"error": str(e)}
 
-        # Persist to database
+        # Persist to database (outside lock)
         self._save_position_to_db(position)
 
         logger.info(f"Updated {symbol} target: ${old_target:.2f} -> ${new_target_price:.2f}")
@@ -679,7 +686,8 @@ class PositionTracker:
         Returns:
             List of position data dictionaries
         """
-        return [pos.to_dict() for pos in self._positions.values()]
+        with self._lock:
+            return [pos.to_dict() for pos in self._positions.values()]
 
     def check_stops_and_targets(self) -> Dict[str, List[Dict[str, Any]]]:
         """
@@ -691,7 +699,10 @@ class PositionTracker:
         stops_hit = []
         targets_hit = []
 
-        for symbol, position in self._positions.items():
+        with self._lock:
+            positions_snapshot = list(self._positions.items())
+
+        for symbol, position in positions_snapshot:
             if position.is_stop_hit():
                 stops_hit.append({
                     "symbol": symbol,
@@ -796,60 +807,60 @@ class PositionTracker:
         return {"error": f"No history found for {symbol}"}
 
     async def update_prices(self) -> None:
-        """Update current prices for all open positions"""
+        """Update current prices for all open positions via IBKR data provider.
+
+        Retries up to 3 times if the data provider call fails.
+        """
         if not self._positions:
             return
 
-        symbols = list(self._positions.keys())
+        if not self._data_provider:
+            logger.debug("No data provider configured — skipping price update")
+            return
 
-        if self._data_provider:
-            # Use data provider for real-time prices
+        symbols = list(self._positions.keys())
+        import asyncio as _asyncio
+
+        for attempt in range(3):
             try:
                 quotes = await self._data_provider.get_quotes(symbols)
                 for symbol, quote in quotes.items():
                     if symbol in self._positions and quote:
-                        self._positions[symbol].current_price = quote.get('price')
+                        price = quote.get('price')
+                        if price and price > 0:
+                            self._positions[symbol].current_price = price
+                break  # success
             except Exception as e:
-                logger.error(f"Error updating prices via data provider: {e}")
-        elif YFINANCE_AVAILABLE:
-            # Fallback to yfinance
-            try:
-                for symbol in symbols:
-                    ticker = yf.Ticker(symbol)
-                    data = ticker.history(period='1d', interval='1m')
-                    if not data.empty:
-                        price = float(data['Close'].iloc[-1])
-                        self._positions[symbol].current_price = price
-            except Exception as e:
-                logger.error(f"Error updating prices via yfinance: {e}")
+                logger.warning(f"Price update attempt {attempt + 1}/3 failed: {e}")
+                if attempt < 2:
+                    await _asyncio.sleep(0.5 * (attempt + 1))
 
         # Update database with new prices
         for position in self._positions.values():
             self._save_position_to_db(position)
 
     def update_prices_sync(self) -> None:
-        """Synchronous version of price update"""
+        """Synchronous wrapper around async update_prices() for Flask route callers."""
         if not self._positions:
             return
-
-        if not YFINANCE_AVAILABLE:
+        if not self._data_provider:
             return
-
         try:
-            symbols = list(self._positions.keys())
-            for symbol in symbols:
-                ticker = yf.Ticker(symbol)
-                data = ticker.history(period='1d', interval='1m')
-                if not data.empty:
-                    price = float(data['Close'].iloc[-1])
-                    self._positions[symbol].current_price = price
-
-            # Update database with new prices
-            for position in self._positions.values():
-                self._save_position_to_db(position)
-
+            import nest_asyncio
+            nest_asyncio.apply()
+        except ImportError:
+            pass
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Already in an async context (e.g. agent thread) — schedule as task
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    pool.submit(lambda: asyncio.run(self.update_prices())).result(timeout=15)
+            else:
+                loop.run_until_complete(self.update_prices())
         except Exception as e:
-            logger.error(f"Error updating prices: {e}")
+            logger.warning(f"Sync price update failed: {e}")
 
     async def _price_update_loop(self) -> None:
         """Background task for automatic price updates"""
@@ -1186,11 +1197,14 @@ class PositionTracker:
 
 # Global position tracker instance
 _position_tracker: Optional[PositionTracker] = None
+_position_tracker_lock = threading.Lock()
 
 
 def get_position_tracker() -> PositionTracker:
     """Get or create the global position tracker instance"""
     global _position_tracker
     if _position_tracker is None:
-        _position_tracker = PositionTracker()
+        with _position_tracker_lock:
+            if _position_tracker is None:
+                _position_tracker = PositionTracker()
     return _position_tracker

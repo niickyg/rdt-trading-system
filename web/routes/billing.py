@@ -470,7 +470,7 @@ def stripe_webhook():
 
     except StripeError as e:
         logger.error(f"Webhook signature verification failed: {e.message}")
-        return jsonify({'error': e.message}), 400
+        return jsonify({'error': 'Webhook verification failed'}), 400
 
     # Import webhook handler
     from payments.webhooks import WebhookHandler

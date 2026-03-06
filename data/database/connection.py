@@ -613,56 +613,28 @@ class DatabaseManager:
         self, max_retries: int = 3, retry_on_deadlock: bool = True
     ) -> Generator[Session, None, None]:
         """
-        Get a database session with automatic deadlock retry.
+        Get a database session with automatic cleanup.
 
-        This context manager will automatically retry the entire transaction
-        if a deadlock is detected, up to max_retries times.
+        Note: A @contextmanager must yield exactly once, so retry logic
+        cannot be implemented here. Callers needing deadlock retry should
+        wrap their ``with`` block in their own retry loop.
 
         Args:
-            max_retries: Maximum number of retry attempts on deadlock
-            retry_on_deadlock: Whether to retry on deadlock (default True)
+            max_retries: Unused, kept for API compatibility
+            retry_on_deadlock: Unused, kept for API compatibility
 
         Yields:
             Session: Database session
-
-        Raises:
-            OperationalError: If all retry attempts fail
-
-        Example:
-            with db_manager.get_session_with_retry() as session:
-                session.add(some_object)
-                # If deadlock occurs, entire transaction is retried
         """
-        last_exception = None
-        for attempt in range(max_retries):
-            session = self.SessionLocal()
-            try:
-                yield session
-                session.commit()
-                return  # Success, exit the retry loop
-            except OperationalError as e:
-                session.rollback()
-                if retry_on_deadlock and is_deadlock(e) and attempt < max_retries - 1:
-                    delay = 0.1 * (2 ** attempt)  # Exponential backoff
-                    delay += random.uniform(0, delay * 0.1)  # Add jitter
-                    logger.warning(
-                        f"Deadlock detected (attempt {attempt + 1}/{max_retries}). "
-                        f"Retrying in {delay:.2f}s"
-                    )
-                    time.sleep(delay)
-                    last_exception = e
-                    continue
-                raise
-            except Exception:
-                session.rollback()
-                raise
-            finally:
-                session.close()
-
-        # If we exhausted all retries
-        if last_exception:
-            logger.error(f"Transaction failed after {max_retries} deadlock retries")
-            raise last_exception
+        session = self.SessionLocal()
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
     @asynccontextmanager
     async def get_async_session(self) -> AsyncGenerator[AsyncSession, None]:
@@ -688,11 +660,15 @@ class DatabaseManager:
         self, max_retries: int = 3, retry_on_deadlock: bool = True
     ) -> AsyncGenerator[AsyncSession, None]:
         """
-        Get an async database session with automatic deadlock retry.
+        Get an async database session with automatic cleanup.
+
+        Note: An @asynccontextmanager must yield exactly once, so retry logic
+        cannot be implemented here. Callers needing deadlock retry should
+        wrap their ``async with`` block in their own retry loop.
 
         Args:
-            max_retries: Maximum number of retry attempts on deadlock
-            retry_on_deadlock: Whether to retry on deadlock (default True)
+            max_retries: Unused, kept for API compatibility
+            retry_on_deadlock: Unused, kept for API compatibility
 
         Yields:
             AsyncSession: Async database session
@@ -703,35 +679,15 @@ class DatabaseManager:
                 "pip install asyncpg aiosqlite"
             )
 
-        last_exception = None
-        for attempt in range(max_retries):
-            session = self._async_session_maker()
-            try:
-                yield session
-                await session.commit()
-                return
-            except OperationalError as e:
-                await session.rollback()
-                if retry_on_deadlock and is_deadlock(e) and attempt < max_retries - 1:
-                    delay = 0.1 * (2 ** attempt)
-                    delay += random.uniform(0, delay * 0.1)
-                    logger.warning(
-                        f"Async deadlock detected (attempt {attempt + 1}/{max_retries}). "
-                        f"Retrying in {delay:.2f}s"
-                    )
-                    await asyncio.sleep(delay)
-                    last_exception = e
-                    continue
-                raise
-            except Exception:
-                await session.rollback()
-                raise
-            finally:
-                await session.close()
-
-        if last_exception:
-            logger.error(f"Async transaction failed after {max_retries} deadlock retries")
-            raise last_exception
+        session = self._async_session_maker()
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
 
     def check_connection(
         self, timeout: float = 5.0, max_retries: int = 3

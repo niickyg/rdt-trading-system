@@ -83,6 +83,7 @@ US_EARLY_CLOSE_DAYS: Set[date] = {
     date(2025, 12, 24),  # Christmas Eve
 
     # 2026
+    date(2026, 7, 2),    # Day before Independence Day (observed)
     date(2026, 11, 27),  # Day after Thanksgiving
     date(2026, 12, 24),  # Christmas Eve
 }

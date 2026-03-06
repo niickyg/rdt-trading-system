@@ -276,12 +276,19 @@ services:
       - ./.env:/app/.env:ro,z
       - ./web:/app/web:z
       - ./agents:/app/agents:z
+      - ./shared:/app/shared:z
       - ./brokers:/app/brokers:z
       - ./ml:/app/ml:z
       - ./payments:/app/payments:z
       - ./alerts:/app/alerts:z
       - ./risk:/app/risk:z
       - ./monitoring:/app/monitoring:z
+      - ./config:/app/config:z
+      - ./scanner:/app/scanner:z
+      - ./options:/app/options:z
+      - ./strategies:/app/strategies:z
+      - ./trading:/app/trading:z
+      - ./migrations:/app/migrations:z
     environment:
       - TZ=America/New_York
       - PYTHONPATH=/app
@@ -294,6 +301,8 @@ services:
       - OTEL_EXPORTER=${OTEL_EXPORTER:-jaeger}
       - JAEGER_ENDPOINT=http://jaeger:14268/api/traces
       - OTEL_TRACES_SAMPLER=parentbased_always_on
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     networks:
       - rdt-network

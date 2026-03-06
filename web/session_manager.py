@@ -11,6 +11,7 @@ Provides:
 import os
 import secrets
 import hashlib
+import threading
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
@@ -247,29 +248,32 @@ class SessionManager:
             return None
 
         session = get_db_session()
-        token_hash = hash_session_token(token)
+        try:
+            token_hash = hash_session_token(token)
 
-        # Find active session
-        user_session = session.query(UserSession).filter(
-            and_(
-                UserSession.session_token == token_hash,
-                UserSession.is_active == True
-            )
-        ).first()
+            # Find active session
+            user_session = session.query(UserSession).filter(
+                and_(
+                    UserSession.session_token == token_hash,
+                    UserSession.is_active == True
+                )
+            ).first()
 
-        if not user_session:
-            return None
+            if not user_session:
+                return None
 
-        # Check expiry
-        expiry_time = user_session.last_activity + timedelta(days=self.expiry_days)
-        if datetime.utcnow() > expiry_time:
-            # Session expired, mark as inactive
-            user_session.is_active = False
-            session.commit()
-            logger.info(f"Session expired for user {user_session.user_id}")
-            return None
+            # Check expiry
+            expiry_time = user_session.last_activity + timedelta(days=self.expiry_days)
+            if datetime.utcnow() > expiry_time:
+                # Session expired, mark as inactive
+                user_session.is_active = False
+                session.commit()
+                logger.info(f"Session expired for user {user_session.user_id}")
+                return None
 
-        return user_session.user_id
+            return user_session.user_id
+        finally:
+            session.close()
 
     def update_activity(self, token: str, ip_address: str = None) -> bool:
         """
@@ -286,29 +290,32 @@ class SessionManager:
             return False
 
         session = get_db_session()
-        token_hash = hash_session_token(token)
-
-        user_session = session.query(UserSession).filter(
-            and_(
-                UserSession.session_token == token_hash,
-                UserSession.is_active == True
-            )
-        ).first()
-
-        if not user_session:
-            return False
-
-        user_session.last_activity = datetime.utcnow()
-        if ip_address:
-            user_session.ip_address = ip_address
-
         try:
-            session.commit()
-            return True
-        except Exception as e:
-            session.rollback()
-            logger.error(f"Error updating session activity: {e}")
-            return False
+            token_hash = hash_session_token(token)
+
+            user_session = session.query(UserSession).filter(
+                and_(
+                    UserSession.session_token == token_hash,
+                    UserSession.is_active == True
+                )
+            ).first()
+
+            if not user_session:
+                return False
+
+            user_session.last_activity = datetime.utcnow()
+            if ip_address:
+                user_session.ip_address = ip_address
+
+            try:
+                session.commit()
+                return True
+            except Exception as e:
+                session.rollback()
+                logger.error(f"Error updating session activity: {e}")
+                return False
+        finally:
+            session.close()
 
     def get_user_sessions(
         self,
@@ -532,11 +539,14 @@ class SessionManager:
 
 # Global session manager instance
 _session_manager: Optional[SessionManager] = None
+_session_manager_lock = threading.Lock()
 
 
 def get_session_manager() -> SessionManager:
-    """Get or create the global session manager instance."""
+    """Get or create the global session manager instance (thread-safe)."""
     global _session_manager
     if _session_manager is None:
-        _session_manager = SessionManager()
+        with _session_manager_lock:
+            if _session_manager is None:
+                _session_manager = SessionManager()
     return _session_manager

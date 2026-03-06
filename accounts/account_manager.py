@@ -456,11 +456,12 @@ class AccountManager:
             }
 
         except Exception as e:
+            logger.error(f"Connection test failed for account {account_id}: {e}")
             return {
                 "success": False,
                 "account_id": account_id,
                 "broker_type": account.broker_type.value,
-                "error": str(e),
+                "error": "Connection test failed",
                 "tested_at": datetime.utcnow().isoformat()
             }
 
@@ -527,8 +528,9 @@ class AccountManager:
             else:
                 result["connected"] = False
         except Exception as e:
+            logger.error(f"Error getting account summary: {e}")
             result["connected"] = False
-            result["error"] = str(e)
+            result["error"] = "Failed to retrieve summary"
 
         return result
 
@@ -545,13 +547,14 @@ class AccountManager:
                 summary = self.get_account_summary(account.id)
                 summaries.append(summary)
             except Exception as e:
+                logger.error(f"Error getting summary for account {account.id}: {e}")
                 summaries.append({
                     "id": account.id,
                     "name": account.name,
                     "broker_type": account.broker_type.value,
                     "is_default": account.is_default,
                     "is_active": account.is_active,
-                    "error": str(e)
+                    "error": "Failed to retrieve summary"
                 })
 
         return summaries

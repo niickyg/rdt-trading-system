@@ -825,7 +825,7 @@ class MLResolver:
                 'regime': 'error',
                 'confidence_scores': {},
                 'strategy_allocation': {},
-                'error': str(e),
+                'error': 'Regime prediction failed',
                 'model_loaded': False,
             }
 

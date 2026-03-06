@@ -359,7 +359,7 @@ class PortfolioAggregator:
                     "account_id": account.id,
                     "account_name": account.name,
                     "broker_type": account.broker_type.value,
-                    "error": str(e)
+                    "error": "Failed to retrieve performance"
                 })
 
         performance.calculated_at = datetime.utcnow()

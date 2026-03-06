@@ -73,13 +73,14 @@ except ImportError:
     BACKTEST_AVAILABLE = False
     logger.warning("BacktestEngine not available")
 
+import pandas as pd
+
 try:
-    import yfinance as yf
-    import pandas as pd
-    YFINANCE_AVAILABLE = True
+    from data.providers.provider_manager import get_provider_manager
+    PROVIDER_MANAGER_AVAILABLE = True
 except ImportError:
-    YFINANCE_AVAILABLE = False
-    logger.warning("yfinance not available")
+    PROVIDER_MANAGER_AVAILABLE = False
+    logger.warning("ProviderManager not available")
 
 try:
     from data.database import get_trades_repository
@@ -231,9 +232,8 @@ def get_current_signals():
     signals = get_active_signals()
 
     # Pagination
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 50, type=int)
-    per_page = min(per_page, 100)  # Cap at 100
+    page = max(1, request.args.get('page', 1, type=int))
+    per_page = min(max(1, request.args.get('per_page', 50, type=int)), 100)
     total = len(signals)
     start = (page - 1) * per_page
     end = start + per_page
@@ -271,41 +271,15 @@ def get_quotes():
     symbols = symbols[:20]
 
     quotes = {}
-    if YFINANCE_AVAILABLE:
+    if PROVIDER_MANAGER_AVAILABLE:
         try:
-            # Batch download for all symbols
-            tickers_str = ' '.join(symbols)
-            data = yf.download(tickers_str, period='1d', interval='1m', progress=False)
-
-            if data is not None and not data.empty:
-                for symbol in symbols:
-                    try:
-                        # yfinance returns MultiIndex columns: ('Close', 'AAPL')
-                        # Try MultiIndex access first, then flat column fallback
-                        last_close = None
-                        if isinstance(data.columns, pd.MultiIndex):
-                            # Find the close column name (could be 'Close' or 'close')
-                            level1_vals = data.columns.get_level_values(0).unique()
-                            close_key = 'Close' if 'Close' in level1_vals else 'close'
-                            if (close_key, symbol) in data.columns:
-                                series = data[(close_key, symbol)].dropna()
-                                if len(series) > 0:
-                                    last_close = float(series.iloc[-1])
-                        else:
-                            # Flat columns (older yfinance or single symbol)
-                            close_col = 'Close' if 'Close' in data.columns else 'close'
-                            series = data[close_col].dropna()
-                            if len(series) > 0:
-                                last_close = float(series.iloc[-1])
-
-                        if last_close is not None:
-                            quotes[symbol] = {
-                                'price': round(last_close, 2),
-                                'timestamp': format_timestamp()
-                            }
-                    except Exception as e:
-                        logger.debug(f"Error extracting quote for {symbol}: {e}")
-                        continue
+            pm = get_provider_manager()
+            batch_quotes = pm.get_batch_quotes(symbols)
+            for symbol, quote in batch_quotes.items():
+                quotes[symbol] = {
+                    'price': round(quote.price, 2),
+                    'timestamp': format_timestamp()
+                }
         except Exception as e:
             logger.debug(f"Error batch fetching quotes: {e}")
 
@@ -1323,27 +1297,57 @@ def is_market_open() -> bool:
 
 def get_spy_price() -> Optional[float]:
     """Get current SPY price"""
-    if not YFINANCE_AVAILABLE:
-        return 478.50  # Fallback price
+    if not PROVIDER_MANAGER_AVAILABLE:
+        return None
 
     try:
-        spy = yf.Ticker('SPY')
-        data = spy.history(period='1d', interval='1m')
-        if len(data) > 0:
-            return float(data['Close'].iloc[-1])
+        pm = get_provider_manager()
+        quote = pm.get_quote('SPY')
+        return quote.price
     except Exception as e:
         logger.debug(f"Error fetching SPY price: {e}")
 
-    return 478.50  # Fallback price
+    return None
 
 
 def get_open_positions() -> List[Dict]:
-    """Get currently open positions from database"""
+    """Get currently open positions (stocks + options) from database"""
     # Try to load from database first
     if DATABASE_AVAILABLE:
         try:
             repo = get_trades_repository()
             positions = repo.get_open_positions()
+
+            # Include options positions
+            try:
+                opts = repo.get_all_options_positions()
+                for opt in opts:
+                    entry_prem = float(opt.get('entry_premium', 0))
+                    curr_prem = opt.get('current_premium')
+                    contracts = int(opt.get('contracts', 1))
+                    unreal_pnl = opt.get('unrealized_pnl')
+
+                    positions.append({
+                        'id': f"opt-{opt['id']}",
+                        'symbol': opt['symbol'],
+                        'direction': opt.get('direction', 'long'),
+                        'entry_price': entry_prem,
+                        'shares': contracts,
+                        'entry_time': opt.get('entry_time'),
+                        'stop_loss': None,
+                        'take_profit': None,
+                        'current_price': float(curr_prem) if curr_prem is not None else None,
+                        'pnl': float(unreal_pnl) if unreal_pnl is not None else None,
+                        'pnl_pct': round(
+                            (float(unreal_pnl) / abs(entry_prem * contracts * 100) * 100), 2
+                        ) if unreal_pnl is not None and entry_prem != 0 else None,
+                        'rrs_at_entry': None,
+                        'strategy_name': opt.get('strategy_name'),
+                        'asset_type': 'option',
+                    })
+            except Exception as e:
+                logger.debug(f"Error loading options positions: {e}")
+
             if positions:
                 logger.debug(f"Loaded {len(positions)} positions from database")
                 return positions
@@ -1523,7 +1527,7 @@ def calculate_performance_stats(days: int, strategy: Optional[str]) -> Dict:
 
 def calculate_rrs_for_symbol(symbol: str) -> Optional[Dict]:
     """Calculate RRS for a specific symbol using real data"""
-    if not RRS_AVAILABLE or not YFINANCE_AVAILABLE:
+    if not RRS_AVAILABLE or not PROVIDER_MANAGER_AVAILABLE:
         # Return sample data if dependencies not available
         return {
             'rrs': 1.85,
@@ -1541,23 +1545,18 @@ def calculate_rrs_for_symbol(symbol: str) -> Optional[Dict]:
         # Initialize RRS calculator
         rrs_calc = RRSCalculator(atr_period=14)
 
-        # Fetch stock data
-        ticker = yf.Ticker(symbol)
-        stock_daily = ticker.history(period='60d', interval='1d')
+        # Fetch stock data via ProviderManager
+        pm = get_provider_manager()
 
-        if stock_daily.empty:
+        stock_hist = pm.get_historical(symbol, period='60d', interval='1d')
+        if stock_hist is None or stock_hist.data.empty:
             return None
+        stock_daily = stock_hist.data.copy()
 
-        # Fetch SPY data
-        spy = yf.Ticker('SPY')
-        spy_daily = spy.history(period='60d', interval='1d')
-
-        if spy_daily.empty:
+        spy_hist = pm.get_historical('SPY', period='60d', interval='1d')
+        if spy_hist is None or spy_hist.data.empty:
             return None
-
-        # Normalize column names to lowercase
-        stock_daily.columns = [c.lower() for c in stock_daily.columns]
-        spy_daily.columns = [c.lower() for c in spy_daily.columns]
+        spy_daily = spy_hist.data.copy()
 
         # Calculate ATR
         atr_series = rrs_calc.calculate_atr(stock_daily)
@@ -1601,7 +1600,7 @@ def calculate_rrs_for_symbol(symbol: str) -> Optional[Dict]:
 
 def run_full_rrs_scan() -> List[Dict]:
     """Run full watchlist RRS scan"""
-    if not RRS_AVAILABLE or not YFINANCE_AVAILABLE:
+    if not RRS_AVAILABLE or not PROVIDER_MANAGER_AVAILABLE:
         return []
 
     results = []
@@ -1695,7 +1694,7 @@ def run_backtest_with_params(params: Dict) -> Dict:
     except Exception as e:
         logger.error(f"Error running backtest: {e}")
         return {
-            'error': str(e),
+            'error': 'Backtest failed',
             'total_return_pct': 0,
             'total_trades': 0,
             'win_rate': 0,
@@ -2857,7 +2856,8 @@ def place_bracket_order():
         }), 201
 
     except ValidationError as e:
-        return jsonify({'error': str(e)}), 400
+        logger.warning(f"Bracket order validation failed: {e}")
+        return jsonify({'error': 'Validation failed'}), 400
     except Exception as e:
         return handle_api_error(e, "placing bracket order")
 
@@ -2970,7 +2970,8 @@ def place_trailing_stop_order():
         }), 201
 
     except ValidationError as e:
-        return jsonify({'error': str(e)}), 400
+        logger.warning(f"Trailing stop validation failed: {e}")
+        return jsonify({'error': 'Validation failed'}), 400
     except Exception as e:
         return handle_api_error(e, "placing trailing stop order")
 
@@ -3049,7 +3050,8 @@ def update_trailing_stop(order_id: str):
         })
 
     except ValidationError as e:
-        return jsonify({'error': str(e)}), 400
+        logger.warning(f"Trailing stop update validation failed: {e}")
+        return jsonify({'error': 'Validation failed'}), 400
     except Exception as e:
         return handle_api_error(e, "updating trailing stop {order_id}")
 
@@ -3159,7 +3161,8 @@ def place_oco_order():
         }), 201
 
     except ValidationError as e:
-        return jsonify({'error': str(e)}), 400
+        logger.warning(f"OCO order validation failed: {e}")
+        return jsonify({'error': 'Validation failed'}), 400
     except Exception as e:
         return handle_api_error(e, "placing OCO order")
 
@@ -4154,7 +4157,7 @@ def start_optimization():
             except Exception as e:
                 job['status'] = 'failed'
                 job['completed_at'] = format_timestamp()
-                job['error'] = str(e)
+                job['error'] = 'Optimization failed'
                 logger.error(f"Optimization job {job_id} failed: {e}")
 
         thread = threading.Thread(target=run_optimization, daemon=True)
@@ -5541,7 +5544,7 @@ def get_ml_models_status():
 
 @api_bp.errorhandler(400)
 def bad_request(error):
-    return jsonify({'error': 'Bad request', 'message': str(error)}), 400
+    return jsonify({'error': 'Bad request', 'message': 'Invalid request'}), 400
 
 
 @api_bp.errorhandler(404)

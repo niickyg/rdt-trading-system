@@ -758,7 +758,7 @@ class AlertScheduler:
                     "alert_id": alert.alert_id,
                     "status": "error",
                     "title": alert.title,
-                    "error": str(e),
+                    "error": "Alert processing failed",
                 })
                 logger.error(f"Error processing queued alert {alert.alert_id}: {e}")
 
@@ -819,6 +819,7 @@ class AlertScheduler:
 
 # Global scheduler instance
 _scheduler: Optional[AlertScheduler] = None
+_scheduler_lock = threading.Lock()
 
 
 def get_alert_scheduler() -> AlertScheduler:
@@ -830,8 +831,10 @@ def get_alert_scheduler() -> AlertScheduler:
     """
     global _scheduler
     if _scheduler is None:
-        queue_file = os.environ.get("ALERT_QUEUE_FILE", "data/alerts/queued_alerts.json")
-        _scheduler = AlertScheduler(queue_file=queue_file)
+        with _scheduler_lock:
+            if _scheduler is None:
+                queue_file = os.environ.get("ALERT_QUEUE_FILE", "data/alerts/queued_alerts.json")
+                _scheduler = AlertScheduler(queue_file=queue_file)
     return _scheduler
 
 

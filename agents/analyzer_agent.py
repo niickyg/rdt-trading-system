@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 import numpy as np
+import pandas as pd
 from loguru import logger
 
 from agents.base import BaseAgent
@@ -63,6 +64,15 @@ except ImportError:
     REGIME_PARAMS_AVAILABLE = False
     logger.debug("Regime-adaptive parameters not available for analyzer")
 
+# Intraday data + RRS for 5-minute chart confirmation
+try:
+    from shared.intraday_data import IntradayDataService
+    from shared.indicators.rrs import RRSCalculator as _RRSCalc
+    INTRADAY_AVAILABLE = True
+except ImportError:
+    INTRADAY_AVAILABLE = False
+    logger.debug("Intraday data service not available for analyzer")
+
 
 class AnalyzerAgent(BaseAgent):
     """
@@ -91,6 +101,13 @@ class AnalyzerAgent(BaseAgent):
         self.ensemble = StackedEnsemble(use_xgboost=True, use_random_forest=True, use_lstm=False)
         self.regime_detector = RegimeDetector()
         self.feature_engineer = FeatureEngineer()
+
+        # Per-strategy ML models
+        try:
+            from ml.strategy_models import get_strategy_model_manager
+            self.strategy_model_manager = get_strategy_model_manager()
+        except ImportError:
+            self.strategy_model_manager = None
 
         # ML Thresholds - RELAXED for more signals (previous: 72.0 / 75.0)
         self.min_ml_probability = 62.0  # Was 72.0 — allow more setups through
@@ -136,6 +153,17 @@ class AnalyzerAgent(BaseAgent):
             except Exception as e:
                 logger.warning(f"Could not initialize experiment manager: {e}")
                 self.use_ab_testing = False
+
+        # Intraday data service (lazy-initialized on first use)
+        self._intraday_data: Optional["IntradayDataService"] = None
+        self._intraday_rrs_calc: Optional["_RRSCalc"] = None
+        self._intraday_enabled = INTRADAY_AVAILABLE
+        if self._intraday_enabled:
+            try:
+                from config.settings import get_settings
+                self._intraday_enabled = get_settings().intraday.enabled
+            except Exception:
+                pass
 
         # Track A/B test request IDs for outcome recording
         self._ab_request_mapping: Dict[str, str] = {}  # symbol -> request_id
@@ -211,10 +239,17 @@ class AnalyzerAgent(BaseAgent):
         symbol = signal.get("symbol")
         direction = signal.get("direction")
         price = signal.get("price")
-        atr = signal.get("atr", 0)
-        rrs = signal.get("rrs", 0)
+        atr = signal.get("atr", 0) or 0
+        rrs = signal.get("rrs", 0) or 0
 
-        logger.info(f"Analyzing: {symbol} {direction} RRS={rrs:.2f}")
+        if not price or price <= 0:
+            logger.warning(f"Rejecting signal {symbol}: missing price")
+            return
+
+        strategy_name = signal.get("strategy_name", "rrs_momentum")
+        is_rrs_strategy = strategy_name == "rrs_momentum"
+
+        logger.info(f"Analyzing: {symbol} {direction} strategy={strategy_name} RRS={rrs:.2f}")
 
         # Get adaptive parameters (may be modified by recent performance)
         adaptive_params = self._get_adaptive_params()
@@ -225,22 +260,43 @@ class AnalyzerAgent(BaseAgent):
         if is_in_drawdown:
             logger.info(f"System in drawdown mode - using conservative parameters")
 
+        # Training phase: relax quality gates for strategies collecting trade data
+        training_phase_active = False
+        effective_rr_threshold = self.min_rr_ratio
+        effective_confidence_threshold = self.min_overall_confidence
+
+        if self.use_adaptive_params and self.adaptive_learner:
+            try:
+                strat_params = self.adaptive_learner.get_strategy_parameters(strategy_name)
+                if strat_params.get('is_training', False):
+                    training_phase_active = True
+                    effective_ml_threshold = strat_params['training_ml_threshold']
+                    effective_confidence_threshold = strat_params['training_confidence_threshold']
+                    effective_rr_threshold = strat_params['training_rr_ratio']
+                    logger.info(
+                        f"Training phase active for {strategy_name}: "
+                        f"ml={effective_ml_threshold:.0f}%, conf={effective_confidence_threshold:.0f}%, "
+                        f"rr={effective_rr_threshold:.1f}"
+                    )
+            except Exception as e:
+                logger.warning(f"Training phase query failed for {strategy_name}: {e}")
+
         # Validation checks
         rejection_reasons = []
 
-        # Check 1: RRS strength (using adaptive threshold)
-        if abs(rrs) < effective_rrs_threshold:
+        # Check 1: RRS strength — only for RRS-based strategies
+        if is_rrs_strategy and abs(rrs) < effective_rrs_threshold:
             rejection_reasons.append(f"RRS too weak: {rrs:.2f} < {effective_rrs_threshold:.2f}")
 
-        # Check 2: Daily chart alignment
-        if self.require_daily_alignment:
+        # Check 2: Daily chart alignment — only for RRS-based strategies
+        if is_rrs_strategy and self.require_daily_alignment:
             if direction == "long" and not signal.get("daily_strong"):
                 rejection_reasons.append("Daily chart not strong for long")
             elif direction == "short" and not signal.get("daily_weak"):
                 rejection_reasons.append("Daily chart not weak for short")
 
         # Check 3: ATR reasonableness
-        if price > 0 and atr > 0:
+        if price and price > 0 and atr and atr > 0:
             atr_percent = (atr / price) * 100
             if atr_percent > self.max_atr_percent:
                 rejection_reasons.append(f"ATR too high: {atr_percent:.1f}%")
@@ -282,18 +338,46 @@ class AnalyzerAgent(BaseAgent):
             features = feature_result['features']
             top_features = feature_result['top_features']
 
-            # Get ML prediction using StackedEnsemble
-            # StackedEnsemble returns probability 0-1, convert to 0-100 for consistency
-            if self.ensemble.is_trained:
-                # Reshape features for batch prediction (1 sample)
+            # Get ML prediction — per-strategy model first, then StackedEnsemble, then heuristic
+            ml_probability = None
+
+            # 1) Try per-strategy ML model
+            if self.strategy_model_manager:
+                strat_model = self.strategy_model_manager.get_model(strategy_name)
+                if strat_model.is_trained:
+                    features_array = np.array(features).reshape(1, -1)
+                    ml_probability = strat_model.predict(pd.DataFrame(features_array)) * 100.0
+                    logger.debug(f"Per-strategy model '{strategy_name}' prediction: {ml_probability:.1f}%")
+
+            # 2) Fall back to StackedEnsemble (trained on rrs_momentum data)
+            if ml_probability is None and is_rrs_strategy and self.ensemble.is_trained:
                 features_array = np.array(features).reshape(1, -1)
                 ml_probability = self.ensemble.predict_success_probability(features_array)[0] * 100.0
-            else:
-                # Fallback: use feature-based heuristic when model not yet trained
-                rrs_score = min(abs(signal.get('rrs', 0)) * 15, 50)
-                trend_score = 25 if (direction == 'long' and signal.get('daily_strong')) or \
-                                   (direction == 'short' and signal.get('daily_weak')) else 10
-                ml_probability = min(rrs_score + trend_score + 25, 100.0)
+
+            # 3) Heuristic fallback — strategy-aware
+            if ml_probability is None:
+                if is_rrs_strategy:
+                    rrs_score = min(abs(signal.get('rrs') or 0) * 15, 50)
+                    trend_score = 25 if (direction == 'long' and signal.get('daily_strong')) or \
+                                       (direction == 'short' and signal.get('daily_weak')) else 10
+                    ml_probability = min(rrs_score + trend_score + 25, 100.0)
+                else:
+                    # Non-RRS strategies: use the strategy's own strength + R/R as heuristic
+                    strength = signal.get('strength', 'moderate')
+                    strength_scores = {'very_strong': 80, 'strong': 70, 'moderate': 60, 'weak': 45}
+                    base_score = strength_scores.get(strength, 60)
+                    # Bonus for good R/R from the strategy's own stop/target
+                    strat_rr = 0
+                    if signal.get('target_price') and signal.get('stop_price') and signal.get('price'):
+                        sp = signal['stop_price']
+                        tp = signal['target_price']
+                        ep = signal['price']
+                        risk = abs(ep - sp)
+                        reward = abs(tp - ep)
+                        if risk > 0:
+                            strat_rr = reward / risk
+                    rr_bonus = min(strat_rr * 5, 15)  # Up to 15 pts for good R/R
+                    ml_probability = min(base_score + rr_bonus, 95.0)
 
             # Detect market regime
             market_regime, regime_confidence = self.regime_detector.detect_regime(signal)
@@ -327,16 +411,17 @@ class AnalyzerAgent(BaseAgent):
 
                     # Re-validate RRS with updated threshold (check 1 may have
                     # used the old threshold; remove old rejection and re-check)
-                    old_rrs_rejection = [
-                        r for r in rejection_reasons if r.startswith("RRS too weak")
-                    ]
-                    for r in old_rrs_rejection:
-                        rejection_reasons.remove(r)
-                    if abs(rrs) < effective_rrs_threshold:
-                        rejection_reasons.append(
-                            f"RRS too weak: {rrs:.2f} < {effective_rrs_threshold:.2f} "
-                            f"(regime={market_regime})"
-                        )
+                    if is_rrs_strategy:
+                        old_rrs_rejection = [
+                            r for r in rejection_reasons if r.startswith("RRS too weak")
+                        ]
+                        for r in old_rrs_rejection:
+                            rejection_reasons.remove(r)
+                        if abs(rrs) < effective_rrs_threshold:
+                            rejection_reasons.append(
+                                f"RRS too weak: {rrs:.2f} < {effective_rrs_threshold:.2f} "
+                                f"(regime={market_regime})"
+                            )
 
                 except Exception as e:
                     logger.warning(f"Regime-adaptive param lookup failed: {e}")
@@ -358,9 +443,9 @@ class AnalyzerAgent(BaseAgent):
                 )
 
             # Check 8: Overall confidence threshold
-            if overall_confidence < self.min_overall_confidence:
+            if overall_confidence < effective_confidence_threshold:
                 rejection_reasons.append(
-                    f"Overall confidence too low: {overall_confidence:.1f}% < {self.min_overall_confidence:.1f}%"
+                    f"Overall confidence too low: {overall_confidence:.1f}% < {effective_confidence_threshold:.1f}%"
                 )
 
             # Check 9: Regime filter - only trade in favorable market conditions
@@ -413,13 +498,28 @@ class AnalyzerAgent(BaseAgent):
             # Re-calculate position sizing with regime-adjusted multipliers
             signal_features["ml_confidence"] = ml_probability
             signal_features["market_regime"] = market_regime
+
+            # For non-RRS strategies that provide their own stop/target,
+            # derive ATR multipliers from the strategy's prices
+            stop_mult = adaptive_params['stop_multiplier']
+            target_mult = adaptive_params['target_multiplier']
+            if not is_rrs_strategy and atr > 0:
+                strat_stop = signal.get('stop_price')
+                strat_target = signal.get('target_price')
+                if strat_stop and strat_target and price:
+                    stop_mult = abs(price - strat_stop) / atr
+                    target_mult = abs(strat_target - price) / atr
+                    # Clamp to reasonable bounds
+                    stop_mult = max(0.5, min(stop_mult, 5.0))
+                    target_mult = max(1.0, min(target_mult, 8.0))
+
             position_result = self.position_sizer.calculate_position_size(
                 account_size=self.risk_manager.current_balance,
                 entry_price=price,
                 atr=atr,
                 direction=direction,
-                stop_multiplier=adaptive_params['stop_multiplier'],
-                target_multiplier=adaptive_params['target_multiplier'],
+                stop_multiplier=stop_mult,
+                target_multiplier=target_mult,
                 signal_features=signal_features,
             )
 
@@ -431,9 +531,9 @@ class AnalyzerAgent(BaseAgent):
             else:
                 rejection_reasons = [r for r in rejection_reasons if "Position size" not in r]
 
-            if position_result.risk_reward_ratio < self.min_rr_ratio:
+            if position_result.risk_reward_ratio < effective_rr_threshold:
                 rejection_reasons.append(
-                    f"R/R too low: {position_result.risk_reward_ratio:.2f}"
+                    f"R/R too low: {position_result.risk_reward_ratio:.2f} < {effective_rr_threshold:.1f}"
                 )
 
             trade_risk = self.risk_manager.validate_trade(
@@ -474,6 +574,10 @@ class AnalyzerAgent(BaseAgent):
             logger.error(f"ML analysis failed: {e}")
             rejection_reasons.append(f"ML analysis error: {str(e)}")
             ml_data = None
+            # If trade_risk was never assigned (validate_trade() not reached or threw),
+            # reject — we cannot approve a trade without risk validation
+            if trade_risk is None:
+                rejection_reasons.append("Risk validation not completed due to ML error")
 
         # Multi-timeframe classification
         timeframe_data = None
@@ -526,6 +630,8 @@ class AnalyzerAgent(BaseAgent):
         if rejection_reasons:
             await self._reject_setup(symbol, direction, rejection_reasons, signal=signal, ml_data=ml_data)
         else:
+            if training_phase_active:
+                signal['training_phase'] = True
             await self._approve_setup(signal, position_result, trade_risk, ml_data, adaptive_params, timeframe_data)
 
     async def _approve_setup(
@@ -538,8 +644,8 @@ class AnalyzerAgent(BaseAgent):
         timeframe_data: Optional[Dict] = None
     ):
         """Approve a valid setup with ML enhancement and timeframe classification"""
-        self.setups_approved += 1
-        self._update_approval_rate()
+        # Note: counter increment is deferred until after the intraday RS gate
+        # to avoid double-counting if the gate rejects. See below before publish().
 
         # Build enhanced setup with original signal data
         setup = {
@@ -553,7 +659,7 @@ class AnalyzerAgent(BaseAgent):
             "position_value": position_result.position_value,
             "risk_amount": position_result.risk_amount,
             "risk_reward_ratio": position_result.risk_reward_ratio,
-            "rrs": signal["rrs"],
+            "rrs": signal.get("rrs"),
             "atr": signal.get("atr"),
             "timestamp": datetime.now().isoformat()
         }
@@ -587,9 +693,92 @@ class AnalyzerAgent(BaseAgent):
                 "partial_profit_pct": timeframe_data.get("partial_profit_pct", 0)
             })
             # Use timeframe-specific stop/target if not overridden by adaptive params
-            if "stop_price" in timeframe_data and not adaptive_params:
+            if "stop_price" in timeframe_data and not adaptive_params.get('is_in_drawdown', False):
                 setup["stop_price"] = timeframe_data["stop_price"]
                 setup["target_price"] = timeframe_data["target_price"]
+
+        # --- Intraday RS Gate: fetch 5m bars and check for RS divergence ---
+        # Only for RRS strategies — non-RRS strategies don't use intraday RS
+        _is_rrs = signal.get("strategy_name", "rrs_momentum") == "rrs_momentum"
+        if self._intraday_enabled and INTRADAY_AVAILABLE and _is_rrs:
+            try:
+                # Lazy-init intraday services
+                if self._intraday_data is None:
+                    from config.settings import get_settings
+                    intraday_cfg = get_settings().intraday
+                    self._intraday_data = IntradayDataService(
+                        cache_ttl_seconds=intraday_cfg.bars_5m_cache_ttl
+                    )
+                    self._intraday_rrs_calc = _RRSCalc()
+
+                # Fetch 5m bars for the candidate + SPY
+                stock_bars_5m = await self._intraday_data.get_5m_bars(signal["symbol"])
+                spy_bars_5m = await self._intraday_data.get_spy_5m_bars()
+
+                if stock_bars_5m is not None and spy_bars_5m is not None:
+                    intraday_result = self._intraday_rrs_calc.calculate_intraday_rrs(
+                        stock_bars_5m, spy_bars_5m
+                    )
+
+                    if intraday_result is not None:
+                        intraday_rrs = intraday_result['intraday_rrs']
+                        intraday_trend = intraday_result['rrs_trend']
+
+                        # Attach to setup for downstream use
+                        setup['_bars_5m'] = stock_bars_5m
+                        setup['intraday_rrs'] = intraday_rrs
+                        setup['intraday_rrs_trend'] = intraday_trend
+                        setup['intraday_rrs_status'] = intraday_result['status']
+
+                        logger.info(
+                            f"Intraday RRS: {signal['symbol']} "
+                            f"rrs={intraday_rrs:.2f} trend={intraday_trend} "
+                            f"status={intraday_result['status']}"
+                        )
+
+                        # Skip if RS diverging: daily strong but intraday weak and falling
+                        from config.settings import get_settings
+                        skip_threshold = get_settings().intraday.skip_entry_rrs_threshold
+
+                        if signal["direction"] == "long":
+                            if intraday_rrs < skip_threshold and intraday_trend == 'falling':
+                                reason = (
+                                    f"Intraday RS divergence: daily RRS strong but "
+                                    f"5m RRS={intraday_rrs:.2f} < {skip_threshold} "
+                                    f"and falling"
+                                )
+                                logger.info(f"REJECTED (intraday): {signal['symbol']} — {reason}")
+                                await self._reject_setup(
+                                    signal["symbol"], signal["direction"],
+                                    [reason], signal=signal, ml_data=ml_data,
+                                )
+                                return
+                        else:  # short
+                            if intraday_rrs > abs(skip_threshold) and intraday_trend == 'rising':
+                                reason = (
+                                    f"Intraday RS divergence (short): daily RRS weak but "
+                                    f"5m RRS={intraday_rrs:.2f} > {abs(skip_threshold)} "
+                                    f"and rising"
+                                )
+                                logger.info(f"REJECTED (intraday): {signal['symbol']} — {reason}")
+                                await self._reject_setup(
+                                    signal["symbol"], signal["direction"],
+                                    [reason], signal=signal, ml_data=ml_data,
+                                )
+                                return
+                    else:
+                        # Attach bars even if RRS calc failed (for entry timing model)
+                        if stock_bars_5m is not None:
+                            setup['_bars_5m'] = stock_bars_5m
+                else:
+                    logger.debug(
+                        f"Intraday RS gate: could not fetch 5m bars for "
+                        f"{signal['symbol']} (stock={stock_bars_5m is not None}, "
+                        f"spy={spy_bars_5m is not None})"
+                    )
+            except Exception as e:
+                logger.warning(f"Intraday RS gate failed for {signal['symbol']}: {e}")
+                # Non-fatal: proceed without intraday check
 
         # Record A/B test prediction if active experiment
         ab_request_id = None
@@ -635,6 +824,10 @@ class AnalyzerAgent(BaseAgent):
                 f"{setup['shares']} shares @ ${setup['entry_price']:.2f} "
                 f"Stop: ${setup['stop_price']:.2f} Target: ${setup['target_price']:.2f}"
             )
+
+        # Increment approved counter here (after intraday gate passed)
+        self.setups_approved += 1
+        self._update_approval_rate()
 
         await self.publish(EventType.SETUP_VALID, setup)
 
@@ -903,7 +1096,7 @@ class AnalyzerAgent(BaseAgent):
                 del self._ab_request_mapping[symbol]
                 logger.info(
                     f"Recorded A/B outcome for {symbol}: {outcome}, "
-                    f"pnl=${pnl:.2f if pnl else 0:.2f}"
+                    f"pnl=${pnl if pnl is not None else 0:.2f}"
                 )
                 return True
 

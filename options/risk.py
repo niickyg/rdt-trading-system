@@ -73,16 +73,18 @@ class OptionsRiskManager:
         warnings = []
 
         # 1. Check max positions per underlying
+        # Note: existing_positions dict is keyed by symbol (max 1 entry per symbol),
+        # so we check if ANY position exists for this underlying to prevent duplicates
         underlying = strategy.underlying
         underlying_count = sum(
             1 for pos in existing_positions.values()
             if pos["strategy"].underlying == underlying
         )
-        if underlying_count >= self._config.max_positions_per_underlying:
+        if underlying_count > 0:
             return RiskCheckResult(
                 False,
-                f"Max {self._config.max_positions_per_underlying} positions "
-                f"per underlying ({underlying} has {underlying_count})"
+                f"Already have an open options position for {underlying} "
+                f"({underlying_count} existing)"
             )
 
         # 2. Check total premium at risk
@@ -112,7 +114,8 @@ class OptionsRiskManager:
 
         # 4. Check daily theta
         current_theta = self._total_daily_theta(existing_positions)
-        new_theta = strategy.net_theta * size_result.contracts
+        multiplier = strategy.legs[0].contract.multiplier if strategy.legs else 100
+        new_theta = strategy.net_theta * size_result.contracts * multiplier
         total_theta = current_theta + new_theta
         max_theta = account_size * self._config.max_daily_theta_pct
 

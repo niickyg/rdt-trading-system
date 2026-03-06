@@ -18,10 +18,15 @@ from typing import Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 from loguru import logger
 
-from risk.risk_manager import SECTOR_MAP
+from data.providers.provider_manager import get_provider_manager
+
+
+def _get_sector_map():
+    """Lazy import to avoid circular dependency (risk_manager ↔ scanner)."""
+    from risk.risk_manager import SECTOR_MAP
+    return SECTOR_MAP
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +104,7 @@ class SectorStrengthFilter:
                 sector_strong: bool - sector_rs > 0
                 sector_weak: bool - sector_rs < -1.0
         """
-        sector = SECTOR_MAP.get(symbol, 'other')
+        sector = _get_sector_map().get(symbol, 'other')
         sector_etf = SECTOR_ETF_MAP.get(sector, '')
 
         # If symbol not in our sector map, return neutral
@@ -234,45 +239,33 @@ class SectorStrengthFilter:
         """
         Fetch sector ETF + SPY data and compute RS for each sector.
 
-        Uses a single yfinance batch download for efficiency.
+        Uses ProviderManager for data fetching.
         """
         tickers = ALL_SECTOR_ETFS + ['SPY']
-        ticker_str = ' '.join(tickers)
 
-        logger.debug(f"Fetching sector ETF data: {ticker_str}")
+        logger.debug(f"Fetching sector ETF data: {tickers}")
 
-        # Fetch enough daily data for 5-day percentage change
-        # Request extra days to account for weekends/holidays
-        data = yf.download(
-            ticker_str,
-            period='1mo',
-            interval='1d',
-            progress=False,
-            auto_adjust=True,
-        )
+        pm = get_provider_manager()
+        batch_data = pm.get_batch_historical(tickers, period='1mo', interval='1d')
 
-        if data is None or data.empty:
-            logger.warning("Sector ETF batch download returned empty data")
+        if not batch_data:
+            logger.warning("Sector ETF batch fetch returned no data")
             return
 
-        # Handle yfinance MultiIndex columns: ('Close', 'XLK')
-        # For single ticker this won't be MultiIndex, but batch always is
-        close_data = None
-        if isinstance(data.columns, pd.MultiIndex):
-            if 'Close' in data.columns.get_level_values(0):
-                close_data = data['Close']
-            elif 'close' in data.columns.get_level_values(0):
-                close_data = data['close']
-        else:
-            # Single ticker edge case (shouldn't happen with batch)
-            close_data = data[['Close']] if 'Close' in data.columns else data[['close']]
+        # Build a close-price DataFrame from HistoricalData objects
+        close_frames = {}
+        for ticker, hist in batch_data.items():
+            if hist and not hist.data.empty:
+                df = hist.data
+                col = 'close' if 'close' in df.columns else 'Close'
+                if col in df.columns:
+                    close_frames[ticker.upper()] = df[col]
 
-        if close_data is None or close_data.empty:
+        if not close_frames:
             logger.warning("Could not extract Close prices from sector ETF data")
             return
 
-        # Normalize column names to uppercase
-        close_data.columns = [str(c).upper() for c in close_data.columns]
+        close_data = pd.DataFrame(close_frames)
 
         # Calculate SPY 5-day % change
         spy_col = 'SPY'
@@ -341,35 +334,17 @@ class SectorStrengthFilter:
         """
         logger.debug("Fetching SPY daily trend data")
 
-        spy = yf.download(
-            'SPY',
-            period='1y',
-            interval='1d',
-            progress=False,
-            auto_adjust=True,
-        )
+        pm = get_provider_manager()
+        hist = pm.get_historical('SPY', period='1y', interval='1d')
 
-        if spy is None or spy.empty:
-            raise ValueError("SPY daily download returned empty data")
+        if hist is None or hist.data.empty:
+            raise ValueError("SPY daily fetch returned empty data")
 
-        # Handle MultiIndex columns (yfinance quirk even for single symbol)
-        if isinstance(spy.columns, pd.MultiIndex):
-            if 'Close' in spy.columns.get_level_values(0):
-                close_series = spy['Close']
-            elif 'close' in spy.columns.get_level_values(0):
-                close_series = spy['close']
-            else:
-                raise ValueError("No Close column in SPY data")
-            # For single symbol MultiIndex, flatten
-            if isinstance(close_series, pd.DataFrame):
-                close_series = close_series.iloc[:, 0]
-        else:
-            if 'Close' in spy.columns:
-                close_series = spy['Close']
-            elif 'close' in spy.columns:
-                close_series = spy['close']
-            else:
-                raise ValueError("No Close column in SPY data")
+        df = hist.data
+        col = 'close' if 'close' in df.columns else 'Close'
+        if col not in df.columns:
+            raise ValueError("No Close column in SPY data")
+        close_series = df[col]
 
         close_series = close_series.dropna()
 

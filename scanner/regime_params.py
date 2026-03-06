@@ -20,7 +20,7 @@ _DEFAULTS = {
     'rrs_threshold': 1.75,
     'min_confidence': 62.0,
     'stop_multiplier': 1.5,
-    'target_multiplier': 4.0,
+    'target_multiplier': 2.5,
     'max_positions': 10,
     'risk_per_trade': 0.03,
     'prefer_mean_reversion': False,
@@ -49,7 +49,7 @@ class RegimeAdaptiveParams:
             'rrs_threshold': 1.5,           # Lower bar — trend is your friend
             'min_confidence': 55.0,         # Relax confidence in strong trend
             'stop_multiplier': 1.5,         # Standard stops
-            'target_multiplier': 4.0,       # Wide targets — let winners run
+            'target_multiplier': 3.0,       # Strong trends allow wider targets
             'max_positions': 10,            # More room in bull market
             'risk_per_trade': 0.03,         # Aggressive risk in bull
             'prefer_mean_reversion': False,
@@ -60,7 +60,7 @@ class RegimeAdaptiveParams:
             'rrs_threshold': 2.0,           # Higher bar — only strong setups
             'min_confidence': 70.0,         # Require high conviction
             'stop_multiplier': 1.5,         # Standard stops
-            'target_multiplier': 4.0,       # Wide targets for asymmetry
+            'target_multiplier': 2.0,       # Tighter targets — reversals faster
             'max_positions': 5,             # Fewer positions
             'risk_per_trade': 0.02,         # Moderate risk
             'prefer_mean_reversion': False,
@@ -71,7 +71,7 @@ class RegimeAdaptiveParams:
             'rrs_threshold': 2.0,           # Slightly higher bar
             'min_confidence': 65.0,         # Moderate confidence required
             'stop_multiplier': 2.0,         # Wider stops to avoid whipsaws
-            'target_multiplier': 4.0,       # Wide targets (vol = opportunity)
+            'target_multiplier': 2.5,       # Wide swings but not extreme
             'max_positions': 6,             # Fewer positions, managed risk
             'risk_per_trade': 0.02,         # Moderate per-trade risk
             'prefer_mean_reversion': True,  # Mean reversion works in chop
@@ -82,7 +82,7 @@ class RegimeAdaptiveParams:
             'rrs_threshold': 1.75,          # Can be a bit more lenient
             'min_confidence': 60.0,         # Slightly relaxed
             'stop_multiplier': 1.5,         # Standard stops
-            'target_multiplier': 4.0,       # Wide targets for asymmetry
+            'target_multiplier': 2.0,       # Tighter ranges in calm markets
             'max_positions': 10,            # Full capacity
             'risk_per_trade': 0.03,         # Full risk in calm markets
             'prefer_mean_reversion': True,  # Mean reversion thrives in calm

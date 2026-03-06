@@ -207,10 +207,10 @@ class BracketOrder:
             OrderError: If order placement fails
         """
         try:
-            # Check if broker supports native bracket orders
-            if hasattr(self.broker, 'place_bracket_order'):
+            # Try native bracket first; fall back to simulated if not supported
+            try:
                 return self._create_native_bracket()
-            else:
+            except NotImplementedError:
                 return self._create_simulated_bracket()
 
         except Exception as e:
@@ -556,14 +556,16 @@ class BracketOrder:
         # Determine overall status
         if self.entry_order and self.entry_order.status == OrderStatus.FILLED:
             if self.take_profit_order and self.take_profit_order.status == OrderStatus.FILLED:
+                prev_status = self.status
                 self.status = BracketOrderStatus.TAKE_PROFIT_FILLED
                 self.exit_reason = "take_profit"
-                if self.on_exit_fill:
+                if self.on_exit_fill and prev_status != BracketOrderStatus.TAKE_PROFIT_FILLED:
                     self.on_exit_fill(self.take_profit_order, "take_profit")
             elif self.stop_loss_order and self.stop_loss_order.status == OrderStatus.FILLED:
+                prev_status = self.status
                 self.status = BracketOrderStatus.STOP_LOSS_FILLED
                 self.exit_reason = "stop_loss"
-                if self.on_exit_fill:
+                if self.on_exit_fill and prev_status != BracketOrderStatus.STOP_LOSS_FILLED:
                     self.on_exit_fill(self.stop_loss_order, "stop_loss")
             else:
                 self.status = BracketOrderStatus.ENTRY_FILLED
@@ -689,12 +691,12 @@ class TrailingStopOrder:
 
         # Determine trail type and direction
         self.trail_type = (
-            TrailingStopType.FIXED_AMOUNT if trail_amount
+            TrailingStopType.FIXED_AMOUNT if trail_amount is not None
             else TrailingStopType.PERCENTAGE
         )
 
         # Direction: SELL = long position (stop below price), BUY = short position (stop above)
-        self.is_long_exit = side in (OrderSide.SELL, OrderSide.SELL_SHORT)
+        self.is_long_exit = side in (OrderSide.SELL, OrderSide.SELL_TO_CLOSE)
 
         # Order tracking
         self.order_id = f"trail_{uuid.uuid4().hex[:12]}"
@@ -720,7 +722,7 @@ class TrailingStopOrder:
             Order object if placed, None if using simulated trailing
         """
         # Try native trailing stop first
-        if hasattr(self.broker, 'place_trailing_stop'):
+        if True:
             try:
                 self.broker_order = self.broker.place_trailing_stop(
                     symbol=self.symbol,
@@ -1001,7 +1003,7 @@ class OCOOrder:
             List of Order objects
         """
         # Try native OCO first
-        if hasattr(self.broker, 'place_oco_order'):
+        if True:
             try:
                 self.orders = self.broker.place_oco_order(
                     symbol=self.symbol,
@@ -1302,8 +1304,8 @@ class AdvancedOrderManager:
 
     def track_trailing_stop(self, trailing_stop: TrailingStopOrder) -> None:
         """Track an externally created trailing stop order."""
-        self.trailing_stops[trailing_stop.trailing_stop_id] = trailing_stop
-        logger.debug(f"Tracking trailing stop: {trailing_stop.trailing_stop_id}")
+        self.trailing_stops[trailing_stop.order_id] = trailing_stop
+        logger.debug(f"Tracking trailing stop: {trailing_stop.order_id}")
 
     def track_oco(self, oco: OCOOrder) -> None:
         """Track an externally created OCO order."""
@@ -1340,7 +1342,7 @@ class AdvancedOrderManager:
             ],
             "trailing_stops": [
                 {
-                    "trailing_stop_id": t.trailing_stop_id,
+                    "trailing_stop_id": t.order_id,
                     "symbol": t.symbol,
                     "side": t.side.value,
                     "quantity": t.quantity,

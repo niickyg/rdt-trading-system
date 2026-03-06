@@ -1,44 +1,10 @@
-{% extends "base.html" %}
+{% extends "dashboard_base.html" %}
+{% set active_page = "alerts" %}
 
 {% block title %}Alerts - RDT Trading{% endblock %}
 
-{% block extra_css %}
+{% block dashboard_css %}
 <style>
-    .dashboard-layout {
-        display: grid;
-        grid-template-columns: 240px 1fr;
-        min-height: calc(100vh - 60px);
-    }
-    .sidebar {
-        background: var(--primary);
-        padding: 20px;
-        position: sticky;
-        top: 60px;
-        height: calc(100vh - 60px);
-    }
-    .sidebar-nav { list-style: none; }
-    .sidebar-nav li { margin-bottom: 5px; }
-    .sidebar-nav a {
-        display: block;
-        padding: 12px 15px;
-        color: rgba(255,255,255,0.7);
-        border-radius: 5px;
-        transition: all 0.3s;
-    }
-    .sidebar-nav a:hover, .sidebar-nav a.active {
-        background: rgba(255,255,255,0.1);
-        color: white;
-        text-decoration: none;
-    }
-    .sidebar-section {
-        color: rgba(255,255,255,0.5);
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        margin: 20px 0 10px;
-        padding-left: 15px;
-    }
-    .main-content { padding: 25px; }
-
     .page-header {
         display: flex;
         justify-content: space-between;
@@ -184,117 +150,87 @@
     .form-inline.full {
         grid-template-columns: 1fr;
     }
-
-    @media (max-width: 1024px) {
-        .dashboard-layout { grid-template-columns: 1fr; }
-        .sidebar { display: none; }
-    }
 </style>
 {% endblock %}
 
-{% block content %}
-<div class="dashboard-layout">
-    <aside class="sidebar">
-        <ul class="sidebar-nav">
-            <li><a href="/dashboard">Overview</a></li>
-            <li><a href="/dashboard/signals">Active Signals</a></li>
-            <li><a href="/dashboard/positions">Positions</a></li>
-            <li><a href="/dashboard/history">History</a></li>
-        </ul>
-        <div class="sidebar-section">Analysis</div>
-        <ul class="sidebar-nav">
-            <li><a href="/dashboard/scanner">Live Scanner</a></li>
-            <li><a href="/dashboard/backtest">Backtest</a></li>
-            <li><a href="/performance">Performance</a></li>
-        </ul>
-        <div class="sidebar-section">Settings</div>
-        <ul class="sidebar-nav">
-            <li><a href="/dashboard/alerts" class="active">Alerts</a></li>
-            <li><a href="/dashboard/settings">Settings</a></li>
-            <li><a href="/api/v1/health" target="_blank">API Status</a></li>
-        </ul>
-    </aside>
+{% block page_content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Price Alerts<span class="alert-count" id="alert-count">0 active</span></h1>
+        <p class="page-subtitle">Get notified when conditions are met</p>
+    </div>
+</div>
 
-    <main class="main-content">
-        <div class="page-header">
-            <div>
-                <h1 class="page-title">Price Alerts<span class="alert-count" id="alert-count">0 active</span></h1>
-                <p class="page-subtitle">Get notified when conditions are met</p>
+<div class="alerts-grid">
+    <!-- Alerts List -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Configured Alerts</h3>
+            <select class="form-control" style="width: auto;" id="filter-status">
+                <option value="all">All Alerts</option>
+                <option value="active">Active Only</option>
+                <option value="paused">Paused</option>
+                <option value="triggered">Triggered</option>
+            </select>
+        </div>
+        <div id="alerts-container">
+            <div class="empty-state">
+                <div class="empty-state-icon">&#128276;</div>
+                <div class="empty-state-text">No alerts configured</div>
+                <p>Create your first alert using the form on the right</p>
             </div>
         </div>
+    </div>
 
-        <div class="alerts-grid">
-            <!-- Alerts List -->
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Configured Alerts</h3>
-                    <select class="form-control" style="width: auto;" id="filter-status">
-                        <option value="all">All Alerts</option>
-                        <option value="active">Active Only</option>
-                        <option value="paused">Paused</option>
-                        <option value="triggered">Triggered</option>
+    <!-- New Alert Form -->
+    <div class="card new-alert-form">
+        <h3 class="form-section-title">Create New Alert</h3>
+        <form id="new-alert-form">
+            <div class="form-group">
+                <label class="form-label" for="alert-symbol">Symbol</label>
+                <input type="text" id="alert-symbol" name="symbol" class="form-control" placeholder="e.g., AAPL, MSFT, TSLA" required>
+            </div>
+
+            <div class="form-inline">
+                <div class="form-group">
+                    <label class="form-label" for="alert-condition">Condition</label>
+                    <select id="alert-condition" name="condition" class="form-control" required>
+                        <option value="">Select condition...</option>
+                        <option value="rrs_above">RRS Above</option>
+                        <option value="rrs_below">RRS Below</option>
+                        <option value="price_above">Price Above</option>
+                        <option value="price_below">Price Below</option>
                     </select>
                 </div>
-                <div id="alerts-container">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">&#128276;</div>
-                        <div class="empty-state-text">No alerts configured</div>
-                        <p>Create your first alert using the form on the right</p>
-                    </div>
+                <div class="form-group">
+                    <label class="form-label" for="alert-value">Value</label>
+                    <input type="number" id="alert-value" name="value" class="form-control" placeholder="0.00" step="0.01" required>
                 </div>
             </div>
 
-            <!-- New Alert Form -->
-            <div class="card new-alert-form">
-                <h3 class="form-section-title">Create New Alert</h3>
-                <form id="new-alert-form">
-                    <div class="form-group">
-                        <label class="form-label" for="alert-symbol">Symbol</label>
-                        <input type="text" id="alert-symbol" name="symbol" class="form-control" placeholder="e.g., AAPL, MSFT, TSLA" required>
-                    </div>
-
-                    <div class="form-inline">
-                        <div class="form-group">
-                            <label class="form-label" for="alert-condition">Condition</label>
-                            <select id="alert-condition" name="condition" class="form-control" required>
-                                <option value="">Select condition...</option>
-                                <option value="rrs_above">RRS Above</option>
-                                <option value="rrs_below">RRS Below</option>
-                                <option value="price_above">Price Above</option>
-                                <option value="price_below">Price Below</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label" for="alert-value">Value</label>
-                            <input type="number" id="alert-value" name="value" class="form-control" placeholder="0.00" step="0.01" required>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="alert-method">Notification Method</label>
-                        <select id="alert-method" name="notification_method" class="form-control" required>
-                            <option value="email">Email</option>
-                            <option value="sms">SMS</option>
-                            <option value="both">Email & SMS</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="alert-note">Note (optional)</label>
-                        <input type="text" id="alert-note" name="note" class="form-control" placeholder="Add a note to remember why you set this alert">
-                    </div>
-
-                    <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">
-                        Create Alert
-                    </button>
-                </form>
+            <div class="form-group">
+                <label class="form-label" for="alert-method">Notification Method</label>
+                <select id="alert-method" name="notification_method" class="form-control" required>
+                    <option value="email">Email</option>
+                    <option value="sms">SMS</option>
+                    <option value="both">Email & SMS</option>
+                </select>
             </div>
-        </div>
-    </main>
+
+            <div class="form-group">
+                <label class="form-label" for="alert-note">Note (optional)</label>
+                <input type="text" id="alert-note" name="note" class="form-control" placeholder="Add a note to remember why you set this alert">
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">
+                Create Alert
+            </button>
+        </form>
+    </div>
 </div>
 {% endblock %}
 
-{% block extra_js %}
+{% block dashboard_js %}
 <script>
     // Sample alerts data (would come from API in production)
     let alertsData = [

@@ -43,9 +43,10 @@ ROOM_POSITIONS = 'positions'
 ROOM_SCANNER = 'scanner'
 ROOM_ALERTS = 'alerts'
 ROOM_PRICES = 'prices'
+ROOM_OPTIONS = 'options'
 
 # All available rooms
-AVAILABLE_ROOMS = [ROOM_SIGNALS, ROOM_POSITIONS, ROOM_SCANNER, ROOM_ALERTS, ROOM_PRICES]
+AVAILABLE_ROOMS = [ROOM_SIGNALS, ROOM_POSITIONS, ROOM_SCANNER, ROOM_ALERTS, ROOM_PRICES, ROOM_OPTIONS]
 
 # Track connected clients
 connected_clients: Dict[str, Dict] = {}
@@ -307,7 +308,7 @@ def _get_clients_in_room_by_tier(room: str, min_tier: Optional[str] = None) -> L
     """
     min_level = TIER_LEVELS.get(min_tier, 0) if min_tier else 0
     sids = []
-    for sid, client_info in connected_clients.items():
+    for sid, client_info in list(connected_clients.items()):
         if room in client_info.get('rooms', []):
             client_tier = _get_client_tier(client_info)
             client_level = TIER_LEVELS.get(client_tier, TIER_LEVELS[DEFAULT_TIER])
@@ -344,7 +345,7 @@ def broadcast_signal(signal_data: Dict):
     confidence = signal_data.get('confidence', 0.0)
     sent_count = 0
 
-    for sid, client_info in connected_clients.items():
+    for sid, client_info in list(connected_clients.items()):
         if ROOM_SIGNALS not in client_info.get('rooms', []):
             continue
 
@@ -513,7 +514,7 @@ def broadcast_multiple_signals(signals: List[Dict]):
     timestamp = format_timestamp()
     sent_count = 0
 
-    for sid, client_info in connected_clients.items():
+    for sid, client_info in list(connected_clients.items()):
         if ROOM_SIGNALS not in client_info.get('rooms', []):
             continue
 
@@ -652,7 +653,7 @@ def get_connected_clients() -> Dict[str, Dict]:
 def get_clients_in_room(room: str) -> int:
     """Get the number of clients in a specific room."""
     count = 0
-    for client_id, client_info in connected_clients.items():
+    for client_id, client_info in list(connected_clients.items()):
         if room in client_info.get('rooms', []):
             count += 1
     return count
@@ -660,10 +661,11 @@ def get_clients_in_room(room: str) -> int:
 
 def get_room_stats() -> Dict[str, int]:
     """Get statistics about room subscriptions."""
+    clients_snapshot = list(connected_clients.items())
     stats = {room: 0 for room in AVAILABLE_ROOMS}
-    stats['total_connected'] = len(connected_clients)
+    stats['total_connected'] = len(clients_snapshot)
 
-    for client_id, client_info in connected_clients.items():
+    for client_id, client_info in clients_snapshot:
         for room in client_info.get('rooms', []):
             if room in stats:
                 stats[room] += 1
@@ -693,3 +695,60 @@ def broadcast_system_message(message: str, severity: str = 'info'):
         'title': 'System Message',
         'message': message
     })
+
+
+# =============================================================================
+# OPTIONS BROADCASTING
+# =============================================================================
+
+def broadcast_options_signal(signal_data: Dict):
+    """
+    Broadcast an options strategy signal to the 'options' room.
+
+    Args:
+        signal_data: Options signal data containing:
+            - symbol: Underlying ticker
+            - strategy: Strategy name
+            - direction: long/short/neutral
+            - iv_regime: Current IV regime
+            - legs: Strategy legs summary
+    """
+    if socketio is None:
+        logger.warning("WebSocket not initialized, cannot broadcast options signal")
+        return
+
+    payload = {
+        'event': 'options_signal',
+        'data': signal_data,
+        'timestamp': format_timestamp()
+    }
+
+    socketio.emit('options_signal', payload, room=ROOM_OPTIONS)
+    logger.debug(f"Broadcasted options signal: {signal_data.get('symbol')} {signal_data.get('strategy')}")
+
+
+def broadcast_options_position_update(position_data: Dict):
+    """
+    Broadcast options position P&L/Greeks update to the 'options' room.
+
+    Args:
+        position_data: Position data containing:
+            - symbol: Underlying ticker
+            - strategy: Strategy name
+            - unrealized_pnl: Current P&L
+            - net_delta: Current net delta
+            - net_theta: Current net theta
+            - status: open/closed
+    """
+    if socketio is None:
+        logger.warning("WebSocket not initialized, cannot broadcast options position update")
+        return
+
+    payload = {
+        'event': 'options_position_update',
+        'data': position_data,
+        'timestamp': format_timestamp()
+    }
+
+    socketio.emit('options_position', payload, room=ROOM_OPTIONS)
+    logger.debug(f"Broadcasted options position update: {position_data.get('symbol')}")

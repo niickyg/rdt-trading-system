@@ -1,56 +1,10 @@
-{% extends "base.html" %}
+{% extends "dashboard_base.html" %}
+{% set active_page = "settings" %}
 
 {% block title %}Settings - RDT Trading{% endblock %}
 
-{% block extra_css %}
+{% block dashboard_css %}
 <style>
-    .dashboard-layout {
-        display: grid;
-        grid-template-columns: 240px 1fr;
-        min-height: calc(100vh - 60px);
-    }
-    .sidebar {
-        background: var(--primary);
-        padding: 20px;
-        position: sticky;
-        top: 60px;
-        height: calc(100vh - 60px);
-    }
-    .sidebar-nav { list-style: none; }
-    .sidebar-nav li { margin-bottom: 5px; }
-    .sidebar-nav a {
-        display: block;
-        padding: 12px 15px;
-        color: rgba(255,255,255,0.7);
-        border-radius: 5px;
-        transition: all 0.3s;
-    }
-    .sidebar-nav a:hover, .sidebar-nav a.active {
-        background: rgba(255,255,255,0.1);
-        color: white;
-        text-decoration: none;
-    }
-    .sidebar-section {
-        color: rgba(255,255,255,0.5);
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        margin: 20px 0 10px;
-        padding-left: 15px;
-    }
-    .main-content { padding: 25px; }
-
-    .page-header {
-        margin-bottom: 30px;
-    }
-    .page-title {
-        font-size: 1.8rem;
-        font-weight: 600;
-        margin-bottom: 5px;
-    }
-    .page-subtitle {
-        color: var(--text-light);
-    }
-
     .settings-section {
         margin-bottom: 30px;
     }
@@ -75,46 +29,6 @@
         font-size: 0.8rem;
         color: var(--text-light);
         margin-top: 5px;
-    }
-
-    .toggle-switch {
-        position: relative;
-        display: inline-block;
-        width: 50px;
-        height: 26px;
-    }
-    .toggle-switch input {
-        opacity: 0;
-        width: 0;
-        height: 0;
-    }
-    .toggle-slider {
-        position: absolute;
-        cursor: pointer;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-color: var(--border);
-        transition: 0.3s;
-        border-radius: 26px;
-    }
-    .toggle-slider:before {
-        position: absolute;
-        content: "";
-        height: 20px;
-        width: 20px;
-        left: 3px;
-        bottom: 3px;
-        background-color: white;
-        transition: 0.3s;
-        border-radius: 50%;
-    }
-    .toggle-switch input:checked + .toggle-slider {
-        background-color: var(--accent);
-    }
-    .toggle-switch input:checked + .toggle-slider:before {
-        transform: translateX(24px);
     }
 
     .toggle-row {
@@ -159,340 +73,333 @@
         gap: 10px;
         margin-top: 30px;
     }
-
-    @media (max-width: 1024px) {
-        .dashboard-layout { grid-template-columns: 1fr; }
-        .sidebar { display: none; }
-    }
 </style>
 {% endblock %}
 
-{% block content %}
-<div class="dashboard-layout">
-    <aside class="sidebar">
-        <ul class="sidebar-nav">
-            <li><a href="/dashboard">Overview</a></li>
-            <li><a href="/dashboard/signals">Active Signals</a></li>
-            <li><a href="/dashboard/positions">Positions</a></li>
-            <li><a href="/dashboard/history">History</a></li>
-        </ul>
-        <div class="sidebar-section">Analysis</div>
-        <ul class="sidebar-nav">
-            <li><a href="/dashboard/scanner">Live Scanner</a></li>
-            <li><a href="/dashboard/backtest">Backtest</a></li>
-            <li><a href="/performance">Performance</a></li>
-        </ul>
-        <div class="sidebar-section">Settings</div>
-        <ul class="sidebar-nav">
-            <li><a href="/dashboard/alerts">Alerts</a></li>
-            <li><a href="/dashboard/settings" class="active">General Settings</a></li>
-            <li><a href="/dashboard/settings/security">Security</a></li>
-            <li><a href="/api/v1/health" target="_blank">API Status</a></li>
-        </ul>
-    </aside>
+{% block page_content %}
+<div class="page-header">
+    <h1 class="page-title">Settings</h1>
+    <p class="page-subtitle">Manage your account and trading preferences</p>
+</div>
 
-    <main class="main-content">
-        <div class="page-header">
-            <h1 class="page-title">Settings</h1>
-            <p class="page-subtitle">Manage your account and trading preferences</p>
+<form id="settings-form">
+    <!-- Account Information -->
+    <div class="card settings-section">
+        <h3 class="settings-section-title">Account Information</h3>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label" for="full-name">Full Name</label>
+                <input type="text" id="full-name" name="full_name" class="form-control" placeholder="John Doe">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="email">Email Address</label>
+                <input type="email" id="email" name="email" class="form-control" placeholder="john@example.com">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label" for="phone">Phone Number</label>
+                <input type="tel" id="phone" name="phone" class="form-control" placeholder="+1 (555) 123-4567">
+                <p class="form-hint">Used for SMS alerts if enabled</p>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="timezone">Timezone</label>
+                <select id="timezone" name="timezone" class="form-control">
+                    <option value="America/New_York">Eastern Time (ET)</option>
+                    <option value="America/Chicago">Central Time (CT)</option>
+                    <option value="America/Denver">Mountain Time (MT)</option>
+                    <option value="America/Los_Angeles">Pacific Time (PT)</option>
+                    <option value="UTC">UTC</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Trading Preferences -->
+    <div class="card settings-section">
+        <h3 class="settings-section-title">Trading Preferences</h3>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label" for="default-position-size">Default Position Size ($)</label>
+                <input type="number" id="default-position-size" name="default_position_size" class="form-control" placeholder="10000" min="100" step="100">
+                <p class="form-hint">Default dollar amount per trade</p>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="max-positions">Max Open Positions</label>
+                <input type="number" id="max-positions" name="max_positions" class="form-control" placeholder="5" min="1" max="50">
+                <p class="form-hint">Maximum concurrent positions allowed</p>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label" for="risk-per-trade">Risk Per Trade (%)</label>
+                <input type="number" id="risk-per-trade" name="risk_per_trade" class="form-control" placeholder="2" min="0.1" max="10" step="0.1">
+                <p class="form-hint">Maximum portfolio risk per trade</p>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="min-rrs">Minimum RRS Threshold</label>
+                <input type="number" id="min-rrs" name="min_rrs" class="form-control" placeholder="1.5" min="0" max="5" step="0.1">
+                <p class="form-hint">Only show signals with RRS above this value</p>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label" for="preferred-direction">Preferred Trade Direction</label>
+                <select id="preferred-direction" name="preferred_direction" class="form-control">
+                    <option value="both">Both (Long & Short)</option>
+                    <option value="long">Long Only</option>
+                    <option value="short">Short Only</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="signal-strength">Minimum Signal Strength</label>
+                <select id="signal-strength" name="signal_strength" class="form-control">
+                    <option value="weak">All Signals</option>
+                    <option value="moderate">Moderate & Strong</option>
+                    <option value="strong">Strong Only</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Settings -->
+    <div class="card settings-section">
+        <h3 class="settings-section-title">Notification Settings</h3>
+        <div class="toggle-row">
+            <div class="toggle-info">
+                <div class="toggle-label">Email Notifications</div>
+                <div class="toggle-description">Receive signal alerts and daily summaries via email</div>
+            </div>
+            <label class="toggle-switch">
+                <input type="checkbox" id="email-notifications" name="email_notifications" checked>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="toggle-row">
+            <div class="toggle-info">
+                <div class="toggle-label">SMS Notifications</div>
+                <div class="toggle-description">Receive urgent alerts via SMS (requires phone number)</div>
+            </div>
+            <label class="toggle-switch">
+                <input type="checkbox" id="sms-notifications" name="sms_notifications">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="toggle-row">
+            <div class="toggle-info">
+                <div class="toggle-label">New Signal Alerts</div>
+                <div class="toggle-description">Get notified when new trading signals are generated</div>
+            </div>
+            <label class="toggle-switch">
+                <input type="checkbox" id="signal-alerts" name="signal_alerts" checked>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="toggle-row">
+            <div class="toggle-info">
+                <div class="toggle-label">Price Target Alerts</div>
+                <div class="toggle-description">Get notified when positions hit stop or target prices</div>
+            </div>
+            <label class="toggle-switch">
+                <input type="checkbox" id="price-alerts" name="price_alerts" checked>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="toggle-row">
+            <div class="toggle-info">
+                <div class="toggle-label">Daily Summary</div>
+                <div class="toggle-description">Receive a daily email with performance summary</div>
+            </div>
+            <label class="toggle-switch">
+                <input type="checkbox" id="daily-summary" name="daily_summary" checked>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <!-- Alert Scheduling (Quiet Hours) -->
+    <div class="card settings-section">
+        <h3 class="settings-section-title">Alert Scheduling (Quiet Hours)</h3>
+        <p class="form-hint" style="margin-bottom: 20px;">
+            Configure times when non-critical alerts will be silenced. Alerts are queued and delivered when quiet hours end.
+        </p>
+
+        <div class="toggle-row">
+            <div class="toggle-info">
+                <div class="toggle-label">Enable Quiet Hours</div>
+                <div class="toggle-description">Suppress non-critical alerts during specified times</div>
+            </div>
+            <label class="toggle-switch">
+                <input type="checkbox" id="quiet-hours-enabled" name="quiet_hours_enabled">
+                <span class="toggle-slider"></span>
+            </label>
         </div>
 
-        <form id="settings-form">
-            <!-- Account Information -->
-            <div class="card settings-section">
-                <h3 class="settings-section-title">Account Information</h3>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label" for="full-name">Full Name</label>
-                        <input type="text" id="full-name" name="full_name" class="form-control" placeholder="John Doe">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="email">Email Address</label>
-                        <input type="email" id="email" name="email" class="form-control" placeholder="john@example.com">
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label" for="phone">Phone Number</label>
-                        <input type="tel" id="phone" name="phone" class="form-control" placeholder="+1 (555) 123-4567">
-                        <p class="form-hint">Used for SMS alerts if enabled</p>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="timezone">Timezone</label>
-                        <select id="timezone" name="timezone" class="form-control">
-                            <option value="America/New_York">Eastern Time (ET)</option>
-                            <option value="America/Chicago">Central Time (CT)</option>
-                            <option value="America/Denver">Mountain Time (MT)</option>
-                            <option value="America/Los_Angeles">Pacific Time (PT)</option>
-                            <option value="UTC">UTC</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Trading Preferences -->
-            <div class="card settings-section">
-                <h3 class="settings-section-title">Trading Preferences</h3>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label" for="default-position-size">Default Position Size ($)</label>
-                        <input type="number" id="default-position-size" name="default_position_size" class="form-control" placeholder="10000" min="100" step="100">
-                        <p class="form-hint">Default dollar amount per trade</p>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="max-positions">Max Open Positions</label>
-                        <input type="number" id="max-positions" name="max_positions" class="form-control" placeholder="5" min="1" max="50">
-                        <p class="form-hint">Maximum concurrent positions allowed</p>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label" for="risk-per-trade">Risk Per Trade (%)</label>
-                        <input type="number" id="risk-per-trade" name="risk_per_trade" class="form-control" placeholder="2" min="0.1" max="10" step="0.1">
-                        <p class="form-hint">Maximum portfolio risk per trade</p>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="min-rrs">Minimum RRS Threshold</label>
-                        <input type="number" id="min-rrs" name="min_rrs" class="form-control" placeholder="1.5" min="0" max="5" step="0.1">
-                        <p class="form-hint">Only show signals with RRS above this value</p>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label" for="preferred-direction">Preferred Trade Direction</label>
-                        <select id="preferred-direction" name="preferred_direction" class="form-control">
-                            <option value="both">Both (Long & Short)</option>
-                            <option value="long">Long Only</option>
-                            <option value="short">Short Only</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="signal-strength">Minimum Signal Strength</label>
-                        <select id="signal-strength" name="signal_strength" class="form-control">
-                            <option value="weak">All Signals</option>
-                            <option value="moderate">Moderate & Strong</option>
-                            <option value="strong">Strong Only</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Notification Settings -->
-            <div class="card settings-section">
-                <h3 class="settings-section-title">Notification Settings</h3>
-                <div class="toggle-row">
-                    <div class="toggle-info">
-                        <div class="toggle-label">Email Notifications</div>
-                        <div class="toggle-description">Receive signal alerts and daily summaries via email</div>
-                    </div>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="email-notifications" name="email_notifications" checked>
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-                <div class="toggle-row">
-                    <div class="toggle-info">
-                        <div class="toggle-label">SMS Notifications</div>
-                        <div class="toggle-description">Receive urgent alerts via SMS (requires phone number)</div>
-                    </div>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="sms-notifications" name="sms_notifications">
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-                <div class="toggle-row">
-                    <div class="toggle-info">
-                        <div class="toggle-label">New Signal Alerts</div>
-                        <div class="toggle-description">Get notified when new trading signals are generated</div>
-                    </div>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="signal-alerts" name="signal_alerts" checked>
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-                <div class="toggle-row">
-                    <div class="toggle-info">
-                        <div class="toggle-label">Price Target Alerts</div>
-                        <div class="toggle-description">Get notified when positions hit stop or target prices</div>
-                    </div>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="price-alerts" name="price_alerts" checked>
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-                <div class="toggle-row">
-                    <div class="toggle-info">
-                        <div class="toggle-label">Daily Summary</div>
-                        <div class="toggle-description">Receive a daily email with performance summary</div>
-                    </div>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="daily-summary" name="daily_summary" checked>
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-            </div>
-
-            <!-- Alert Scheduling (Quiet Hours) -->
-            <div class="card settings-section">
-                <h3 class="settings-section-title">Alert Scheduling (Quiet Hours)</h3>
-                <p class="form-hint" style="margin-bottom: 20px;">
-                    Configure times when non-critical alerts will be silenced. Alerts are queued and delivered when quiet hours end.
-                </p>
-
-                <div class="toggle-row">
-                    <div class="toggle-info">
-                        <div class="toggle-label">Enable Quiet Hours</div>
-                        <div class="toggle-description">Suppress non-critical alerts during specified times</div>
-                    </div>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="quiet-hours-enabled" name="quiet_hours_enabled">
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-
-                <div id="quiet-hours-settings" style="display: none;">
-                    <div class="form-row" style="margin-top: 20px;">
-                        <div class="form-group">
-                            <label class="form-label" for="quiet-hours-start">Quiet Hours Start</label>
-                            <input type="time" id="quiet-hours-start" name="quiet_hours_start" class="form-control" value="22:00">
-                            <p class="form-hint">Time when quiet hours begin</p>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label" for="quiet-hours-end">Quiet Hours End</label>
-                            <input type="time" id="quiet-hours-end" name="quiet_hours_end" class="form-control" value="07:00">
-                            <p class="form-hint">Time when quiet hours end</p>
-                        </div>
-                    </div>
-
-                    <div class="form-group" style="margin-top: 15px;">
-                        <label class="form-label">Active Days</label>
-                        <div class="day-selector" style="display: flex; gap: 10px; flex-wrap: wrap;">
-                            <label class="day-checkbox">
-                                <input type="checkbox" name="quiet_days" value="monday" checked> Mon
-                            </label>
-                            <label class="day-checkbox">
-                                <input type="checkbox" name="quiet_days" value="tuesday" checked> Tue
-                            </label>
-                            <label class="day-checkbox">
-                                <input type="checkbox" name="quiet_days" value="wednesday" checked> Wed
-                            </label>
-                            <label class="day-checkbox">
-                                <input type="checkbox" name="quiet_days" value="thursday" checked> Thu
-                            </label>
-                            <label class="day-checkbox">
-                                <input type="checkbox" name="quiet_days" value="friday" checked> Fri
-                            </label>
-                            <label class="day-checkbox">
-                                <input type="checkbox" name="quiet_days" value="saturday" checked> Sat
-                            </label>
-                            <label class="day-checkbox">
-                                <input type="checkbox" name="quiet_days" value="sunday" checked> Sun
-                            </label>
-                        </div>
-                        <p class="form-hint">Select days when quiet hours should be active</p>
-                    </div>
-
-                    <div class="form-group" style="margin-top: 15px;">
-                        <label class="form-label">Channels to Silence</label>
-                        <div class="channel-selector" style="display: flex; gap: 15px; flex-wrap: wrap;">
-                            <label class="channel-checkbox">
-                                <input type="checkbox" name="quiet_channels" value="email" checked> Email
-                            </label>
-                            <label class="channel-checkbox">
-                                <input type="checkbox" name="quiet_channels" value="sms" checked> SMS
-                            </label>
-                            <label class="channel-checkbox">
-                                <input type="checkbox" name="quiet_channels" value="discord" checked> Discord
-                            </label>
-                            <label class="channel-checkbox">
-                                <input type="checkbox" name="quiet_channels" value="telegram" checked> Telegram
-                            </label>
-                            <label class="channel-checkbox">
-                                <input type="checkbox" name="quiet_channels" value="pushover" checked> Pushover
-                            </label>
-                        </div>
-                        <p class="form-hint">Leave all unchecked to silence all channels</p>
-                    </div>
-                </div>
-
-                <div class="toggle-row" style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 15px;">
-                    <div class="toggle-info">
-                        <div class="toggle-label">Critical Alert Override</div>
-                        <div class="toggle-description">Allow critical alerts (stop losses, system errors) to bypass quiet hours</div>
-                    </div>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="override-critical" name="override_critical" checked>
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-
-                <!-- Do Not Disturb Quick Toggle -->
-                <div style="margin-top: 20px; padding: 15px; background: var(--bg); border-radius: 8px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <div style="font-weight: 500;">Do Not Disturb</div>
-                            <div style="font-size: 0.85rem; color: var(--text-light);" id="dnd-status">Currently inactive</div>
-                        </div>
-                        <div style="display: flex; gap: 10px;">
-                            <button type="button" class="btn btn-secondary btn-sm" onclick="enableDND(30)">30 min</button>
-                            <button type="button" class="btn btn-secondary btn-sm" onclick="enableDND(60)">1 hour</button>
-                            <button type="button" class="btn btn-secondary btn-sm" onclick="enableDND(240)">4 hours</button>
-                            <button type="button" class="btn btn-danger btn-sm" onclick="disableDND()" id="dnd-disable-btn" style="display: none;">Disable</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Queued Alerts Status -->
-                <div id="queued-alerts-section" style="margin-top: 20px; padding: 15px; background: var(--bg); border-radius: 8px; display: none;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <div style="font-weight: 500;">Queued Alerts</div>
-                            <div style="font-size: 0.85rem; color: var(--text-light);" id="queued-alerts-count">0 alerts pending</div>
-                        </div>
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="viewQueuedAlerts()">View Queue</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- API Keys -->
-            <div class="card settings-section">
-                <h3 class="settings-section-title">API Keys</h3>
+        <div id="quiet-hours-settings" style="display: none;">
+            <div class="form-row" style="margin-top: 20px;">
                 <div class="form-group">
-                    <label class="form-label">Your API Key</label>
-                    <div class="api-key-display">
-                        <div class="api-key-value" id="api-key-display">••••••••••••••••••••••••••••••••</div>
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="toggleApiKeyVisibility()">Show</button>
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="copyApiKey()">Copy</button>
-                    </div>
-                    <p class="form-hint">Use this key to authenticate API requests</p>
+                    <label class="form-label" for="quiet-hours-start">Quiet Hours Start</label>
+                    <input type="time" id="quiet-hours-start" name="quiet_hours_start" class="form-control" value="22:00">
+                    <p class="form-hint">Time when quiet hours begin</p>
                 </div>
-                <div class="form-group mt-2">
-                    <label class="form-label">API Secret</label>
-                    <div class="api-key-display">
-                        <div class="api-key-value" id="api-secret-display">••••••••••••••••••••••••••••••••</div>
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="toggleSecretVisibility()">Show</button>
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="copySecret()">Copy</button>
-                    </div>
-                    <p class="form-hint">Keep this secret safe and never share it</p>
-                </div>
-                <div class="mt-2">
-                    <button type="button" class="btn btn-danger btn-sm" onclick="regenerateKeys()">Regenerate API Keys</button>
-                    <span class="text-muted" style="margin-left: 10px; font-size: 0.85rem;">Warning: This will invalidate existing keys</span>
+                <div class="form-group">
+                    <label class="form-label" for="quiet-hours-end">Quiet Hours End</label>
+                    <input type="time" id="quiet-hours-end" name="quiet_hours_end" class="form-control" value="07:00">
+                    <p class="form-hint">Time when quiet hours end</p>
                 </div>
             </div>
 
-            <!-- Action Buttons -->
-            <div class="btn-group">
-                <button type="submit" class="btn btn-primary">Save Changes</button>
-                <button type="button" class="btn btn-secondary" onclick="resetForm()">Reset to Defaults</button>
+            <div class="form-group" style="margin-top: 15px;">
+                <label class="form-label">Active Days</label>
+                <div class="day-selector" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <label class="day-checkbox">
+                        <input type="checkbox" name="quiet_days" value="monday" checked> Mon
+                    </label>
+                    <label class="day-checkbox">
+                        <input type="checkbox" name="quiet_days" value="tuesday" checked> Tue
+                    </label>
+                    <label class="day-checkbox">
+                        <input type="checkbox" name="quiet_days" value="wednesday" checked> Wed
+                    </label>
+                    <label class="day-checkbox">
+                        <input type="checkbox" name="quiet_days" value="thursday" checked> Thu
+                    </label>
+                    <label class="day-checkbox">
+                        <input type="checkbox" name="quiet_days" value="friday" checked> Fri
+                    </label>
+                    <label class="day-checkbox">
+                        <input type="checkbox" name="quiet_days" value="saturday" checked> Sat
+                    </label>
+                    <label class="day-checkbox">
+                        <input type="checkbox" name="quiet_days" value="sunday" checked> Sun
+                    </label>
+                </div>
+                <p class="form-hint">Select days when quiet hours should be active</p>
             </div>
-        </form>
-    </main>
-</div>
+
+            <div class="form-group" style="margin-top: 15px;">
+                <label class="form-label">Channels to Silence</label>
+                <div class="channel-selector" style="display: flex; gap: 15px; flex-wrap: wrap;">
+                    <label class="channel-checkbox">
+                        <input type="checkbox" name="quiet_channels" value="email" checked> Email
+                    </label>
+                    <label class="channel-checkbox">
+                        <input type="checkbox" name="quiet_channels" value="sms" checked> SMS
+                    </label>
+                    <label class="channel-checkbox">
+                        <input type="checkbox" name="quiet_channels" value="discord" checked> Discord
+                    </label>
+                    <label class="channel-checkbox">
+                        <input type="checkbox" name="quiet_channels" value="telegram" checked> Telegram
+                    </label>
+                    <label class="channel-checkbox">
+                        <input type="checkbox" name="quiet_channels" value="pushover" checked> Pushover
+                    </label>
+                </div>
+                <p class="form-hint">Leave all unchecked to silence all channels</p>
+            </div>
+        </div>
+
+        <div class="toggle-row" style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 15px;">
+            <div class="toggle-info">
+                <div class="toggle-label">Critical Alert Override</div>
+                <div class="toggle-description">Allow critical alerts (stop losses, system errors) to bypass quiet hours</div>
+            </div>
+            <label class="toggle-switch">
+                <input type="checkbox" id="override-critical" name="override_critical" checked>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+
+        <!-- Do Not Disturb Quick Toggle -->
+        <div style="margin-top: 20px; padding: 15px; background: var(--bg); border-radius: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-weight: 500;">Do Not Disturb</div>
+                    <div style="font-size: 0.85rem; color: var(--text-light);" id="dnd-status">Currently inactive</div>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="enableDND(30)">30 min</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="enableDND(60)">1 hour</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="enableDND(240)">4 hours</button>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="disableDND()" id="dnd-disable-btn" style="display: none;">Disable</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Queued Alerts Status -->
+        <div id="queued-alerts-section" style="margin-top: 20px; padding: 15px; background: var(--bg); border-radius: 8px; display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-weight: 500;">Queued Alerts</div>
+                    <div style="font-size: 0.85rem; color: var(--text-light);" id="queued-alerts-count">0 alerts pending</div>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="viewQueuedAlerts()">View Queue</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Trading Strategies -->
+    <div class="card settings-section">
+        <h3 class="settings-section-title">Trading Strategies</h3>
+        <p class="form-hint" style="margin-bottom: 15px;">
+            Enable or disable trading strategies. Disabled strategies will not scan for signals or generate trades. RRS Momentum is the core strategy.
+        </p>
+        <div id="strategies-container">
+            <div class="text-center text-muted" style="padding: 20px;">Loading strategies...</div>
+        </div>
+        <div id="strategy-stats-container" style="margin-top: 15px; display: none;">
+            <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 10px; color: var(--text-light);">Per-Strategy Performance</h4>
+            <div id="strategy-stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;"></div>
+        </div>
+    </div>
+
+    <!-- API Keys -->
+    <div class="card settings-section">
+        <h3 class="settings-section-title">API Keys</h3>
+        <div class="form-group">
+            <label class="form-label">Your API Key</label>
+            <div class="api-key-display">
+                <div class="api-key-value" id="api-key-display">••••••••••••••••••••••••••••••••</div>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleApiKeyVisibility()">Show</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="copyApiKey()">Copy</button>
+            </div>
+            <p class="form-hint">Use this key to authenticate API requests</p>
+        </div>
+        <div class="form-group mt-2">
+            <label class="form-label">API Secret</label>
+            <div class="api-key-display">
+                <div class="api-key-value" id="api-secret-display">••••••••••••••••••••••••••••••••</div>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleSecretVisibility()">Show</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="copySecret()">Copy</button>
+            </div>
+            <p class="form-hint">Keep this secret safe and never share it</p>
+        </div>
+        <div class="mt-2">
+            <button type="button" class="btn btn-danger btn-sm" onclick="regenerateKeys()">Regenerate API Keys</button>
+            <span class="text-muted" style="margin-left: 10px; font-size: 0.85rem;">Warning: This will invalidate existing keys</span>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="btn-group">
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+        <button type="button" class="btn btn-secondary" onclick="resetForm()">Reset to Defaults</button>
+    </div>
+</form>
 {% endblock %}
 
-{% block extra_js %}
+{% block dashboard_js %}
 <script>
+    // Strategy descriptions (page-specific; labels and colors come from dashboard-common.js)
+    const STRATEGY_DESCS = {
+        'rrs_momentum': 'Relative strength vs SPY with ATR stops/targets',
+        'rsi2_mean_reversion': 'Buy oversold RSI(2) < 5, sell on bounce to RSI(2) > 65',
+        'trend_breakout': '20-day high breakout with volume + ADX confirmation',
+        'pead': 'Ride earnings surprise drift for 10 days after announcement',
+        'gap_fill': 'Fade 2-4% overnight gaps in healthy stocks (intraday)',
+    };
+
     // Simulated API key data (would come from server in production)
     const apiKeyData = {
         key: 'rdt_live_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6',
@@ -763,5 +670,116 @@
     }
 
     loadSettings();
+
+    // =========================================================================
+    // Trading Strategies
+    // =========================================================================
+    async function loadStrategies() {
+        try {
+            const resp = await dashboardFetch('/dashboard/api/strategies');
+            if (!resp.ok) throw new Error('Failed to load');
+            const data = await resp.json();
+            renderStrategies(data.strategies);
+        } catch (err) {
+            document.getElementById('strategies-container').innerHTML =
+                '<div class="text-center text-muted" style="padding: 20px;">Could not load strategies. Bot may not be running.</div>';
+        }
+
+        // Also load per-strategy stats
+        try {
+            const resp = await dashboardFetch('/dashboard/api/trades');
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data.strategy_stats && Object.keys(data.strategy_stats).length > 0) {
+                    renderStrategyStats(data.strategy_stats);
+                }
+            }
+        } catch (err) {
+            // Non-critical
+        }
+    }
+
+    function renderStrategies(strategies) {
+        const container = document.getElementById('strategies-container');
+        if (!strategies || strategies.length === 0) {
+            container.innerHTML = '<div class="text-center text-muted" style="padding: 20px;">No strategies registered. Start the bot to register strategies.</div>';
+            return;
+        }
+
+        let html = '';
+        for (const s of strategies) {
+            const label = STRATEGY_LABELS[s.name] || s.name;
+            const color = STRATEGY_COLORS[s.name] || '#95a5a6';
+            const desc = STRATEGY_DESCS[s.name] || '';
+            html += `
+            <div class="toggle-row">
+                <div class="toggle-info">
+                    <div class="toggle-label">
+                        <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: ${color}; margin-right: 8px;"></span>
+                        ${escapeHtml(label)}
+                    </div>
+                    <div class="toggle-description">
+                        ${escapeHtml(desc)}
+                        <span style="margin-left: 10px; font-size: 0.8rem; color: var(--text-light);">
+                            ${s.open_positions} / ${s.max_positions} positions &middot;
+                            ${(s.capital_allocation * 100).toFixed(0)}% capital &middot;
+                            ${(s.risk_per_trade * 100).toFixed(1)}% risk/trade
+                        </span>
+                    </div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="strategy-${s.name}" ${s.is_active ? 'checked' : ''} onchange="toggleStrategy('${s.name}', this.checked)">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>`;
+        }
+        container.innerHTML = html;
+    }
+
+    async function toggleStrategy(name, active) {
+        try {
+            const resp = await dashboardFetch(`/dashboard/api/strategies/${name}/toggle`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ active: active }),
+            });
+            if (!resp.ok) throw new Error('Toggle failed');
+            const data = await resp.json();
+            const label = STRATEGY_LABELS[name] || name;
+            console.log(`Strategy '${label}' ${data.is_active ? 'enabled' : 'disabled'}`);
+        } catch (err) {
+            console.error('Error toggling strategy:', err);
+            // Revert the checkbox
+            const cb = document.getElementById(`strategy-${name}`);
+            if (cb) cb.checked = !active;
+            alert('Failed to toggle strategy. Is the bot running?');
+        }
+    }
+
+    function renderStrategyStats(stats) {
+        const container = document.getElementById('strategy-stats-container');
+        const grid = document.getElementById('strategy-stats-grid');
+        container.style.display = 'block';
+
+        let html = '';
+        for (const [name, s] of Object.entries(stats)) {
+            const label = STRATEGY_LABELS[name] || name;
+            const color = STRATEGY_COLORS[name] || '#95a5a6';
+            const pnlClass = s.total_pnl >= 0 ? 'text-success' : 'text-danger';
+            html += `
+            <div style="background: var(--bg); border-radius: 8px; padding: 12px; border-left: 3px solid ${color};">
+                <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 6px;">${escapeHtml(label)}</div>
+                <div style="font-size: 0.8rem; color: var(--text-light);">
+                    ${s.total_trades} trades &middot; ${s.win_rate}% WR &middot;
+                    <span class="${pnlClass}">$${s.total_pnl.toFixed(2)}</span>
+                    ${s.profit_factor > 0 ? ' &middot; PF ' + s.profit_factor.toFixed(2) : ''}
+                </div>
+            </div>`;
+        }
+        grid.innerHTML = html;
+    }
+
+    // Load strategies on page load
+    loadStrategies();
 </script>
 {% endblock %}

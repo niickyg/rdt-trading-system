@@ -13,7 +13,10 @@ schwab-py>=1.0.0  # Schwab
 ib-insync>=0.9.86  # Interactive Brokers
 
 # Market data
-yfinance==0.2.66  # Pinned to latest 0.2.x; 1.x is a new major with breaking API changes
+yfinance==0.2.66  # Kept for offline scripts + VIX data; live trading uses IBKR
+
+# Monitoring
+prometheus_client>=0.21.0
 
 # Machine Learning (pinned for compatibility)
 scikit-learn==1.6.1
@@ -23,9 +26,8 @@ seaborn==0.13.2
 optuna==3.6.2  # Pinned to latest 3.x; 4.x is a major version with API changes
 plotly==5.24.1  # For Optuna visualizations; pinned to latest 5.x, not 6.x (major)
 
-# Deep Learning (pinned for stability)
-tensorflow==2.15.0  # Pinned for compatibility — do NOT upgrade without full testing
-joblib==1.4.2  # For model serialization
+# Model serialization
+joblib==1.4.2
 
 # Technical indicators (optional)
 # ta-lib>=0.4.28  # Requires system library

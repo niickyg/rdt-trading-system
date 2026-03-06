@@ -9,6 +9,7 @@ This module provides functions to:
 - Manage TimescaleDB-specific settings
 """
 
+import re
 from typing import Optional, Dict, Any, List, Tuple
 from datetime import timedelta
 
@@ -17,6 +18,16 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from loguru import logger
+
+# Valid SQL identifier pattern
+_SAFE_IDENTIFIER = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+
+
+def _validate_identifier(name: str) -> str:
+    """Validate a SQL identifier to prevent injection."""
+    if not name or not _SAFE_IDENTIFIER.match(name):
+        raise ValueError(f"Invalid SQL identifier: {name!r}")
+    return name
 
 
 # =============================================================================
@@ -292,14 +303,20 @@ def add_compression_policy(
     interval_str = _timedelta_to_interval(compress_after)
 
     try:
+        # Validate all identifiers
+        _validate_identifier(table_name)
+
         with engine.connect() as conn:
             # First, enable compression with segment/order by settings
             segment_sql = ""
             if segment_by:
+                for seg in segment_by:
+                    _validate_identifier(seg)
                 segment_sql = f", timescaledb.compress_segmentby = '{','.join(segment_by)}'"
 
             order_sql = ""
             if order_by:
+                _validate_identifier(order_by.split()[0])
                 order_sql = f", timescaledb.compress_orderby = '{order_by}'"
 
             # Enable compression on the hypertable

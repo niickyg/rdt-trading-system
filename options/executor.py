@@ -338,9 +338,9 @@ class IBKROptionsExecutor:
             tick_size = 0.01
             slippage = tick_size * self._config.slippage_ticks
             if net_price < 0:
-                limit_price = round(net_price - slippage, 2)
+                limit_price = round(net_price - slippage, 2)  # debit: pay more
             else:
-                limit_price = round(net_price + slippage, 2)
+                limit_price = round(net_price - slippage, 2)  # credit: accept less
 
             ib_limit = round(-limit_price, 2)
 
@@ -382,11 +382,45 @@ class IBKROptionsExecutor:
         close_legs = []
         for leg in strategy.legs:
             close_action = OptionAction.SELL if leg.action == OptionAction.BUY else OptionAction.BUY
+            # Try to fetch current greeks instead of using stale entry-time greeks
+            current_greeks = leg.greeks  # fallback to stale
+            try:
+                from ib_insync import Option as IBOption
+                from options.models import OptionGreeks
+                ib = self._ib._ib
+                ib_opt = IBOption(
+                    leg.contract.symbol, leg.contract.expiry,
+                    leg.contract.strike, leg.contract.right.value,
+                    leg.contract.exchange, leg.contract.currency,
+                )
+                qualified = ib.qualifyContracts(ib_opt)
+                if qualified:
+                    ticker = ib.reqMktData(ib_opt)
+                    ib.sleep(1)
+                    mg = getattr(ticker, 'modelGreeks', None)
+                    if mg and mg.delta == mg.delta:  # NaN check
+                        current_greeks = OptionGreeks(
+                            delta=mg.delta or 0,
+                            gamma=mg.gamma or 0,
+                            theta=mg.theta or 0,
+                            vega=mg.vega or 0,
+                            implied_vol=mg.impliedVol or 0,
+                            underlying_price=mg.undPrice or 0,
+                            option_price=ticker.last if ticker.last == ticker.last else 0,
+                            bid=ticker.bid if ticker.bid == ticker.bid else 0,
+                            ask=ticker.ask if ticker.ask == ticker.ask else 0,
+                            volume=ticker.volume if ticker.volume == ticker.volume else 0,
+                            open_interest=0,
+                        )
+                    ib.cancelMktData(ib_opt)
+            except Exception as e:
+                logger.warning(f"Could not fetch current greeks for {leg.contract.display_name}, using stale: {e}")
+
             close_legs.append(OptionLeg(
                 contract=leg.contract,
                 action=close_action,
                 quantity=leg.quantity,
-                greeks=leg.greeks,
+                greeks=current_greeks,
             ))
 
         close_strategy = OptionsStrategy(
@@ -433,10 +467,43 @@ class IBKROptionsExecutor:
                 exchange=leg.contract.exchange,
                 multiplier=leg.contract.multiplier,
             )
+            # Fetch fresh greeks for the new contract
+            new_greeks = None
+            try:
+                from ib_insync import Option as IBOption
+                ib = self._ib._ib
+                ib_opt = IBOption(
+                    new_contract.symbol, new_expiry, new_contract.strike,
+                    new_contract.right.value, new_contract.exchange,
+                    new_contract.currency,
+                )
+                qualified = ib.qualifyContracts(ib_opt)
+                if qualified:
+                    ticker = ib.reqMktData(ib_opt)
+                    ib.sleep(1)
+                    from options.models import OptionGreeks
+                    new_greeks = OptionGreeks(
+                        delta=getattr(ticker, 'modelGreeks', None) and ticker.modelGreeks.delta or 0,
+                        gamma=getattr(ticker, 'modelGreeks', None) and ticker.modelGreeks.gamma or 0,
+                        theta=getattr(ticker, 'modelGreeks', None) and ticker.modelGreeks.theta or 0,
+                        vega=getattr(ticker, 'modelGreeks', None) and ticker.modelGreeks.vega or 0,
+                        implied_vol=getattr(ticker, 'modelGreeks', None) and ticker.modelGreeks.impliedVol or 0,
+                        underlying_price=getattr(ticker, 'modelGreeks', None) and ticker.modelGreeks.undPrice or 0,
+                        option_price=ticker.last if ticker.last == ticker.last else 0,
+                        bid=ticker.bid if ticker.bid == ticker.bid else 0,
+                        ask=ticker.ask if ticker.ask == ticker.ask else 0,
+                        volume=ticker.volume if ticker.volume == ticker.volume else 0,
+                        open_interest=0,
+                    )
+                    ib.cancelMktData(ib_opt)
+            except Exception as e:
+                logger.warning(f"Could not fetch greeks for rolled contract {new_contract.display_name}: {e}")
+
             new_legs.append(OptionLeg(
                 contract=new_contract,
                 action=leg.action,
                 quantity=leg.quantity,
+                greeks=new_greeks,
             ))
 
         new_strategy = OptionsStrategy(

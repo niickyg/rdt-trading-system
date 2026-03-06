@@ -107,7 +107,7 @@ except Exception as e:
     raise
 
 app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=30)
-app.config['SESSION_PROTECTION'] = 'strong'
+app.config['SESSION_PROTECTION'] = 'basic'  # 'strong' causes random logouts on IP/UA changes
 
 # Session cookie security settings
 app.config['SESSION_COOKIE_SECURE'] = not app.debug  # HTTPS only in production
@@ -116,11 +116,19 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
 app.config['REMEMBER_COOKIE_SECURE'] = not app.debug
 app.config['REMEMBER_COOKIE_HTTPONLY'] = True
 app.config['REMEMBER_COOKIE_SAMESITE'] = 'Lax'
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)  # Session timeout
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)  # Session timeout
+
+
+@app.before_request
+def _make_session_permanent():
+    """Mark every session as permanent so PERMANENT_SESSION_LIFETIME applies."""
+    from flask import session
+    session.permanent = True
+
 
 # Initialize WebSocket support
 try:
-    from websocket import init_websocket, get_room_stats
+    from web.websocket import init_websocket, get_room_stats
     # Use threading mode for maximum compatibility (eventlet requires early monkey patching)
     async_mode = os.environ.get('WEBSOCKET_ASYNC_MODE', 'threading')
     socketio = init_websocket(app, async_mode=async_mode)
@@ -131,7 +139,7 @@ except ImportError as e:
 
 # Initialize Dashboard Authentication
 try:
-    from auth import init_auth
+    from web.auth import init_auth
     init_auth(app)
     logger.info("Dashboard authentication initialized")
 except ImportError as e:
@@ -153,6 +161,23 @@ try:
     logger.info("API authentication initialized")
 except ImportError as e:
     logger.warning(f"Could not import API blueprint: {e}")
+
+# Import and register Options API blueprint
+try:
+    from web.routes.options import options_bp
+    app.register_blueprint(options_bp)
+    csrf.exempt(options_bp)
+    logger.info("Options API blueprint registered")
+except ImportError as e:
+    logger.warning(f"Could not import Options blueprint: {e}")
+
+# Import and register Dashboard Data blueprint (session-auth AJAX routes)
+try:
+    from web.routes.dashboard_data import dashboard_data_bp
+    app.register_blueprint(dashboard_data_bp)
+    logger.info("Dashboard data blueprint registered")
+except ImportError as e:
+    logger.warning(f"Could not import Dashboard data blueprint: {e}")
 
 # Import and register GraphQL blueprint
 try:
@@ -254,6 +279,13 @@ def web_rate_limit():
         # Evict timestamps outside the current window
         while timestamps and timestamps[0] < window_start:
             timestamps.popleft()
+
+        # Periodically purge stale IPs to prevent unbounded dict growth
+        if len(_web_rate_limit_store) > 10000:
+            stale_ips = [ip for ip, dq in _web_rate_limit_store.items()
+                         if not dq or dq[-1] < window_start]
+            for ip in stale_ips:
+                del _web_rate_limit_store[ip]
 
         if len(timestamps) >= _WEB_RATE_LIMIT_REQUESTS:
             logger.warning(
@@ -399,21 +431,36 @@ def offline():
 @login_required
 def dashboard():
     """Main trading dashboard"""
-    return render_template('dashboard.html', user=current_user)
+    from web.routes.dashboard_data import (
+        get_open_stock_positions, get_open_options_positions,
+        get_trade_stats, get_market_status, get_recent_signals,
+    )
+    return render_template('dashboard.html', user=current_user,
+        positions=get_open_stock_positions(),
+        options_positions=get_open_options_positions(),
+        stats=get_trade_stats(),
+        market_status=get_market_status(),
+        recent_signals=get_recent_signals(limit=10))
 
 
 @app.route('/dashboard/signals')
 @login_required
 def dashboard_signals():
     """Current active signals view"""
-    return render_template('dashboard_signals.html', user=current_user)
+    from web.routes.dashboard_data import get_recent_signals
+    return render_template('dashboard_signals.html', user=current_user,
+        signals=get_recent_signals(limit=100))
 
 
 @app.route('/dashboard/history')
 @login_required
 def dashboard_history():
     """Signal history view"""
-    return render_template('dashboard_history.html', user=current_user)
+    from web.routes.dashboard_data import get_closed_trades, get_trade_stats, get_trade_stats_by_strategy
+    return render_template('dashboard_history.html', user=current_user,
+        trades=get_closed_trades(days=30),
+        trade_stats=get_trade_stats(),
+        strategy_stats=get_trade_stats_by_strategy())
 
 
 @app.route('/dashboard/settings')
@@ -448,7 +495,12 @@ def dashboard_alerts():
 @login_required
 def dashboard_positions():
     """Open positions view - full-featured position tracker"""
-    return render_template('positions.html', user=current_user)
+    from web.routes.dashboard_data import (
+        get_open_stock_positions, get_open_options_positions,
+    )
+    return render_template('dashboard_positions.html', user=current_user,
+        positions=get_open_stock_positions(),
+        options_positions=get_open_options_positions())
 
 
 @app.route('/dashboard/ml')
@@ -506,7 +558,7 @@ def dashboard_ml():
             ml_data['error'] = 'no_monitors'
     except Exception as e:
         logger.warning(f"ML dashboard data collection failed: {e}")
-        ml_data['error'] = str(e)
+        ml_data['error'] = 'ml_data_unavailable'
 
     # Also try to get ensemble model info directly
     try:
@@ -527,6 +579,43 @@ def dashboard_ml():
     return render_template('dashboard_ml.html', user=current_user, ml_data=ml_data)
 
 
+@app.route('/dashboard/options')
+@login_required
+def dashboard_options():
+    """Options trading dashboard"""
+    from web.routes.dashboard_data import get_open_options_positions
+    return render_template('dashboard_options.html', user=current_user,
+        options_positions=get_open_options_positions())
+
+
+@app.route('/dashboard/strategies')
+@login_required
+def dashboard_strategies():
+    """Strategy performance & control page"""
+    return render_template('dashboard_strategies.html', user=current_user)
+
+
+@app.route('/dashboard/agents')
+@login_required
+def dashboard_agents():
+    """Agent health monitor page"""
+    return render_template('dashboard_agents.html', user=current_user)
+
+
+@app.route('/dashboard/confidence')
+@login_required
+def dashboard_confidence():
+    """AI Signal Confidence analysis page"""
+    return render_template('dashboard_confidence.html', user=current_user)
+
+
+@app.route('/dashboard/journal')
+@login_required
+def dashboard_journal():
+    """Trading journal and analytics page"""
+    return render_template('dashboard_journal.html', user=current_user)
+
+
 @app.route('/dashboard/settings/security')
 @login_required
 def dashboard_settings_security():
@@ -538,7 +627,12 @@ def dashboard_settings_security():
 @login_required
 def positions_tracker():
     """Full-featured position tracker view (alias for dashboard/positions)"""
-    return render_template('positions.html', user=current_user)
+    from web.routes.dashboard_data import (
+        get_open_stock_positions, get_open_options_positions,
+    )
+    return render_template('positions.html', user=current_user,
+        positions=get_open_stock_positions(),
+        options_positions=get_open_options_positions())
 
 
 # =============================================================================
@@ -598,7 +692,7 @@ def checkout(plan):
 
     except Exception as e:
         logger.error(f"Failed to create Stripe checkout session for plan={plan}: {e}")
-        return render_template('checkout.html', plan=plan, stripe_error=str(e))
+        return render_template('checkout.html', plan=plan, stripe_error='Payment processing error. Please try again.')
 
 
 @app.route('/billing/success')
@@ -796,11 +890,12 @@ def health_detailed():
         if not db_connected:
             issues.append('Database connection failed')
     except Exception as e:
+        logger.error(f"Health check database error: {e}")
         health['components']['database'] = {
             'status': 'unhealthy',
-            'error': str(e)
+            'error': 'connection_failed'
         }
-        issues.append(f'Database error: {e}')
+        issues.append('Database error')
 
     # Broker health
     try:
@@ -816,9 +911,10 @@ def health_detailed():
         if not manager.active_broker:
             issues.append('No active broker')
     except Exception as e:
+        logger.error(f"Health check broker error: {e}")
         health['components']['broker'] = {
             'status': 'unknown',
-            'error': str(e)
+            'error': 'check_failed'
         }
 
     # Event bus health
@@ -839,9 +935,10 @@ def health_detailed():
 
         health['components']['event_bus'] = event_info
     except Exception as e:
+        logger.error(f"Health check event bus error: {e}")
         health['components']['event_bus'] = {
             'status': 'unknown',
-            'error': str(e)
+            'error': 'check_failed'
         }
 
     # System resources
@@ -859,9 +956,10 @@ def health_detailed():
         if memory_info.rss > 1024 * 1024 * 1024:  # > 1GB
             issues.append('High memory usage')
     except Exception as e:
+        logger.error(f"Health check system resources error: {e}")
         health['components']['system'] = {
             'status': 'unknown',
-            'error': str(e)
+            'error': 'check_failed'
         }
 
     # Determine overall status
@@ -1194,7 +1292,7 @@ def websocket_status():
         logger.error(f"Error getting WebSocket status: {e}")
         return jsonify({
             'status': 'error',
-            'message': str(e)
+            'message': 'Internal server error'
         }), 500
 
 
@@ -1253,7 +1351,7 @@ def prometheus_metrics():
         logger.error(f"Error generating Prometheus metrics: {e}")
         return jsonify({
             'error': 'Failed to generate metrics',
-            'message': str(e)
+            'message': 'Internal server error'
         }), 500
 
 
@@ -1270,7 +1368,7 @@ def handle_csrf_error(error):
         return jsonify({
             'error': 'CSRF token missing or invalid',
             'code': 'CSRF_ERROR',
-            'message': error.description
+            'message': 'CSRF token missing or invalid'
         }), 400
     # For web requests, show error page or redirect to login
     return render_template('error.html',
@@ -1286,7 +1384,7 @@ def bad_request(error):
     if request.path.startswith('/api/'):
         return jsonify({
             'error': 'Bad request',
-            'message': str(error.description) if hasattr(error, 'description') else str(error),
+            'message': 'Invalid request',
             'code': 'BAD_REQUEST'
         }), 400
     return render_template('error.html',
@@ -1327,7 +1425,7 @@ def unprocessable_entity(error):
     if request.path.startswith('/api/'):
         return jsonify({
             'error': 'Validation error',
-            'message': str(error.description) if hasattr(error, 'description') else str(error),
+            'message': 'The submitted data failed validation',
             'code': 'VALIDATION_ERROR'
         }), 422
     return render_template('error.html',
@@ -1366,6 +1464,9 @@ def server_error(error):
 
 def initialize_trading_components():
     """Initialize all trading components using the dedicated module."""
+    if os.environ.get('RDT_SKIP_TRADING_INIT', '').lower() in ('true', '1', 'yes'):
+        logger.info("Dashboard-only mode: skipping trading component initialization")
+        return {}
     try:
         from web.trading_init import initialize_all_components
         components = initialize_all_components()
@@ -1397,6 +1498,58 @@ if _scanner is not None:
         logger.info("Real-time scanner started in background thread")
     else:
         logger.info("Deferring scanner start to werkzeug child process")
+
+
+# Start the agent orchestrator (ScannerAgent → AnalyzerAgent → ExecutorAgent pipeline)
+# in a background thread with its own asyncio event loop.
+def _start_agent_system():
+    """Run the trading agent orchestrator in a background asyncio event loop."""
+    import asyncio
+    import nest_asyncio
+    from agents.orchestrator import run_trading_system
+    from web.trading_init import load_configuration, get_watchlist
+
+    broker = _trading_components.get('broker')
+    risk_manager = _trading_components.get('risk_manager')
+    data_provider = _trading_components.get('data_provider')
+
+    if not all([broker, risk_manager, data_provider]):
+        logger.warning("Cannot start agent system: missing core components")
+        return
+
+    config = load_configuration()
+    watchlist = get_watchlist()
+    auto_trade = config.get('auto_trade', False)
+
+    # Apply nest_asyncio so ib_insync can run its event loop inside ours
+    nest_asyncio.apply()
+
+    logger.info(f"Starting agent system (auto_trade={auto_trade}, {len(watchlist)} symbols)")
+    try:
+        asyncio.run(run_trading_system(
+            broker=broker,
+            risk_manager=risk_manager,
+            data_provider=data_provider,
+            watchlist=watchlist,
+            config=config,
+            auto_trade=auto_trade
+        ))
+    except Exception as e:
+        logger.error(f"Agent system exited: {e}")
+
+
+_agent_thread = None
+if _trading_components.get('broker') is not None:
+    _is_reloader_parent = (
+        __name__ == '__main__'
+        and os.environ.get('WERKZEUG_RUN_MAIN') != 'true'
+    )
+    if not _is_reloader_parent:
+        _agent_thread = threading.Thread(target=_start_agent_system, daemon=True)
+        _agent_thread.start()
+        logger.info("Agent system (orchestrator) started in background thread")
+    else:
+        logger.info("Deferring agent system start to werkzeug child process")
 
 
 # =============================================================================

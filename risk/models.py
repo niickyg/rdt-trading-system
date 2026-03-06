@@ -5,15 +5,15 @@ Risk Management Data Models
 from dataclasses import dataclass, field
 from datetime import datetime, date
 from typing import Optional, Dict, List
-from enum import Enum
+from enum import Enum, IntEnum
 
 
-class RiskLevel(Enum):
+class RiskLevel(IntEnum):
     """Risk level classifications"""
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
+    LOW = 0
+    MEDIUM = 1
+    HIGH = 2
+    CRITICAL = 3
 
 
 class RiskViolationType(Enum):
@@ -28,6 +28,9 @@ class RiskViolationType(Enum):
     INSUFFICIENT_BUYING_POWER = "insufficient_buying_power"
     MARKET_CLOSED = "market_closed"
     VOLATILITY_TOO_HIGH = "volatility_too_high"
+    MAX_RISK_PER_TRADE = "max_risk_per_trade"
+    MAX_DAILY_TRADES = "max_daily_trades"
+    INSUFFICIENT_RISK_REWARD = "insufficient_risk_reward"
 
 
 @dataclass

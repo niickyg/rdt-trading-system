@@ -58,9 +58,9 @@ SP500_EXTENDED = [
     # Healthcare Extended
     'GILD', 'AMGN', 'ISRG', 'REGN', 'VRTX', 'BIIB', 'MDT', 'SYK', 'BDX', 'ZTS',
     # Tech Extended
-    'PYPL', 'NFLX', 'SHOP', 'SQ', 'UBER', 'ABNB', 'DDOG', 'SNOW', 'ZS', 'CRWD',
+    'PYPL', 'NFLX', 'SHOP', 'XYZ', 'UBER', 'ABNB', 'DDOG', 'SNOW', 'ZS', 'CRWD',
     # Telecom & Media
-    'T', 'VZ', 'CMCSA', 'DIS', 'NFLX', 'CHTR', 'TMUS', 'WBD',
+    'T', 'VZ', 'CMCSA', 'DIS', 'CHTR', 'TMUS', 'WBD',
     # Financials Extended
     'SCHW', 'USB', 'PNC', 'TFC', 'COF', 'AIG', 'MET', 'PRU', 'ALL', 'TRV',
     # Consumer Discretionary
@@ -160,9 +160,9 @@ LEVERAGED_ETFS = [
 
 # High volatility stocks for aggressive trading
 HIGH_VOLATILITY = [
-    'TSLA', 'NVDA', 'AMD', 'COIN', 'SHOP', 'SQ', 'ROKU', 'SNAP',
+    'TSLA', 'NVDA', 'AMD', 'COIN', 'SHOP', 'XYZ', 'ROKU', 'SNAP',
     'RBLX', 'PLTR', 'HOOD', 'RIVN', 'LCID', 'NIO', 'XPEV', 'LI',
-    'MRNA', 'BNTX', 'NKLA', 'SPCE', 'GME', 'AMC'
+    'MRNA', 'BNTX', 'GME', 'AMC'
 ]
 
 # Dividend aristocrats - more stable for swing trades
@@ -183,9 +183,13 @@ INTERNATIONAL_ADRS = [
 # DYNAMIC S&P 500 WATCHLIST
 # =============================================================================
 
-_SP500_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "watchlists")
-_SP500_CACHE_FILE = os.path.join(_SP500_CACHE_DIR, "sp500_constituents.json")
+_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "watchlists")
+_SP500_CACHE_DIR = _CACHE_DIR
+_SP500_CACHE_FILE = os.path.join(_CACHE_DIR, "sp500_constituents.json")
 _SP500_CACHE_MAX_AGE_DAYS = 7
+
+_RUSSELL1000_CACHE_FILE = os.path.join(_CACHE_DIR, "russell1000_constituents.json")
+_RUSSELL1000_CACHE_MAX_AGE_DAYS = 7
 
 
 def fetch_sp500_from_wikipedia() -> List[str]:
@@ -263,6 +267,117 @@ def get_sp500_watchlist() -> List[str]:
 
 
 # =============================================================================
+# DYNAMIC RUSSELL 1000 WATCHLIST
+# =============================================================================
+
+def fetch_russell1000_from_wikipedia() -> List[str]:
+    """Fetch Russell 1000 constituents from Wikipedia"""
+    import pandas as pd
+    import urllib.request
+    from io import StringIO
+
+    url = "https://en.wikipedia.org/wiki/Russell_1000_Index"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req) as resp:
+        html = resp.read().decode("utf-8")
+    tables = pd.read_html(StringIO(html))
+    # Find the constituents table (has "Symbol" or "Ticker" column and many rows)
+    df = None
+    ticker_col = None
+    for table in tables:
+        cols = [str(c) for c in table.columns]
+        cols_lower = [c.lower() for c in cols]
+        for target in ('symbol', 'ticker'):
+            if target in cols_lower:
+                idx = cols_lower.index(target)
+                if len(table) > 100:  # constituents table has hundreds of rows
+                    df = table
+                    ticker_col = table.columns[idx]
+                    break
+        if df is not None:
+            break
+    if df is None or ticker_col is None:
+        raise ValueError("Could not find Russell 1000 constituents table on Wikipedia")
+    symbols = df[ticker_col].dropna().astype(str).tolist()
+    # Clean symbols: BRK.B -> BRK-B
+    symbols = [s.strip().replace(".", "-") for s in symbols if s.strip()]
+    return sorted(symbols)
+
+
+def _load_russell1000_cache() -> Optional[Dict]:
+    """Load cached Russell 1000 constituents"""
+    try:
+        with open(_RUSSELL1000_CACHE_FILE, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+
+def _save_russell1000_cache(symbols: List[str]):
+    """Save Russell 1000 constituents to cache"""
+    os.makedirs(_CACHE_DIR, exist_ok=True)
+    data = {
+        "symbols": symbols,
+        "timestamp": datetime.now().isoformat(),
+        "count": len(symbols),
+    }
+    with open(_RUSSELL1000_CACHE_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def get_russell1000_watchlist() -> List[str]:
+    """
+    Get Russell 1000 constituents with caching.
+
+    Returns cached list if <7 days old, otherwise fetches fresh.
+    Falls back to expired cache or S&P 500 on failure.
+    """
+    cache = _load_russell1000_cache()
+
+    if cache:
+        cached_time = datetime.fromisoformat(cache["timestamp"])
+        age_days = (datetime.now() - cached_time).days
+        if age_days < _RUSSELL1000_CACHE_MAX_AGE_DAYS:
+            logger.info(f"Using cached Russell 1000 list ({cache['count']} symbols, {age_days}d old)")
+            return cache["symbols"]
+
+    # Try to fetch fresh
+    try:
+        symbols = fetch_russell1000_from_wikipedia()
+        _save_russell1000_cache(symbols)
+        logger.info(f"Fetched fresh Russell 1000 list: {len(symbols)} symbols")
+        return symbols
+    except Exception as e:
+        logger.warning(f"Failed to fetch Russell 1000 from Wikipedia: {e}")
+
+        # Fall back to expired cache
+        if cache:
+            logger.info(f"Using expired Russell 1000 cache ({cache['count']} symbols)")
+            return cache["symbols"]
+
+        # Last resort: just use S&P 500
+        logger.warning("No Russell 1000 cache available, falling back to S&P 500")
+        return get_sp500_watchlist()
+
+
+def get_sp500_plus_watchlist() -> List[str]:
+    """
+    Get expanded watchlist: Russell 1000 + S&P 500 + high volatility + ADRs.
+
+    Union of all sources, deduplicated and sorted. ~750 symbols input,
+    designed so ~500 survive volume/rvol filters during scanning.
+    """
+    all_symbols = set()
+    all_symbols.update(get_sp500_watchlist())
+    all_symbols.update(get_russell1000_watchlist())
+    all_symbols.update(HIGH_VOLATILITY)
+    all_symbols.update(INTERNATIONAL_ADRS)
+    result = sorted(list(all_symbols))
+    logger.info(f"Built sp500_plus watchlist: {len(result)} symbols")
+    return result
+
+
+# =============================================================================
 # COMBINED WATCHLISTS
 # =============================================================================
 
@@ -319,6 +434,8 @@ def get_watchlist_by_name(name: str) -> List[str]:
         'core': get_core_watchlist,
         'full': get_full_watchlist,
         'sp500': get_sp500_watchlist,
+        'sp500_plus': get_sp500_plus_watchlist,
+        'russell1000': get_russell1000_watchlist,
         'aggressive': get_aggressive_watchlist,
         'etfs': get_etf_watchlist,
         'dividends': lambda: DIVIDEND_ARISTOCRATS.copy(),
@@ -357,6 +474,20 @@ def get_all_watchlists_metadata() -> Dict[str, WatchlistMetadata]:
             avg_volume_requirement=500_000,
             sector_focus='Diversified',
             count=503
+        ),
+        'sp500_plus': WatchlistMetadata(
+            name='S&P 500 Plus',
+            description='S&P 500 + Russell 1000 + high volatility + ADRs (~750 symbols, ~500 after filters)',
+            avg_volume_requirement=500_000,
+            sector_focus='Diversified',
+            count=750
+        ),
+        'russell1000': WatchlistMetadata(
+            name='Russell 1000',
+            description='Russell 1000 constituents (dynamic from Wikipedia)',
+            avg_volume_requirement=500_000,
+            sector_focus='Diversified',
+            count=1000
         ),
         'technology': WatchlistMetadata(
             name='Technology',

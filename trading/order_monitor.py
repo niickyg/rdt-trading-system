@@ -706,11 +706,14 @@ class OrderMonitor:
 
 # Global order monitor instance
 _order_monitor: Optional[OrderMonitor] = None
+_order_monitor_lock = threading.Lock()
 
 
 def get_order_monitor() -> OrderMonitor:
     """Get or create the global OrderMonitor instance."""
     global _order_monitor
     if _order_monitor is None:
-        _order_monitor = OrderMonitor()
+        with _order_monitor_lock:
+            if _order_monitor is None:
+                _order_monitor = OrderMonitor()
     return _order_monitor

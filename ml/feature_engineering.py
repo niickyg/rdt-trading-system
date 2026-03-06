@@ -381,18 +381,23 @@ class FeatureEngineer:
             vwap = calculate_vwap(daily_df)
             features['vwap'] = float(vwap.iloc[-1])
             features['vwap_distance'] = current_price - features['vwap']
-            features['vwap_distance_percent'] = (features['vwap_distance'] / features['vwap']) * 100
+            features['vwap_distance_percent'] = (features['vwap_distance'] / features['vwap']) * 100 if features['vwap'] != 0 else 0.0
 
             # Price momentum (various periods)
             close = daily_df['close']
-            features['price_momentum_1'] = float(close.pct_change(1).iloc[-1] * 100)
-            features['price_momentum_5'] = float(close.pct_change(5).iloc[-1] * 100)
-            features['price_momentum_15'] = float(close.pct_change(15).iloc[-1] * 100)
+            mom1 = close.pct_change(1).iloc[-1]
+            mom5 = close.pct_change(5).iloc[-1]
+            mom15 = close.pct_change(15).iloc[-1]
+            features['price_momentum_1'] = float(mom1 * 100) if np.isfinite(mom1) else 0.0
+            features['price_momentum_5'] = float(mom5 * 100) if np.isfinite(mom5) else 0.0
+            features['price_momentum_15'] = float(mom15 * 100) if np.isfinite(mom15) else 0.0
 
             # Volume analysis
             volume = daily_df['volume']
-            features['volume_ratio'] = float(volume.iloc[-1] / volume.rolling(20).mean().iloc[-1])
-            features['volume_trend'] = float(volume.rolling(5).mean().iloc[-1] / volume.rolling(20).mean().iloc[-1])
+            vol_ma20 = volume.rolling(20).mean().iloc[-1]
+            vol_ma5 = volume.rolling(5).mean().iloc[-1]
+            features['volume_ratio'] = float(volume.iloc[-1] / vol_ma20) if vol_ma20 > 0 else 1.0
+            features['volume_trend'] = float(vol_ma5 / vol_ma20) if vol_ma20 > 0 else 1.0
 
             # Price range analysis
             day_range = daily_df['high'].iloc[-1] - daily_df['low'].iloc[-1]
@@ -624,7 +629,7 @@ class FeatureEngineer:
 
             # Daily alignment score (EMA alignment + RRS)
             ema_aligned = 1.0 if ema_3 > ema_8 > ema_21 else (-1.0 if ema_3 < ema_8 < ema_21 else 0.0)
-            rrs_normalized = np.tanh(rrs / 3)  # Normalize RRS to [-1, 1]
+            rrs_normalized = np.tanh(rrs / 3) if np.isfinite(rrs) else 0.0  # Normalize RRS to [-1, 1]
             derived['daily_alignment_score'] = (ema_aligned + rrs_normalized) / 2
 
             # Feature complexity score (how many strong signals)
@@ -999,9 +1004,10 @@ class FeatureEngineer:
             gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
 
-            rs = gain / loss
+            rs = gain / loss.replace(0, np.nan)
             rsi = 100 - (100 / (1 + rs))
-            return float(rsi.iloc[-1])
+            val = rsi.iloc[-1]
+            return float(val) if not np.isnan(val) else 50.0
         except Exception:
             return 50.0
 

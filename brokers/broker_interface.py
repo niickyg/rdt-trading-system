@@ -64,9 +64,13 @@ class AuthenticationError(BrokerError):
     pass
 
 
-class ConnectionError(BrokerError):
+class BrokerConnectionError(BrokerError):
     """Connection to broker API failed."""
     pass
+
+
+# Backward-compatible alias — avoid shadowing Python's builtin ConnectionError
+ConnectionError = BrokerConnectionError  # noqa: A001
 
 
 class OrderError(BrokerError):
@@ -426,6 +430,29 @@ class BrokerInterface(ABC):
             except Exception:
                 pass
         return quotes
+
+    @property
+    def has_streaming(self) -> bool:
+        """Whether this broker supports real-time streaming quotes.
+
+        Default is False. Subclasses with streaming capability should override.
+        """
+        return False
+
+    def get_streaming_quotes(self, symbols: List[str]) -> Dict[str, float]:
+        """Get latest prices from streaming data for multiple symbols.
+
+        Only available when has_streaming is True. Returns symbol -> last price.
+        Default implementation returns empty dict; subclasses with streaming
+        should override.
+
+        Args:
+            symbols: List of stock ticker symbols.
+
+        Returns:
+            Dictionary mapping symbol to last traded price.
+        """
+        return {}
 
     def get_open_orders(self) -> List[Order]:
         """

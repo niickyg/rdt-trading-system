@@ -427,10 +427,11 @@ class StackedEnsembleTrainer:
             random_state=config.get('random_state', 42)
         )
 
-        # Load models
-        trainer.xgboost_model = joblib.load(model_dir / 'xgboost_model.pkl')
-        trainer.rf_model = joblib.load(model_dir / 'random_forest_model.pkl')
-        trainer.meta_learner = joblib.load(model_dir / 'meta_learner.pkl')
+        # Load models with integrity verification
+        from ml.safe_model_loader import safe_load_model
+        trainer.xgboost_model = safe_load_model(str(model_dir / 'xgboost_model.pkl'))
+        trainer.rf_model = safe_load_model(str(model_dir / 'random_forest_model.pkl'))
+        trainer.meta_learner = safe_load_model(str(model_dir / 'meta_learner.pkl'))
         trainer.feature_names = config.get('feature_names', [])
 
         # Load metrics

@@ -61,16 +61,14 @@ def paper_broker_no_yf():
 @pytest.fixture
 def paper_broker():
     """Create a paper broker for testing with mocked yfinance."""
-    with patch('brokers.paper_broker.yf', mock_yf):
-        with patch('brokers.paper_broker.YF_AVAILABLE', False):  # Disable yfinance for speed
-            broker = PaperBroker(
-                initial_balance=25000.0,
-                slippage_pct=0.001,
-                commission_per_trade=0.0,
-                realistic_fills=False
-            )
-            broker.connect()
-            yield broker
+    broker = PaperBroker(
+        initial_balance=25000.0,
+        slippage_pct=0.001,
+        commission_per_trade=0.0,
+        realistic_fills=False
+    )
+    broker.connect()
+    yield broker
 
 
 class TestPaperBrokerOrderExecution:

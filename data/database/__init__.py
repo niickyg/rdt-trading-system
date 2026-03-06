@@ -20,6 +20,8 @@ from .models import (
     Base, Trade, Position, Signal, DailyStats, WatchlistItem, APIUser, User,
     TradeDirection, TradeStatus, ExitReason, SignalStatus, SubscriptionTierEnum,
     RejectedSignal, EquitySnapshot, ParameterChange,
+    IntradayBar, TechnicalIndicator, TradeSnapshot, MarketRegimeDaily,
+    SectorData, OptionsGreeksHistory, EarningsCalendar, DailyBar,
 )
 from .connection import (
     DatabaseManager, get_db_manager, init_database,
@@ -27,12 +29,16 @@ from .connection import (
     check_timescale_extension, get_timescale_version, health_check
 )
 from .trades_repository import TradesRepository, get_trades_repository
+from .ml_repository import MLDataRepository, get_ml_repository
 
 __all__ = [
     # Models
     'Base', 'Trade', 'Position', 'Signal', 'DailyStats', 'WatchlistItem',
     'APIUser', 'User',
     'RejectedSignal', 'EquitySnapshot', 'ParameterChange',
+    # ML Training Models
+    'IntradayBar', 'TechnicalIndicator', 'TradeSnapshot', 'MarketRegimeDaily',
+    'SectorData', 'OptionsGreeksHistory', 'EarningsCalendar', 'DailyBar',
     # Enums
     'TradeDirection', 'TradeStatus', 'ExitReason', 'SignalStatus',
     'SubscriptionTierEnum',
@@ -40,6 +46,7 @@ __all__ = [
     'DatabaseManager', 'get_db_manager', 'init_database',
     'run_migrations', 'check_migrations', 'get_database_url',
     'check_timescale_extension', 'get_timescale_version', 'health_check',
-    # Repository
-    'TradesRepository', 'get_trades_repository'
+    # Repositories
+    'TradesRepository', 'get_trades_repository',
+    'MLDataRepository', 'get_ml_repository',
 ]

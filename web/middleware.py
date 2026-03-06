@@ -444,9 +444,9 @@ def get_json_or_error():
             }), 400)
         return data, None
     except Exception as e:
+        logger.debug(f"Invalid JSON body: {e}")
         return None, (jsonify({
             'error': 'Invalid JSON body',
-            'details': str(e),
             'code': 'INVALID_JSON'
         }), 400)
 

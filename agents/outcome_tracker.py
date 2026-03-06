@@ -92,31 +92,24 @@ class OutcomeTracker(ScheduledAgent):
             logger.error(f"OutcomeTracker error: {e}")
 
     async def _batch_fetch_prices(self, symbols: List[str]) -> Dict[str, float]:
-        """Fetch current prices for multiple symbols using yahooquery (non-blocking)."""
-        loop = asyncio.get_running_loop()
-        executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="outcome")
-        try:
-            return await loop.run_in_executor(executor, self._batch_fetch_prices_sync, symbols)
-        finally:
-            executor.shutdown(wait=False)
+        """Fetch current prices for multiple symbols using broker quotes or DB cache."""
+        result = {}
 
-    @staticmethod
-    def _batch_fetch_prices_sync(symbols: List[str]) -> Dict[str, float]:
-        """Synchronous batch price fetch using yahooquery."""
+        # Try to get prices from broker streaming quotes
         try:
-            from yahooquery import Ticker
-            t = Ticker(symbols, asynchronous=False)
-            prices = t.price
-            result = {}
-            for symbol, data in prices.items():
-                if isinstance(data, dict):
-                    price = data.get("regularMarketPrice")
-                    if price is not None:
-                        result[symbol] = float(price)
-            return result
+            from data.database.historical_cache import get_historical_cache
+            cache = get_historical_cache()
+
+            # First try: last close from DB cache (always available, no API call)
+            for symbol in symbols:
+                df = cache.get_daily_bars(symbol, lookback_days=5)
+                if df is not None and not df.empty:
+                    result[symbol] = float(df['close'].iloc[-1])
+
         except Exception as e:
-            logger.debug(f"Batch price fetch failed: {e}")
-            return {}
+            logger.debug(f"Batch price fetch from DB cache failed: {e}")
+
+        return result
 
     def _update_signal_with_price(self, signal: Dict, current_price: float) -> bool:
         """Update signal outcome with the given price."""
@@ -125,7 +118,11 @@ class OutcomeTracker(ScheduledAgent):
             if isinstance(signal_time, str):
                 signal_time = datetime.fromisoformat(signal_time)
 
+            # Use timezone-naive UTC consistently to avoid offset-aware/naive mismatch
             now = datetime.utcnow()
+            # Strip timezone info from signal_time if present (DB may return aware datetimes)
+            if signal_time is not None and signal_time.tzinfo is not None:
+                signal_time = signal_time.replace(tzinfo=None)
             elapsed = now - signal_time
             elapsed_hours = elapsed.total_seconds() / 3600
 
@@ -140,16 +137,16 @@ class OutcomeTracker(ScheduledAgent):
 
             update_data = {}
 
-            # Fill in based on elapsed time
-            if elapsed_hours >= 1:
+            # Fill in based on elapsed time (only write each checkpoint once)
+            if elapsed_hours >= 1 and signal.get('price_after_1h') is None:
                 update_data['price_after_1h'] = current_price
                 update_data['would_have_pnl_1h'] = pnl_pct
 
-            if elapsed_hours >= 4:
+            if elapsed_hours >= 4 and signal.get('price_after_4h') is None:
                 update_data['price_after_4h'] = current_price
                 update_data['would_have_pnl_4h'] = pnl_pct
 
-            if elapsed_hours >= 24:
+            if elapsed_hours >= 24 and signal.get('price_after_1d') is None:
                 update_data['price_after_1d'] = current_price
                 update_data['would_have_pnl_1d'] = pnl_pct
 

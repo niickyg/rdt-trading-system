@@ -10,11 +10,31 @@ Note: These migrations are designed to be run separately from Alembic migrations
 as they are TimescaleDB-specific and require the extension to be available.
 """
 
+import re
 from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+
+# Valid SQL identifier pattern
+_SAFE_IDENTIFIER = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+# Valid interval pattern (e.g. "7 days", "1 hour")
+_SAFE_INTERVAL = re.compile(r'^\d+\s+[a-zA-Z]+$')
+
+
+def _validate_identifier(name: str) -> str:
+    """Validate a SQL identifier to prevent injection."""
+    if not name or not _SAFE_IDENTIFIER.match(name):
+        raise ValueError(f"Invalid SQL identifier: {name!r}")
+    return name
+
+
+def _validate_interval(interval: str) -> str:
+    """Validate a SQL interval string."""
+    if not interval or not _SAFE_INTERVAL.match(interval):
+        raise ValueError(f"Invalid interval: {interval!r}")
+    return interval
 
 from .setup import (
     check_timescale_available,
@@ -234,8 +254,9 @@ def migrate_table_to_hypertable(
     Returns:
         Tuple of (success, message).
     """
-    time_column = config['time_column']
-    chunk_interval = config['chunk_interval']
+    time_column = _validate_identifier(config['time_column'])
+    chunk_interval = _validate_interval(config['chunk_interval'])
+    _validate_identifier(table_name)
 
     # Check if already a hypertable
     if is_hypertable(table_name, engine):
@@ -272,10 +293,15 @@ def migrate_table_to_hypertable(
             if with_compression and config.get('compress_after'):
                 segment_sql = ""
                 if config.get('segment_by'):
+                    for seg in config['segment_by']:
+                        _validate_identifier(seg)
                     segment_sql = f", timescaledb.compress_segmentby = '{','.join(config['segment_by'])}'"
 
                 order_sql = ""
                 if config.get('order_by'):
+                    # order_by may contain column + direction, validate the column part
+                    order_col = config['order_by'].split()[0]
+                    _validate_identifier(order_col)
                     order_sql = f", timescaledb.compress_orderby = '{config['order_by']}'"
 
                 conn.execute(text(f"""
@@ -286,10 +312,11 @@ def migrate_table_to_hypertable(
                     )
                 """))
 
+                compress_after = _validate_interval(config['compress_after'])
                 conn.execute(text(f"""
                     SELECT add_compression_policy(
                         '{table_name}',
-                        INTERVAL '{config['compress_after']}',
+                        INTERVAL '{compress_after}',
                         if_not_exists => true
                     )
                 """))
@@ -300,10 +327,11 @@ def migrate_table_to_hypertable(
             # Add retention policy
             retention_enabled = False
             if with_retention and config.get('retain_for'):
+                retain_for = _validate_interval(config['retain_for'])
                 conn.execute(text(f"""
                     SELECT add_retention_policy(
                         '{table_name}',
-                        INTERVAL '{config['retain_for']}',
+                        INTERVAL '{retain_for}',
                         if_not_exists => true
                     )
                 """))
@@ -401,6 +429,8 @@ def rollback_hypertable(table_name: str, engine: Engine) -> Tuple[bool, str]:
     Returns:
         Tuple of (success, message).
     """
+    _validate_identifier(table_name)
+
     if not is_hypertable(table_name, engine):
         return False, f"Table {table_name} is not a hypertable"
 
@@ -513,8 +543,17 @@ def create_continuous_aggregate(
         logger.warning("TimescaleDB not available")
         return False
 
+    # Validate identifiers
+    _validate_identifier(name)
+    _validate_identifier(source_table)
+    _validate_identifier(time_column)
+    _validate_interval(bucket_interval)
+    _validate_interval(refresh_interval)
+
     group_by_sql = ""
     if group_by:
+        for col in group_by:
+            _validate_identifier(col)
         group_by_sql = ", " + ", ".join(group_by)
 
     try:

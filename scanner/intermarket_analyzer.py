@@ -16,8 +16,8 @@ The intermarket composite adjusts RRS thresholds and position sizing:
   - risk_off: raise RRS threshold (+0.50), smaller positions (0.75x)
 
 This module is ADVISORY -- it adjusts thresholds and sizing but does NOT
-block signals on its own.  All data is fetched via yfinance with 30-minute
-caching per symbol.
+block signals on its own.  All data is fetched from the PostgreSQL daily bar
+cache with 30-minute in-memory caching per symbol.
 """
 
 import time
@@ -25,7 +25,6 @@ from typing import Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 from loguru import logger
 
 
@@ -75,10 +74,21 @@ class IntermarketAnalyzer:
         # Per-symbol price cache: {symbol: {'data': pd.Series, 'fetched_at': float}}
         self._price_cache: Dict[str, Dict] = {}
 
+        # Historical bar cache (lazy-loaded singleton)
+        self._historical_cache = None
+
         logger.info(
             f"IntermarketAnalyzer initialized "
             f"(cache_ttl={cache_ttl_minutes}min, lookback={self._lookback}d)"
         )
+
+    @property
+    def historical_cache(self):
+        """Lazy-load the HistoricalBarCache singleton."""
+        if self._historical_cache is None:
+            from data.database.historical_cache import get_historical_cache
+            self._historical_cache = get_historical_cache()
+        return self._historical_cache
 
     # ------------------------------------------------------------------
     # Public API
@@ -404,7 +414,7 @@ class IntermarketAnalyzer:
         if cached is not None and (now - cached['fetched_at']) < self._cache_ttl:
             return cached['data']
 
-        # Fetch fresh data
+        # Fetch fresh data from DB cache
         series = self._fetch_close_prices(symbol)
         if series is not None:
             self._price_cache[symbol] = {
@@ -413,62 +423,33 @@ class IntermarketAnalyzer:
             }
         return series
 
-    @staticmethod
-    def _fetch_close_prices(symbol: str) -> Optional[pd.Series]:
+    def _fetch_close_prices(self, symbol: str) -> Optional[pd.Series]:
         """
-        Fetch daily close prices for a symbol via yfinance.
+        Fetch daily close prices for a symbol from PostgreSQL daily bar cache.
 
-        Requests 3 months of data to ensure enough history for 20-day lookback
+        Requests 90 days of data to ensure enough history for 20-day lookback
         even accounting for weekends/holidays.
 
         Returns:
             pd.Series of close prices, or None on failure.
         """
         try:
-            data = yf.download(
-                symbol,
-                period='3mo',
-                interval='1d',
-                progress=False,
-                auto_adjust=True,
-            )
-
-            if data is None or data.empty:
-                logger.warning(f"yfinance returned empty data for {symbol}")
+            df = self.historical_cache.get_daily_bars(symbol, lookback_days=90)
+            if df is None or df.empty:
+                logger.warning(f"No daily bar data in DB cache for {symbol}")
                 return None
 
-            # Handle MultiIndex columns (yfinance quirk even for single symbol)
-            if isinstance(data.columns, pd.MultiIndex):
-                if 'Close' in data.columns.get_level_values(0):
-                    close_series = data['Close']
-                elif 'close' in data.columns.get_level_values(0):
-                    close_series = data['close']
-                else:
-                    logger.warning(f"No Close column in {symbol} data")
-                    return None
-                # Flatten if DataFrame (single symbol MultiIndex)
-                if isinstance(close_series, pd.DataFrame):
-                    close_series = close_series.iloc[:, 0]
-            else:
-                if 'Close' in data.columns:
-                    close_series = data['Close']
-                elif 'close' in data.columns:
-                    close_series = data['close']
-                else:
-                    logger.warning(f"No Close column in {symbol} data")
-                    return None
-
-            close_series = close_series.dropna()
+            close_series = df['close'].dropna()
 
             if len(close_series) < 2:
                 logger.warning(f"Insufficient price data for {symbol}: {len(close_series)} bars")
                 return None
 
-            logger.debug(f"Fetched {len(close_series)} daily bars for {symbol}")
+            logger.debug(f"Fetched {len(close_series)} daily bars for {symbol} from DB cache")
             return close_series
 
         except Exception as e:
-            logger.error(f"Failed to fetch {symbol} data: {e}")
+            logger.error(f"Failed to fetch {symbol} data from DB cache: {e}")
             return None
 
     # ------------------------------------------------------------------

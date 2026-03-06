@@ -13,10 +13,15 @@ Features:
 - Paper and live trading accounts
 """
 
+from __future__ import annotations
+
 import time
 import threading
+from collections import deque
 from datetime import datetime
 from typing import Dict, List, Optional, Callable, Any, Tuple
+
+import pandas as pd
 from loguru import logger
 
 from brokers.broker_interface import (
@@ -68,6 +73,293 @@ try:
 except (ImportError, RuntimeError) as e:
     IB_AVAILABLE = False
     logger.warning(f"ib_insync not available: {e}. Install with: pip install ib_insync")
+
+
+import math
+
+
+def _nan_safe(val, default=0.0):
+    """Convert value to float, returning default for None/NaN."""
+    if val is None or (isinstance(val, float) and math.isnan(val)):
+        return default
+    return float(val)
+
+
+def _nan_safe_int(val, default=0):
+    """Convert value to int, returning default for None/NaN."""
+    if val is None or (isinstance(val, float) and math.isnan(val)):
+        return default
+    return int(val)
+
+
+class StreamingQuoteManager:
+    """
+    Manages rotating streaming market data subscriptions for IBKR.
+
+    IBKR enforces ~100 concurrent streaming lines. This manager rotates
+    through symbol groups during warmup to populate all tickers, then
+    serves cached data from all tickers regardless of age. Ticker objects
+    retain their last values after unsubscription, so get_quotes() returns
+    data for all symbols that received data during warmup.
+
+    Between scans, rotate_next() refreshes one group at a time to keep
+    prices reasonably current across the full symbol list.
+
+    Usage:
+        sqm = StreamingQuoteManager(ib)
+        sqm.configure(symbols)   # Set up symbol groups
+        sqm.warm_up()            # Subscribe to all groups once (~30s)
+        quotes = sqm.get_quotes(symbols)  # Instant read from cache
+        sqm.rotate_next()        # Call periodically between scans
+    """
+
+    MAX_CONCURRENT = 95  # Stay under IBKR's 100-line limit
+    ROTATION_SETTLE_TIME = 3.0  # Seconds to let data flow after subscribing
+
+    def __init__(self, ib):
+        self._ib = ib
+        self._symbols: List[str] = []
+        self._groups: List[List[str]] = []
+        self._current_group: int = -1
+        self._tickers: Dict[str, Any] = {}  # symbol -> Ticker (retains last values)
+        self._active_contracts: Dict[str, Any] = {}  # symbol -> Contract (currently subscribed)
+        self._contract_cache: Dict[str, Any] = {}  # normalized_symbol -> qualified Contract
+        self._initialized_groups: set = set()
+        self._active = False
+        self._pump_thread: Optional[threading.Thread] = None
+        self._pump_stop = threading.Event()
+
+    def configure(self, symbols: List[str]):
+        """Set up symbol groups for rotation."""
+        self._symbols = list(symbols)
+        self._groups = [
+            symbols[i:i + self.MAX_CONCURRENT]
+            for i in range(0, len(symbols), self.MAX_CONCURRENT)
+        ]
+        self._initialized_groups.clear()
+        logger.info(
+            f"StreamingQuoteManager: {len(symbols)} symbols in "
+            f"{len(self._groups)} groups of {self.MAX_CONCURRENT}"
+        )
+
+    def warm_up(self):
+        """
+        Subscribe to all groups sequentially to populate initial data.
+
+        After warmup, every symbol has at least one snapshot of data.
+        Tickers retain their values after unsubscription, so all symbols
+        will have cached prices available via get_quotes().
+        """
+        if not self._groups:
+            return
+
+        logger.info(f"StreamingQuoteManager: warming up {len(self._groups)} groups...")
+        for i in range(len(self._groups)):
+            self._subscribe_group(i)
+            self._ib.sleep(self.ROTATION_SETTLE_TIME)
+            self._initialized_groups.add(i)
+            filled = sum(1 for s in self._symbols if self._has_data(s))
+            logger.info(
+                f"  Group {i + 1}/{len(self._groups)}: "
+                f"{filled}/{len(self._symbols)} symbols have data"
+            )
+
+        # Verify data freshness
+        fresh_count = self._count_fresh_tickers()
+        if fresh_count == 0 and len(self._symbols) > 0:
+            logger.warning(
+                f"StreamingQuoteManager: warmup completed but NO tickers have fresh data. "
+                f"Gateway may not be delivering market data."
+            )
+        else:
+            logger.info(
+                f"StreamingQuoteManager: {fresh_count}/{len(self._symbols)} tickers "
+                f"have fresh data after warmup"
+            )
+
+        self._active = True
+        logger.info(f"StreamingQuoteManager: warmup complete, {len(self._tickers)} tickers cached")
+
+    def _count_fresh_tickers(self) -> int:
+        """Count tickers that have any valid price data."""
+        return sum(1 for s in self._symbols if self._has_data(s))
+
+    def start_pump(self):
+        """Start background thread that pumps ib_insync event loop."""
+        if self._pump_thread and self._pump_thread.is_alive():
+            return
+        self._pump_stop.clear()
+        self._pump_thread = threading.Thread(
+            target=self._pump_loop, daemon=True, name="ibkr-pump"
+        )
+        self._pump_thread.start()
+        logger.info("StreamingQuoteManager: background pump started")
+
+    def stop_pump(self):
+        """Stop the background pump thread."""
+        self._pump_stop.set()
+        if self._pump_thread:
+            self._pump_thread.join(timeout=5)
+        logger.info("StreamingQuoteManager: background pump stopped")
+
+    def _pump_loop(self):
+        """Background loop that keeps ib_insync processing incoming data."""
+        consecutive_errors = 0
+        while not self._pump_stop.is_set():
+            try:
+                if not self._ib.isConnected():
+                    logger.warning("StreamingQuoteManager: IB connection lost, pump loop exiting")
+                    break
+                self._ib.sleep(0.1)
+                consecutive_errors = 0
+            except Exception as e:
+                if self._pump_stop.is_set():
+                    break
+                consecutive_errors += 1
+                if consecutive_errors >= 10:
+                    logger.error(f"StreamingQuoteManager: pump loop hit {consecutive_errors} consecutive errors, exiting: {e}")
+                    break
+                time.sleep(0.5)  # Back off on error
+
+    def rotate_next(self):
+        """
+        Rotate to next symbol group.
+
+        Call this between scans to cycle through all symbols.
+        Returns the group index that was subscribed.
+        """
+        if not self._groups or not self._active:
+            return -1
+
+        next_idx = (self._current_group + 1) % len(self._groups)
+        self._subscribe_group(next_idx)
+        self._initialized_groups.add(next_idx)
+        return next_idx
+
+    def is_warmed_up(self) -> bool:
+        """Check if all groups have been subscribed at least once."""
+        return len(self._initialized_groups) >= len(self._groups)
+
+    def get_quotes(self, symbols: List[str]) -> Dict[str, 'Quote']:
+        """
+        Read cached quotes from streaming tickers — NO API round-trips.
+
+        Returns quotes for ALL symbols that have valid cached data.
+        No staleness check — tickers retain their last values after
+        unsubscription, so warmup data stays available. Rotation keeps
+        prices reasonably fresh across all groups.
+        """
+        quotes = {}
+        for symbol in symbols:
+            ticker = self._tickers.get(symbol)
+            if ticker is None:
+                continue
+            quote = self._ticker_to_quote(symbol, ticker)
+            if quote is not None:
+                quotes[symbol] = quote
+        return quotes
+
+    def get_coverage(self) -> tuple:
+        """Return (symbols_with_data, total_symbols)."""
+        with_data = sum(1 for s in self._symbols if self._has_data(s))
+        return with_data, len(self._symbols)
+
+    def _subscribe_group(self, group_idx: int):
+        """Unsubscribe current group, subscribe to new group."""
+        # Cancel current streaming subscriptions
+        for sym, contract in self._active_contracts.items():
+            try:
+                self._ib.cancelMktData(contract)
+            except Exception:
+                pass
+        self._active_contracts.clear()
+
+        group = self._groups[group_idx]
+        self._current_group = group_idx
+
+        # Qualify contracts we haven't seen before
+        new_contracts = []
+        new_symbols = []
+        for symbol in group:
+            norm = symbol.upper().replace("-", " ")
+            if norm not in self._contract_cache:
+                contract = Stock(norm, "SMART", "USD")
+                new_contracts.append(contract)
+                new_symbols.append(symbol)
+
+        if new_contracts:
+            try:
+                self._ib.qualifyContracts(*new_contracts)
+                for symbol, contract in zip(new_symbols, new_contracts):
+                    norm = symbol.upper().replace("-", " ")
+                    self._contract_cache[norm] = contract
+            except Exception as e:
+                logger.warning(f"StreamingQuoteManager: qualify failed for group {group_idx}: {e}")
+
+        # Subscribe to streaming data for this group
+        for symbol in group:
+            norm = symbol.upper().replace("-", " ")
+            contract = self._contract_cache.get(norm)
+            if contract is None:
+                continue
+            try:
+                ticker = self._ib.reqMktData(contract, snapshot=False)
+                self._tickers[symbol] = ticker
+                self._active_contracts[symbol] = contract
+            except Exception as e:
+                logger.debug(f"StreamingQuoteManager: reqMktData failed for {symbol}: {e}")
+
+    def _has_data(self, symbol: str) -> bool:
+        """Check if a ticker has any price data."""
+        ticker = self._tickers.get(symbol)
+        if ticker is None:
+            return False
+        last = _nan_safe(ticker.last)
+        bid = _nan_safe(ticker.bid)
+        return last > 0 or bid > 0
+
+    def _ticker_to_quote(self, symbol: str, ticker) -> Optional['Quote']:
+        """Convert an ib_insync Ticker to a Quote object."""
+        last = _nan_safe(ticker.last)
+        bid = _nan_safe(ticker.bid)
+        ask = _nan_safe(ticker.ask)
+
+        # Need at least one valid price
+        if last <= 0 and bid <= 0:
+            return None
+
+        price = last if last > 0 else bid
+        if bid <= 0:
+            bid = price
+        if ask <= 0:
+            ask = price
+
+        return Quote(
+            symbol=symbol.upper(),
+            bid=bid,
+            ask=ask,
+            last=price,
+            volume=_nan_safe_int(ticker.volume),
+            timestamp=datetime.now(),
+            bid_size=_nan_safe_int(ticker.bidSize),
+            ask_size=_nan_safe_int(ticker.askSize),
+            high=_nan_safe(ticker.high),
+            low=_nan_safe(ticker.low),
+            open=_nan_safe(ticker.open),
+            prev_close=_nan_safe(ticker.close),
+        )
+
+    def shutdown(self):
+        """Cancel all subscriptions and stop pump."""
+        self.stop_pump()
+        for contract in self._active_contracts.values():
+            try:
+                self._ib.cancelMktData(contract)
+            except Exception:
+                pass
+        self._active_contracts.clear()
+        self._active = False
+        logger.info("StreamingQuoteManager: shutdown complete")
 
 
 class IBKRClient(BrokerInterface):
@@ -155,6 +447,9 @@ class IBKRClient(BrokerInterface):
         self._on_order_update: Optional[Callable[[Order], None]] = None
         self._on_position_update: Optional[Callable[[Position], None]] = None
 
+        # Streaming quote manager (initialized after connect)
+        self._streaming: Optional[StreamingQuoteManager] = None
+
         # Set up IB event handlers
         self._setup_event_handlers()
 
@@ -198,6 +493,14 @@ class IBKRClient(BrokerInterface):
         # Informational messages (not actual errors)
         if errorCode in (2104, 2106, 2158):  # Market data farm connected
             logger.debug(f"IB Info [{errorCode}]: {errorString}")
+            return
+
+        # Market data farm connection broken — invalidate streaming cache
+        if errorCode in (2103, 2107):
+            logger.warning(f"IB Market Data Farm BROKEN [{errorCode}]: {errorString}")
+            if self._streaming:
+                self._streaming._ticker_subscribed_at.clear()
+                logger.warning("Invalidated all streaming ticker timestamps due to data farm disconnect")
             return
 
         # Connection-related errors
@@ -261,19 +564,24 @@ class IBKRClient(BrokerInterface):
             loop = asyncio.get_running_loop()
             loop.create_task(self._async_reconnect())
         except RuntimeError:
-            # No running event loop — fall back to sync reconnect
-            self._sync_reconnect()
+            # No running event loop — run sync reconnect in a daemon thread
+            # to avoid blocking the ib_insync event loop with time.sleep()
+            threading.Thread(
+                target=self._sync_reconnect, daemon=True
+            ).start()
 
     async def _async_reconnect(self):
         """Async reconnection with exponential backoff."""
         import random
 
-        logger.info("Attempting to reconnect to IBKR...")
+        max_attempts = self._config.max_reconnect_attempts
+        limit_label = "inf" if max_attempts == 0 else str(max_attempts)
+        logger.info(f"Attempting to reconnect to IBKR (max attempts: {limit_label})...")
 
         base_delay = self._config.reconnect_delay
         max_delay = 300.0
 
-        while self._reconnect_attempts < self._config.max_reconnect_attempts:
+        while max_attempts == 0 or self._reconnect_attempts < max_attempts:
             self._reconnect_attempts += 1
 
             delay = min(base_delay * (2 ** (self._reconnect_attempts - 1)), max_delay)
@@ -282,7 +590,7 @@ class IBKRClient(BrokerInterface):
 
             logger.info(
                 f"Reconnection attempt {self._reconnect_attempts}/"
-                f"{self._config.max_reconnect_attempts} "
+                f"{limit_label} "
                 f"(waiting {actual_delay:.1f}s)"
             )
 
@@ -300,23 +608,26 @@ class IBKRClient(BrokerInterface):
             except Exception as e:
                 logger.warning(f"Reconnection attempt {self._reconnect_attempts} failed: {e}")
 
-        logger.error(
-            f"Failed to reconnect to IBKR after "
-            f"{self._config.max_reconnect_attempts} attempts. "
-            f"Please check TWS/Gateway status and network connectivity."
-        )
+        if max_attempts > 0:
+            logger.error(
+                f"Failed to reconnect to IBKR after "
+                f"{max_attempts} attempts. "
+                f"Please check TWS/Gateway status and network connectivity."
+            )
         self._reconnecting = False
 
     def _sync_reconnect(self):
         """Synchronous reconnection fallback (for non-async contexts)."""
         import random
 
-        logger.info("Attempting to reconnect to IBKR (sync)...")
+        max_attempts = self._config.max_reconnect_attempts
+        limit_label = "inf" if max_attempts == 0 else str(max_attempts)
+        logger.info(f"Attempting to reconnect to IBKR (sync, max attempts: {limit_label})...")
 
         base_delay = self._config.reconnect_delay
         max_delay = 300.0
 
-        while self._reconnect_attempts < self._config.max_reconnect_attempts:
+        while max_attempts == 0 or self._reconnect_attempts < max_attempts:
             self._reconnect_attempts += 1
 
             delay = min(base_delay * (2 ** (self._reconnect_attempts - 1)), max_delay)
@@ -325,7 +636,7 @@ class IBKRClient(BrokerInterface):
 
             logger.info(
                 f"Reconnection attempt {self._reconnect_attempts}/"
-                f"{self._config.max_reconnect_attempts} "
+                f"{limit_label} "
                 f"(waiting {actual_delay:.1f}s)"
             )
 
@@ -342,10 +653,10 @@ class IBKRClient(BrokerInterface):
             except Exception as e:
                 logger.warning(f"Reconnection attempt {self._reconnect_attempts} failed: {e}")
 
-        if not self._connected:
+        if not self._connected and max_attempts > 0:
             logger.error(
                 f"Failed to reconnect to IBKR after "
-                f"{self._config.max_reconnect_attempts} attempts. "
+                f"{max_attempts} attempts. "
                 f"Please check TWS/Gateway status and network connectivity."
             )
 
@@ -427,14 +738,39 @@ class IBKRClient(BrokerInterface):
             self._connected = False
             raise ConnectionError(f"IBKR connection failed: {e}")
 
+    async def create_order_connection(self) -> 'IB':
+        """Create a dedicated IB connection for order execution on the current event loop.
+
+        The main IB connection (self._ib) is bound to the main thread's event loop
+        and cannot process responses when called from the agent thread. This method
+        creates a second connection (client_id=21) on the CALLER's event loop so
+        that order-related calls (qualifyContracts, placeOrder, sleep) can pump
+        events correctly.
+
+        Must be called from an async context on the thread where orders will be placed.
+        """
+        order_ib = IB()
+        await order_ib.connectAsync(
+            host=self._config.host,
+            port=self._config.port,
+            clientId=21,
+            timeout=self._config.timeout,
+            readonly=False,
+        )
+        # Set same market data type
+        order_ib.reqMarketDataType(self._config.market_data_type)
+        logger.info("Dedicated order execution IB connection established (client_id=21)")
+        return order_ib
+
     def _post_connect(self):
         """Common post-connection setup."""
         self._connected = True
 
-        # Use delayed market data for paper trading (free, no subscription needed)
-        if self._config.paper_trading:
-            self._ib.reqMarketDataType(3)  # 3 = delayed
-            logger.info("Using delayed market data (paper trading mode)")
+        # Set market data type from config (1=live, 2=frozen, 3=delayed, 4=delayed-frozen)
+        mdt = self._config.market_data_type
+        mdt_labels = {1: "live", 2: "frozen", 3: "delayed", 4: "delayed-frozen"}
+        self._ib.reqMarketDataType(mdt)
+        logger.info(f"Using {mdt_labels.get(mdt, mdt)} market data (type {mdt})")
 
         # Get account ID
         accounts = self._ib.managedAccounts()
@@ -444,12 +780,29 @@ class IBKRClient(BrokerInterface):
         else:
             logger.warning("No managed accounts found")
 
+        # Reinitialize streaming after reconnection
+        if self._streaming and self._streaming._symbols:
+            logger.info("Reinitializing streaming market data after reconnect...")
+            symbols = list(self._streaming._symbols)
+            self._streaming.shutdown()
+            self._streaming = StreamingQuoteManager(self._ib)
+            self._streaming.configure(symbols)
+            self._streaming.warm_up()
+            self._streaming.start_pump()
+            logger.info("Streaming market data reinitialized")
+
         logger.info(
             f"Connected to IBKR ({self._config.connection_type})"
         )
 
     def disconnect(self) -> None:
         """Disconnect from TWS/Gateway."""
+        if self._streaming:
+            # shutdown() calls stop_pump() internally, ensuring pump thread
+            # exits before we disconnect the IB connection
+            self._streaming.shutdown()
+            self._streaming = None
+
         if self._ib.isConnected():
             self._ib.disconnect()
             logger.info("Disconnected from IBKR")
@@ -460,6 +813,56 @@ class IBKRClient(BrokerInterface):
     def is_connected(self) -> bool:
         """Check if currently connected to broker."""
         return self._connected and self._ib.isConnected()
+
+    # ==================== Streaming Market Data ====================
+
+    def start_streaming(self, symbols: List[str]):
+        """
+        Start streaming market data for a list of symbols.
+
+        Subscribes in groups of 95 (under IBKR's 100-line limit), rotating
+        through all groups to populate data. After warmup, call
+        rotate_streaming() periodically to keep data fresh.
+
+        Args:
+            symbols: Full list of symbols to stream (can exceed 100).
+        """
+        if not self.is_connected:
+            raise ConnectionError("Not connected to IBKR")
+
+        if self._streaming:
+            self._streaming.shutdown()
+
+        self._streaming = StreamingQuoteManager(self._ib)
+        self._streaming.configure(symbols)
+        self._streaming.warm_up()
+        self._streaming.start_pump()
+
+        coverage, total = self._streaming.get_coverage()
+        logger.info(f"Streaming started: {coverage}/{total} symbols with data")
+
+    def rotate_streaming(self):
+        """Rotate to next symbol group. Call between scans."""
+        if self._streaming and self._streaming.is_warmed_up():
+            self._streaming.rotate_next()
+
+    def get_streaming_quotes(self, symbols: List[str]) -> Dict[str, Quote]:
+        """
+        Read cached quotes from streaming subscriptions — zero API latency.
+
+        Returns empty dict if streaming not active or not warmed up.
+        """
+        if not self._streaming or not self._streaming.is_warmed_up():
+            return {}
+        return self._streaming.get_quotes(symbols)
+
+    @property
+    def has_streaming(self) -> bool:
+        """Check if streaming is active and warmed up."""
+        return (
+            self._streaming is not None
+            and self._streaming.is_warmed_up()
+        )
 
     # ==================== Account Methods ====================
 
@@ -919,6 +1322,104 @@ class IBKRClient(BrokerInterface):
 
         return open_orders
 
+    # ==================== Historical Data Methods ====================
+
+    # Sliding-window rate limiter for IBKR historical data requests
+    # IBKR allows ~60 requests per 10 minutes; we use 55 to leave headroom
+    _historical_rate_window: deque = deque()
+    _historical_rate_lock: threading.Lock = threading.Lock()
+    _HIST_RATE_MAX = 55
+    _HIST_RATE_PERIOD = 600  # 10 minutes in seconds
+
+    def _wait_for_historical_rate(self):
+        """Block until we have capacity under the IBKR historical data rate limit."""
+        with self._historical_rate_lock:
+            now = time.monotonic()
+            # Evict entries older than the rate window
+            while self._historical_rate_window and self._historical_rate_window[0] < now - self._HIST_RATE_PERIOD:
+                self._historical_rate_window.popleft()
+
+            if len(self._historical_rate_window) >= self._HIST_RATE_MAX:
+                # Wait until the oldest request expires
+                wait_time = self._historical_rate_window[0] + self._HIST_RATE_PERIOD - now + 1.0
+                if wait_time > 0:
+                    logger.info(f"IBKR historical rate limit: waiting {wait_time:.1f}s")
+                    time.sleep(wait_time)
+                    # Re-evict after sleep
+                    now = time.monotonic()
+                    while self._historical_rate_window and self._historical_rate_window[0] < now - self._HIST_RATE_PERIOD:
+                        self._historical_rate_window.popleft()
+
+            self._historical_rate_window.append(time.monotonic())
+
+    def get_historical_bars(
+        self,
+        symbol: str,
+        duration_str: str = '60 D',
+        bar_size: str = '1 day',
+        what_to_show: str = 'TRADES',
+    ) -> Optional[pd.DataFrame]:
+        """
+        Fetch historical OHLCV bars from IBKR.
+
+        Args:
+            symbol: Ticker symbol (will be normalized for IBKR)
+            duration_str: IBKR duration string (e.g. '60 D', '1 Y', '5 Y')
+            bar_size: Bar size (e.g. '1 day', '5 mins', '1 hour')
+            what_to_show: Data type ('TRADES', 'MIDPOINT', 'BID', 'ASK')
+
+        Returns:
+            DataFrame with lowercase columns [open, high, low, close, volume]
+            indexed by date/datetime, or None on failure.
+        """
+        if not self._connected:
+            logger.warning(f"IBKRClient.get_historical_bars: not connected")
+            return None
+
+        self._wait_for_historical_rate()
+
+        normalized = self._normalize_symbol(symbol)
+        try:
+            # Get or create contract
+            contract = Stock(normalized, 'SMART', 'USD')
+            self._ib.qualifyContracts(contract)
+
+            bars = self._ib.reqHistoricalData(
+                contract,
+                endDateTime='',
+                durationStr=duration_str,
+                barSizeSetting=bar_size,
+                whatToShow=what_to_show,
+                useRTH=True,
+                formatDate=1,
+            )
+
+            if not bars:
+                logger.debug(f"IBKR returned no historical bars for {symbol}")
+                return None
+
+            # Convert to DataFrame
+            data = []
+            dates = []
+            for bar in bars:
+                data.append({
+                    'open': float(bar.open),
+                    'high': float(bar.high),
+                    'low': float(bar.low),
+                    'close': float(bar.close),
+                    'volume': int(bar.volume),
+                })
+                dates.append(bar.date)
+
+            df = pd.DataFrame(data, index=pd.DatetimeIndex(dates))
+            df.index.name = 'date'
+            logger.debug(f"IBKR historical: {len(df)} bars for {symbol} ({duration_str}, {bar_size})")
+            return df
+
+        except Exception as e:
+            logger.error(f"IBKRClient.get_historical_bars({symbol}) failed: {e}")
+            return None
+
     # ==================== Quote Methods ====================
 
     def get_quote(self, symbol: str) -> Quote:
@@ -951,17 +1452,27 @@ class IBKRClient(BrokerInterface):
             # Cancel market data subscription
             self._ib.cancelMktData(contract)
 
-            # Extract quote data
-            bid = ticker.bid if ticker.bid and ticker.bid > 0 else 0.0
-            ask = ticker.ask if ticker.ask and ticker.ask > 0 else 0.0
-            last = ticker.last if ticker.last and ticker.last > 0 else 0.0
-            volume = int(ticker.volume) if ticker.volume else 0
-            bid_size = int(ticker.bidSize) if ticker.bidSize else 0
-            ask_size = int(ticker.askSize) if ticker.askSize else 0
-            high = ticker.high if ticker.high and ticker.high > 0 else 0.0
-            low = ticker.low if ticker.low and ticker.low > 0 else 0.0
-            open_price = ticker.open if ticker.open and ticker.open > 0 else 0.0
-            close = ticker.close if ticker.close and ticker.close > 0 else 0.0
+            # Extract quote data (guard against NaN from IBKR)
+            import math
+            def _nan_safe_float(val):
+                if val is None or (isinstance(val, float) and math.isnan(val)):
+                    return 0.0
+                return float(val) if val > 0 else 0.0
+            def _nan_safe_int(val):
+                if val is None or (isinstance(val, float) and math.isnan(val)):
+                    return 0
+                return int(val)
+
+            bid = _nan_safe_float(ticker.bid)
+            ask = _nan_safe_float(ticker.ask)
+            last = _nan_safe_float(ticker.last)
+            volume = _nan_safe_int(ticker.volume)
+            bid_size = _nan_safe_int(ticker.bidSize)
+            ask_size = _nan_safe_int(ticker.askSize)
+            high = _nan_safe_float(ticker.high)
+            low = _nan_safe_float(ticker.low)
+            open_price = _nan_safe_float(ticker.open)
+            close = _nan_safe_float(ticker.close)
 
             # Use last price as fallback for bid/ask
             if bid == 0 and last > 0:
@@ -1031,17 +1542,27 @@ class IBKRClient(BrokerInterface):
             from utils.timezone import get_extended_hours_session
             current_session = get_extended_hours_session()
 
-            # Extract quote data
-            bid = ticker.bid if ticker.bid and ticker.bid > 0 else 0.0
-            ask = ticker.ask if ticker.ask and ticker.ask > 0 else 0.0
-            last = ticker.last if ticker.last and ticker.last > 0 else 0.0
-            volume = int(ticker.volume) if ticker.volume else 0
-            bid_size = int(ticker.bidSize) if ticker.bidSize else 0
-            ask_size = int(ticker.askSize) if ticker.askSize else 0
-            high = ticker.high if ticker.high and ticker.high > 0 else 0.0
-            low = ticker.low if ticker.low and ticker.low > 0 else 0.0
-            open_price = ticker.open if ticker.open and ticker.open > 0 else 0.0
-            close = ticker.close if ticker.close and ticker.close > 0 else 0.0
+            # Extract quote data (guard against NaN from IBKR)
+            import math
+            def _nan_safe_float(val):
+                if val is None or (isinstance(val, float) and math.isnan(val)):
+                    return 0.0
+                return float(val) if val > 0 else 0.0
+            def _nan_safe_int(val):
+                if val is None or (isinstance(val, float) and math.isnan(val)):
+                    return 0
+                return int(val)
+
+            bid = _nan_safe_float(ticker.bid)
+            ask = _nan_safe_float(ticker.ask)
+            last = _nan_safe_float(ticker.last)
+            volume = _nan_safe_int(ticker.volume)
+            bid_size = _nan_safe_int(ticker.bidSize)
+            ask_size = _nan_safe_int(ticker.askSize)
+            high = _nan_safe_float(ticker.high)
+            low = _nan_safe_float(ticker.low)
+            open_price = _nan_safe_float(ticker.open)
+            close = _nan_safe_float(ticker.close)
 
             # Use last price as fallback for bid/ask
             if bid == 0 and last > 0:
@@ -1103,7 +1624,14 @@ class IBKRClient(BrokerInterface):
         try:
             # Create contracts for all symbols
             contracts = [Stock(self._normalize_symbol(s), "SMART", "USD") for s in symbols]
-            self._ib.qualifyContracts(*contracts)
+
+            # Qualify with timeout to prevent hanging on zombie Gateway
+            qualify_timeout = max(30, len(contracts) * 0.1)
+            try:
+                self._ib.qualifyContracts(*contracts, timeout=qualify_timeout)
+            except TypeError:
+                # Older ib_insync may not support timeout kwarg
+                self._ib.qualifyContracts(*contracts)
 
             # Request market data for all
             tickers = []
@@ -1111,8 +1639,9 @@ class IBKRClient(BrokerInterface):
                 ticker = self._ib.reqMktData(contract, snapshot=True)
                 tickers.append((contract.symbol, ticker))
 
-            # Wait for data
-            self._ib.sleep(1.5)
+            # Wait for data — scale with batch size, minimum 2s, max 30s
+            wait_time = min(30.0, max(2.0, len(tickers) * 0.06))
+            self._ib.sleep(wait_time)
 
             # Process results
             for symbol, ticker in tickers:
@@ -1126,19 +1655,33 @@ class IBKRClient(BrokerInterface):
                     if ask == 0 and last > 0:
                         ask = last
 
+                    def _safe_int(val):
+                        """Convert to int, handling NaN and None."""
+                        import math
+                        if val is None or (isinstance(val, float) and math.isnan(val)):
+                            return 0
+                        return int(val)
+
+                    def _safe_float(val):
+                        """Convert to float, handling NaN and None."""
+                        import math
+                        if val is None or (isinstance(val, float) and math.isnan(val)):
+                            return 0.0
+                        return float(val) if val > 0 else 0.0
+
                     quotes[symbol] = Quote(
                         symbol=symbol,
                         bid=bid,
                         ask=ask,
                         last=last,
-                        volume=int(ticker.volume) if ticker.volume else 0,
+                        volume=_safe_int(ticker.volume),
                         timestamp=datetime.now(),
-                        bid_size=int(ticker.bidSize) if ticker.bidSize else 0,
-                        ask_size=int(ticker.askSize) if ticker.askSize else 0,
-                        high=ticker.high if ticker.high and ticker.high > 0 else 0.0,
-                        low=ticker.low if ticker.low and ticker.low > 0 else 0.0,
-                        open=ticker.open if ticker.open and ticker.open > 0 else 0.0,
-                        prev_close=ticker.close if ticker.close and ticker.close > 0 else 0.0,
+                        bid_size=_safe_int(ticker.bidSize),
+                        ask_size=_safe_int(ticker.askSize),
+                        high=_safe_float(ticker.high),
+                        low=_safe_float(ticker.low),
+                        open=_safe_float(ticker.open),
+                        prev_close=_safe_float(ticker.close),
                     )
                 except Exception as e:
                     logger.warning(f"Failed to process quote for {symbol}: {e}")
@@ -1748,8 +2291,9 @@ class IBKRClient(BrokerInterface):
             if not qualified:
                 return None
 
-            ticker = self._ib.reqMktData(ib_contract, snapshot=True)
-            self._ib.sleep(1.0)
+            # Generic ticks: 100=option volume, 106=implied vol
+            ticker = self._ib.reqMktData(ib_contract, genericTickList="100,106", snapshot=True)
+            self._ib.sleep(1.5)  # Allow time for live Greeks to populate
             self._ib.cancelMktData(ib_contract)
 
             greeks = ticker.modelGreeks

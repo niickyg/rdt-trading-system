@@ -55,7 +55,11 @@ def _legs_to_json(strategy: OptionsStrategy) -> str:
     return json.dumps(legs)
 
 
-def _legs_from_json(legs_json: str, strategy_name: str, underlying: str, direction: str) -> Optional[OptionsStrategy]:
+def _legs_from_json(
+    legs_json: str, strategy_name: str, underlying: str, direction: str,
+    max_loss: float = 0.0, max_profit: float = 0.0,
+    breakeven: Optional[List[float]] = None, net_premium: float = 0.0,
+) -> Optional[OptionsStrategy]:
     """Reconstruct an OptionsStrategy from stored JSON legs."""
     try:
         legs_data = json.loads(legs_json)
@@ -101,6 +105,10 @@ def _legs_from_json(legs_json: str, strategy_name: str, underlying: str, directi
         underlying=underlying,
         direction=StrategyDirection(direction),
         legs=legs,
+        max_loss=max_loss,
+        max_profit=max_profit,
+        breakeven=breakeven if breakeven is not None else [],
+        net_premium=net_premium,
     )
 
 
@@ -150,11 +158,21 @@ class PaperOptionsExecutor:
             rows = repo.get_all_options_positions()
             for row in rows:
                 symbol = row['symbol']
+                breakeven = []
+                if row.get('breakeven_json'):
+                    try:
+                        breakeven = json.loads(row['breakeven_json'])
+                    except (json.JSONDecodeError, TypeError):
+                        pass
                 strategy = _legs_from_json(
                     row['legs_json'],
                     row['strategy_name'],
                     symbol,
                     row['direction'],
+                    max_loss=row.get('max_loss', 0.0),
+                    max_profit=row.get('max_profit', 0.0),
+                    breakeven=breakeven,
+                    net_premium=row.get('net_premium', 0.0),
                 )
                 if not strategy:
                     logger.warning(f"Could not restore options position for {symbol}")
@@ -220,6 +238,10 @@ class PaperOptionsExecutor:
                 'order_ids': json.dumps(position.get('order_ids', [])),
                 'legs_json': _legs_to_json(strategy),
                 'fill_details_json': json.dumps(position.get('fill_details', [])),
+                'max_loss': strategy.max_loss,
+                'max_profit': strategy.max_profit,
+                'net_premium': strategy.net_premium,
+                'breakeven_json': json.dumps(strategy.breakeven),
             })
         except Exception as e:
             logger.error(f"Error persisting options position for {symbol}: {e}")
@@ -242,9 +264,9 @@ class PaperOptionsExecutor:
 
         try:
             strategy = position["strategy"]
-            entry_premium = position.get("total_premium", 0)
+            total_prem = abs(position.get("total_premium", 0))
             current_value = self._get_position_value_from_data(position)
-            pnl_pct = (pnl / abs(entry_premium) * 100) if entry_premium else 0.0
+            pnl_pct = (pnl / total_prem * 100) if total_prem > 0.01 else 0.0
 
             repo.save_options_trade({
                 'symbol': symbol,
@@ -254,7 +276,7 @@ class PaperOptionsExecutor:
                 'entry_time': position.get('entry_time', datetime.utcnow()),
                 'exit_time': datetime.utcnow(),
                 'entry_premium': position.get('entry_premium', 0),
-                'total_premium': entry_premium,
+                'total_premium': position.get('total_premium', 0),
                 'exit_premium': current_value,
                 'pnl': pnl,
                 'pnl_percent': pnl_pct,
@@ -322,8 +344,13 @@ class PaperOptionsExecutor:
             })
 
         # Track position
-        entry_premium = abs(total_premium) / (contracts * 100) if contracts > 0 else 0
+        # total_premium is per-set (1 contract set), includes multiplier
+        # entry_premium: per-share net cost for exit_manager compatibility
+        multiplier = strategy.legs[0].contract.multiplier if strategy.legs else 100
+        entry_premium = abs(total_premium) / multiplier if multiplier > 0 else 0
         avg_iv = self._avg_iv(strategy)
+        # Store actual total cost across all contracts
+        actual_total_premium = total_premium * contracts
 
         self._positions[strategy.underlying] = {
             "strategy": strategy,
@@ -334,7 +361,7 @@ class PaperOptionsExecutor:
             "entry_iv": avg_iv,
             "entry_delta": strategy.net_delta,
             "fill_details": fill_details,
-            "total_premium": total_premium,
+            "total_premium": actual_total_premium,
         }
 
         # Persist to DB
@@ -367,11 +394,12 @@ class PaperOptionsExecutor:
 
         # Get current value to calculate P&L
         current_value = self._get_position_value(symbol)
-        entry_premium = position.get("total_premium", 0)
+        total_premium = position.get("total_premium", 0)
 
         close_id = str(uuid.uuid4())[:8]
 
-        pnl = current_value - entry_premium if current_value is not None else 0.0
+        # PnL = current_value + total_premium (total_premium is negative for debits)
+        pnl = (current_value + total_premium) if current_value is not None else 0.0
 
         # Save trade record before removing position
         self._save_trade_record(symbol, position, pnl, exit_reason="manual")
@@ -468,9 +496,10 @@ class PaperOptionsExecutor:
             pos_copy = dict(position)
             current_value = self._get_position_value(symbol)
             if current_value is not None:
-                entry_premium = position.get("total_premium", 0)
+                total_premium = position.get("total_premium", 0)
                 pos_copy["current_value"] = current_value
-                pos_copy["unrealized_pnl"] = current_value - entry_premium
+                # PnL = current_value + total_premium (total_premium is negative for debits)
+                pos_copy["unrealized_pnl"] = current_value + total_premium
             result[symbol] = pos_copy
         return result
 

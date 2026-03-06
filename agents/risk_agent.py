@@ -46,11 +46,6 @@ from datetime import datetime, date, timedelta
 from typing import Dict, List, Optional, Tuple
 from loguru import logger
 
-try:
-    import yfinance as yf
-except ImportError:
-    yf = None
-    logger.warning("yfinance not installed - market prices will not be available")
 
 from agents.base import BaseAgent
 from agents.events import Event, EventType
@@ -196,12 +191,14 @@ class RiskAgent(BaseAgent):
         self,
         risk_manager: RiskManager,
         trades_repository: Optional[TradesRepository] = None,
+        broker=None,
         **kwargs
     ):
         super().__init__(name="RiskAgent", **kwargs)
 
         self.risk_manager = risk_manager
         self.position_sizer = risk_manager.position_sizer
+        self._broker = broker  # Optional broker for balance sync
 
         # Database integration
         self._trades_repo = trades_repository
@@ -441,7 +438,7 @@ class RiskAgent(BaseAgent):
             logger.error(f"Error loading today's closed trades: {e}")
 
     async def _get_current_price(self, symbol: str) -> Optional[float]:
-        """Get current market price for a symbol using yfinance"""
+        """Get current market price for a symbol using broker quotes."""
         # Check cache first
         cache_key = symbol
         if cache_key in self._price_cache:
@@ -449,13 +446,27 @@ class RiskAgent(BaseAgent):
             if cache_time and (datetime.now() - cache_time).total_seconds() < self._price_cache_ttl:
                 return self._price_cache[cache_key].get('price')
 
-        if yf is None:
-            logger.warning(f"Cannot fetch price for {symbol} - yfinance not available")
-            return None
-
         try:
-            loop = asyncio.get_running_loop()
-            price = await loop.run_in_executor(None, self._fetch_price_sync, symbol)
+            price = None
+
+            # Try broker streaming quotes first (instant, no API call)
+            if self._broker and hasattr(self._broker, 'has_streaming') and self._broker.has_streaming:
+                streaming_quotes = self._broker.get_streaming_quotes([symbol])
+                if isinstance(streaming_quotes, dict):
+                    for sym, q in streaming_quotes.items():
+                        p = q.last if q.last and q.last > 0 else (q.bid if q.bid and q.bid > 0 else 0)
+                        if p > 0:
+                            price = float(p)
+                            break
+
+            # Fallback to broker snapshot quote
+            if price is None and self._broker and hasattr(self._broker, 'get_quote'):
+                loop = asyncio.get_running_loop()
+                quote = await loop.run_in_executor(None, self._broker.get_quote, symbol)
+                if quote:
+                    p = quote.last if quote.last and quote.last > 0 else (quote.bid if quote.bid and quote.bid > 0 else 0)
+                    if p > 0:
+                        price = float(p)
 
             if price:
                 self._price_cache[cache_key] = {'price': price, 'symbol': symbol}
@@ -465,25 +476,6 @@ class RiskAgent(BaseAgent):
 
         except Exception as e:
             logger.debug(f"Error fetching price for {symbol}: {e}")
-            return None
-
-    def _fetch_price_sync(self, symbol: str) -> Optional[float]:
-        """Synchronous price fetch"""
-        try:
-            ticker = yf.Ticker(symbol)
-            # Try to get the most recent price
-            hist = ticker.history(period="1d", interval="1m")
-            if not hist.empty:
-                return float(hist['Close'].iloc[-1])
-
-            # Fallback to daily data
-            hist = ticker.history(period="5d")
-            if not hist.empty:
-                return float(hist['Close'].iloc[-1])
-
-            return None
-        except Exception as e:
-            logger.debug(f"Error in sync price fetch for {symbol}: {e}")
             return None
 
     def calculate_daily_pnl(self) -> Dict:
@@ -552,10 +544,10 @@ class RiskAgent(BaseAgent):
         """
         status = PortfolioLimitsStatus()
 
-        # 1. Daily loss limit
+        # 1. Daily loss limit (use frozen start-of-day balance, include unrealized P&L)
         daily_pnl_data = self.calculate_daily_pnl()
-        max_daily_loss = self.risk_manager.current_balance * self.risk_manager.limits.max_daily_loss
-        current_loss = abs(min(0, daily_pnl_data['realized_pnl']))
+        max_daily_loss = self.risk_manager._start_of_day_balance * self.risk_manager.limits.max_daily_loss
+        current_loss = abs(min(0, daily_pnl_data['realized_pnl'] + daily_pnl_data.get('unrealized_pnl', 0)))
 
         status.add_check(RiskCheckResult(
             passed=current_loss < max_daily_loss,
@@ -911,6 +903,10 @@ class RiskAgent(BaseAgent):
         # Remove from tracking
         del self.active_positions[symbol]
         self.risk_manager.remove_position(symbol)
+
+        # Sync balance from broker after trade close (if broker available)
+        if self._broker is not None:
+            self.risk_manager.sync_balance_from_broker(self._broker)
 
         # Update metrics
         await self._update_exposure_metrics()
@@ -1423,9 +1419,19 @@ class RiskAgent(BaseAgent):
         """Reset daily tracking at market open"""
         logger.info("Market open - resetting daily risk metrics")
 
+        # Sync balance from broker before resetting daily metrics
+        if self._broker is not None:
+            self.risk_manager.sync_balance_from_broker(self._broker)
+
         self.risk_manager.reset_daily()
         self.risk_violations_today.clear()
         self._todays_closed_trades.clear()
+
+        # Reset circuit breaker BEFORE loading portfolio state to avoid race condition
+        # where incoming SETUP_VALID events see stale circuit_breaker_triggered=True
+        if self.circuit_breaker_triggered:
+            logger.info("Auto-resetting circuit breaker for new trading day")
+            await self.reset_circuit_breaker()
 
         # Reload portfolio state from database
         await self.load_portfolio_state()
@@ -1436,11 +1442,6 @@ class RiskAgent(BaseAgent):
             self.sector_exposure.clear()
             self.position_correlations.clear()
             logger.info("Cleared sector and correlation tracking (no overnight positions)")
-
-        # Reset circuit breaker if it was triggered yesterday
-        if self.circuit_breaker_triggered:
-            logger.info("Auto-resetting circuit breaker for new trading day")
-            await self.reset_circuit_breaker()
 
     async def on_market_close(self):
         """Generate end-of-day risk report"""
@@ -1460,8 +1461,9 @@ class RiskAgent(BaseAgent):
         logger.info(f"Violations: {len(self.risk_violations_today)}")
         logger.info(f"========================")
 
-        # Publish daily report
-        await self.publish(EventType.DAILY_LIMIT_HIT if report.daily_pnl < 0 else EventType.PNL_UPDATED, {
+        # Publish daily report (only use DAILY_LIMIT_HIT if the limit was actually exceeded)
+        daily_limit_hit = self.risk_manager.check_daily_loss_limit() if hasattr(self.risk_manager, 'check_daily_loss_limit') else False
+        await self.publish(EventType.DAILY_LIMIT_HIT if daily_limit_hit else EventType.PNL_UPDATED, {
             "report": {
                 "date": report.date.isoformat(),
                 "daily_pnl": report.daily_pnl,

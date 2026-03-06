@@ -1,44 +1,10 @@
-{% extends "base.html" %}
+{% extends "dashboard_base.html" %}
+{% set active_page = "backtest" %}
 
 {% block title %}Backtest - RDT Trading{% endblock %}
 
-{% block extra_css %}
+{% block dashboard_css %}
 <style>
-    .dashboard-layout {
-        display: grid;
-        grid-template-columns: 240px 1fr;
-        min-height: calc(100vh - 60px);
-    }
-    .sidebar {
-        background: var(--primary);
-        padding: 20px;
-        position: sticky;
-        top: 60px;
-        height: calc(100vh - 60px);
-    }
-    .sidebar-nav { list-style: none; }
-    .sidebar-nav li { margin-bottom: 5px; }
-    .sidebar-nav a {
-        display: block;
-        padding: 12px 15px;
-        color: rgba(255,255,255,0.7);
-        border-radius: 5px;
-        transition: all 0.3s;
-    }
-    .sidebar-nav a:hover, .sidebar-nav a.active {
-        background: rgba(255,255,255,0.1);
-        color: white;
-        text-decoration: none;
-    }
-    .sidebar-section {
-        color: rgba(255,255,255,0.5);
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        margin: 20px 0 10px;
-        padding-left: 15px;
-    }
-    .main-content { padding: 25px; }
-
     .page-header {
         margin-bottom: 25px;
     }
@@ -166,8 +132,6 @@
     }
 
     @media (max-width: 1024px) {
-        .dashboard-layout { grid-template-columns: 1fr; }
-        .sidebar { display: none; }
         .backtest-form { grid-template-columns: 1fr; }
         .results-grid { grid-template-columns: repeat(2, 1fr); }
     }
@@ -178,30 +142,7 @@
 </style>
 {% endblock %}
 
-{% block content %}
-<div class="dashboard-layout">
-    <aside class="sidebar">
-        <ul class="sidebar-nav">
-            <li><a href="/dashboard">Overview</a></li>
-            <li><a href="/dashboard/signals">Active Signals</a></li>
-            <li><a href="/dashboard/positions">Positions</a></li>
-            <li><a href="/dashboard/history">History</a></li>
-        </ul>
-        <div class="sidebar-section">Analysis</div>
-        <ul class="sidebar-nav">
-            <li><a href="/dashboard/scanner">Live Scanner</a></li>
-            <li><a href="/dashboard/backtest" class="active">Backtest</a></li>
-            <li><a href="/performance">Performance</a></li>
-        </ul>
-        <div class="sidebar-section">Settings</div>
-        <ul class="sidebar-nav">
-            <li><a href="/dashboard/alerts">Alerts</a></li>
-            <li><a href="/dashboard/settings">Settings</a></li>
-            <li><a href="/api/v1/health" target="_blank">API Status</a></li>
-        </ul>
-    </aside>
-
-    <main class="main-content">
+{% block page_content %}
         <div class="page-header">
             <h1 class="page-title">Strategy Backtest</h1>
             <p class="page-subtitle">Test RRS trading strategies against historical data</p>
@@ -365,11 +306,9 @@
                 <p>Configure your parameters above and click "Run Backtest" to see results.</p>
             </div>
         </div>
-    </main>
-</div>
 {% endblock %}
 
-{% block extra_js %}
+{% block dashboard_js %}
 <script>
     // Preset configurations
     const presets = {

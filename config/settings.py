@@ -54,14 +54,14 @@ class RRSConfig(BaseSettings):
     strong_threshold: float = Field(default=2.0, alias="RRS_STRONG_THRESHOLD")
     moderate_threshold: float = Field(default=0.5, alias="RRS_MODERATE_THRESHOLD")
     weak_threshold: float = Field(default=-2.0, alias="RRS_WEAK_THRESHOLD")
-    atr_period: int = Field(default=14, ge=1, le=200, alias="ATR_PERIOD")
+    atr_period: int = Field(default=14, ge=1, le=200, alias="RRS_ATR_PERIOD")
 
 
 class ScannerConfig(BaseSettings):
     """Market scanner configuration."""
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
-    scan_interval_seconds: int = Field(default=60, ge=10, le=3600, alias="SCAN_INTERVAL_SECONDS")
+    scan_interval_seconds: int = Field(default=60, ge=5, le=3600, alias="SCAN_INTERVAL_SECONDS")
     min_volume: int = Field(default=500000, ge=0, alias="MIN_VOLUME")
     min_price: float = Field(default=5.0, ge=0, alias="MIN_PRICE")
     max_price: float = Field(default=500.0, ge=0, alias="MAX_PRICE")
@@ -139,6 +139,20 @@ class MTFConfig(BaseSettings):
         return self.enabled
 
 
+class IntradayConfig(BaseSettings):
+    """Intraday (5-minute) analysis and exit management configuration."""
+    model_config = SettingsConfigDict(env_prefix="INTRADAY_", extra="ignore")
+
+    enabled: bool = Field(default=True, alias="INTRADAY_ENABLED")
+    bars_5m_cache_ttl: int = Field(default=300, ge=30, alias="INTRADAY_BARS_5M_CACHE_TTL")
+    rs_loss_threshold: float = Field(default=-0.5, alias="INTRADAY_RS_LOSS_THRESHOLD")
+    vwap_confirm_bars: int = Field(default=2, ge=1, alias="INTRADAY_VWAP_CONFIRM_BARS")
+    time_stop_minutes: int = Field(default=60, ge=5, alias="INTRADAY_TIME_STOP_MINUTES")
+    breakeven_r_threshold: float = Field(default=0.5, ge=0.1, alias="INTRADAY_BREAKEVEN_R_THRESHOLD")
+    skip_entry_rrs_threshold: float = Field(default=-1.0, alias="INTRADAY_SKIP_ENTRY_RRS_THRESHOLD")
+    bar_refresh_interval: int = Field(default=300, ge=60, alias="INTRADAY_BAR_REFRESH_INTERVAL")
+
+
 class AlertConfig(BaseSettings):
     """Alert notification configuration."""
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
@@ -172,7 +186,7 @@ class BrokerConfig(BaseSettings):
 
     # IBKR settings
     ibkr_host: str = Field(default="127.0.0.1", alias="IBKR_HOST")
-    ibkr_port: int = Field(default=4002, alias="IBKR_PORT")
+    ibkr_port: int = Field(default=4000, alias="IBKR_PORT")
     ibkr_client_id: int = Field(default=1, alias="IBKR_CLIENT_ID")
     ibkr_timeout: int = Field(default=20, alias="IBKR_TIMEOUT")
 
@@ -267,7 +281,7 @@ class DataProviderConfig(BaseSettings):
 
     # Provider priority (comma-separated list, first = highest priority)
     provider_priority: str = Field(
-        default="yfinance,alpha_vantage",
+        default="ibkr",
         alias="DATA_PROVIDER_PRIORITY",
         description="Comma-separated list of providers in priority order"
     )
@@ -333,6 +347,7 @@ class Settings(BaseSettings):
     rrs: RRSConfig = Field(default_factory=RRSConfig)
     scanner: ScannerConfig = Field(default_factory=ScannerConfig)
     mtf: MTFConfig = Field(default_factory=MTFConfig)
+    intraday: IntradayConfig = Field(default_factory=IntradayConfig)
     alert: AlertConfig = Field(default_factory=AlertConfig)
     broker: BrokerConfig = Field(default_factory=BrokerConfig)
     data_provider: DataProviderConfig = Field(default_factory=DataProviderConfig)
@@ -351,6 +366,7 @@ class Settings(BaseSettings):
         self.rrs = RRSConfig(_env_file=env_path)
         self.scanner = ScannerConfig(_env_file=env_path)
         self.mtf = MTFConfig(_env_file=env_path)
+        self.intraday = IntradayConfig(_env_file=env_path)
         self.alert = AlertConfig(_env_file=env_path)
         self.broker = BrokerConfig(_env_file=env_path)
         self.data_provider = DataProviderConfig(_env_file=env_path)

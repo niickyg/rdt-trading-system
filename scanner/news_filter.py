@@ -5,12 +5,13 @@ Checks news sentiment for scanned symbols and flags signals with
 strongly negative news. Per RDT methodology, price action is king
 and news is secondary — so we WARN but don't BLOCK signals.
 
-Uses the existing NewsSentimentAnalyzer (Finnhub) when available,
-falls back to yfinance .news property for headline-based scoring.
+Uses the existing NewsSentimentAnalyzer (Finnhub) when available.
+Returns neutral sentiment when no data source is configured.
 
 Results are cached for 15 minutes per symbol to avoid API spam.
 """
 
+import threading
 import time
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -25,13 +26,6 @@ except ImportError:
     FINNHUB_ANALYZER_AVAILABLE = False
     logger.debug("Finnhub news analyzer not available")
 
-# yfinance for fallback news fetching
-try:
-    import yfinance as yf
-    YFINANCE_AVAILABLE = True
-except ImportError:
-    YFINANCE_AVAILABLE = False
-    logger.debug("yfinance not available for news")
 
 
 class NewsFilter:
@@ -83,14 +77,14 @@ class NewsFilter:
                 if self._finnhub_analyzer.api_key:
                     logger.info("NewsFilter using Finnhub analyzer")
                 else:
-                    logger.info("NewsFilter using yfinance fallback (no Finnhub API key)")
+                    logger.info("NewsFilter: no Finnhub API key — returning neutral sentiment")
                     self._finnhub_analyzer = None
             except Exception as e:
                 logger.debug(f"Could not initialize Finnhub analyzer: {e}")
                 self._finnhub_analyzer = None
 
-        if self._finnhub_analyzer is None and not YFINANCE_AVAILABLE:
-            logger.warning("NewsFilter has no data source — sentiment checks disabled")
+        if self._finnhub_analyzer is None:
+            logger.info("NewsFilter: no data source available — sentiment checks return neutral")
 
     def check_symbol(self, symbol: str) -> Dict:
         """
@@ -121,15 +115,11 @@ class NewsFilter:
 
     def _analyze(self, symbol: str) -> Dict:
         """Analyze sentiment for a symbol using available data source."""
-        # Try Finnhub analyzer first
+        # Use Finnhub analyzer if available
         if self._finnhub_analyzer is not None:
             return self._analyze_via_finnhub(symbol)
 
-        # Fall back to yfinance .news
-        if YFINANCE_AVAILABLE:
-            return self._analyze_via_yfinance(symbol)
-
-        # No data source available
+        # No data source available — return neutral
         return {
             'has_negative_news': False,
             'sentiment_score': 0.0,
@@ -149,56 +139,6 @@ class NewsFilter:
             }
         except Exception as e:
             logger.debug(f"Finnhub sentiment check failed for {symbol}: {e}")
-            return {
-                'has_negative_news': False,
-                'sentiment_score': 0.0,
-                'headlines': [],
-            }
-
-    def _analyze_via_yfinance(self, symbol: str) -> Dict:
-        """Fall back to yfinance .news property for headline-based scoring."""
-        try:
-            ticker = yf.Ticker(symbol)
-            news_items = ticker.news or []
-
-            headlines = []
-            for item in news_items[:10]:
-                title = item.get('title', '')
-                if not title:
-                    # Some yfinance versions use 'headline' key
-                    title = item.get('headline', '')
-                if title:
-                    headlines.append(title)
-
-            if not headlines:
-                return {
-                    'has_negative_news': False,
-                    'sentiment_score': 0.0,
-                    'headlines': [],
-                }
-
-            # Score each headline
-            scores = [self._score_headline(h) for h in headlines]
-
-            # Weight recent headlines more (first items are most recent)
-            weighted_sum = 0.0
-            weight_total = 0.0
-            for i, score in enumerate(scores):
-                weight = max(0.3, 1.0 - (i * 0.1))
-                weighted_sum += score * weight
-                weight_total += weight
-
-            overall_score = weighted_sum / max(weight_total, 1.0)
-            overall_score = max(-1.0, min(1.0, overall_score))
-
-            return {
-                'has_negative_news': overall_score < -0.5,
-                'sentiment_score': round(overall_score, 3),
-                'headlines': headlines[:5],  # Return top 5
-            }
-
-        except Exception as e:
-            logger.debug(f"yfinance news fetch failed for {symbol}: {e}")
             return {
                 'has_negative_news': False,
                 'sentiment_score': 0.0,
@@ -239,11 +179,14 @@ class NewsFilter:
 
 # Module-level singleton
 _news_filter: Optional[NewsFilter] = None
+_news_filter_lock = threading.Lock()
 
 
 def get_news_filter(cache_ttl_minutes: int = 15) -> NewsFilter:
     """Get the global NewsFilter singleton."""
     global _news_filter
     if _news_filter is None:
-        _news_filter = NewsFilter(cache_ttl_minutes=cache_ttl_minutes)
+        with _news_filter_lock:
+            if _news_filter is None:
+                _news_filter = NewsFilter(cache_ttl_minutes=cache_ttl_minutes)
     return _news_filter

@@ -319,7 +319,7 @@ def graphql_endpoint():
         logger.error(f"GraphQL execution error: {e}")
         return jsonify({
             'errors': [{
-                'message': f'Query execution failed: {str(e)}'
+                'message': 'Internal server error'
             }]
         }), 500
 

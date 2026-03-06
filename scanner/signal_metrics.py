@@ -12,6 +12,7 @@ import fcntl
 import json
 import os
 import tempfile
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -259,13 +260,16 @@ class SignalMetricsTracker:
 # ---------------------------------------------------------------------------
 
 _tracker: Optional[SignalMetricsTracker] = None
+_tracker_lock = threading.Lock()
 
 
 def get_metrics_tracker() -> SignalMetricsTracker:
     """Return the shared SignalMetricsTracker instance (created on first call)."""
     global _tracker
     if _tracker is None:
-        _tracker = SignalMetricsTracker()
+        with _tracker_lock:
+            if _tracker is None:
+                _tracker = SignalMetricsTracker()
     return _tracker
 
 

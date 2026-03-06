@@ -80,7 +80,10 @@ class Position:
         else:
             self.unrealized_pnl = (self.entry_price - price) * self.shares
 
-        self.unrealized_pnl_pct = (self.unrealized_pnl / self.position_value) * 100
+        if self.position_value != 0:
+            self.unrealized_pnl_pct = (self.unrealized_pnl / self.position_value) * 100
+        else:
+            self.unrealized_pnl_pct = 0
 
     def close(self, exit_price: float, reason: str = ""):
         """Close the position"""

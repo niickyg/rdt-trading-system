@@ -114,6 +114,13 @@ class RiskManager:
         self.trading_halted = False
         self.halt_reason = ""
 
+        # Per-strategy position limits (default 5 per strategy)
+        self.strategy_position_limits: Dict[str, int] = {}
+        self.default_strategy_position_limit = 5
+
+        # Broker-synced buying power (None = use internal estimate)
+        self._broker_buying_power: Optional[float] = None
+
         # VIX regime filter (optional)
         self._vix_filter: Optional[VIXFilter] = None
         if VIX_FILTER_AVAILABLE:
@@ -181,10 +188,15 @@ class RiskManager:
         shares: int,
         stop_price: float,
         target_price: float,
-        atr: float
+        atr: float,
+        strategy_name: str = "rrs_momentum",
     ) -> TradeRisk:
         """
         Validate a potential trade against all risk rules
+
+        Args:
+            strategy_name: Strategy that generated this signal, used for
+                per-strategy position limits and duplicate detection.
 
         Returns:
             TradeRisk with all check results
@@ -269,7 +281,10 @@ class RiskManager:
             self._check_risk_per_trade(risk_amount),
             self._check_risk_reward(rr_ratio),
             self._check_daily_loss(),
+            self._check_daily_trades(),
             self._check_max_positions(),
+            self._check_strategy_positions(strategy_name),
+            self._check_strategy_symbol_conflict(symbol, strategy_name),
             self._check_sector_concentration(symbol),
             self._check_buying_power(position_value),
             self._check_drawdown(),
@@ -306,7 +321,7 @@ class RiskManager:
 
         return RiskCheckResult(
             passed=passed,
-            violation_type=RiskViolationType.MAX_POSITION_SIZE if not passed else None,
+            violation_type=RiskViolationType.MAX_RISK_PER_TRADE if not passed else None,
             message=f"Risk: ${risk_amount:,.0f} / ${max_risk:,.0f} max",
             current_value=risk_amount,
             limit_value=max_risk,
@@ -319,6 +334,7 @@ class RiskManager:
 
         return RiskCheckResult(
             passed=passed,
+            violation_type=RiskViolationType.INSUFFICIENT_RISK_REWARD if not passed else None,
             message=f"R/R ratio: {rr_ratio:.2f} (min {self.limits.min_risk_reward})",
             current_value=rr_ratio,
             limit_value=self.limits.min_risk_reward,
@@ -339,6 +355,19 @@ class RiskManager:
             current_value=current_loss,
             limit_value=max_loss,
             risk_level=RiskLevel.CRITICAL if not passed else RiskLevel.LOW
+        )
+
+    def _check_daily_trades(self) -> RiskCheckResult:
+        """Check if maximum daily trades limit has been reached"""
+        passed = self.daily_trades < self.limits.max_daily_trades
+
+        return RiskCheckResult(
+            passed=passed,
+            violation_type=RiskViolationType.MAX_DAILY_TRADES if not passed else None,
+            message=f"Daily trades: {self.daily_trades} / {self.limits.max_daily_trades} max",
+            current_value=self.daily_trades,
+            limit_value=self.limits.max_daily_trades,
+            risk_level=RiskLevel.HIGH if not passed else RiskLevel.LOW
         )
 
     def _check_max_positions(self) -> RiskCheckResult:
@@ -377,10 +406,13 @@ class RiskManager:
 
     def _check_buying_power(self, position_value: float) -> RiskCheckResult:
         """Check if sufficient buying power available"""
-        # Simplified check - in reality would query broker
-        available = self.current_balance - sum(
-            p.get("position_value", 0) for p in self.open_positions.values()
-        )
+        # Use broker buying power if synced, else estimate internally
+        if self._broker_buying_power is not None and self._broker_buying_power > 0:
+            available = self._broker_buying_power
+        else:
+            available = self.current_balance - sum(
+                p.get("position_value", 0) for p in self.open_positions.values()
+            )
         passed = position_value <= available
 
         return RiskCheckResult(
@@ -425,7 +457,7 @@ class RiskManager:
         if level == 'extreme' and direction.lower() == 'long':
             return RiskCheckResult(
                 passed=False,
-                violation_type=RiskViolationType.MAX_DAILY_LOSS,  # closest available type
+                violation_type=RiskViolationType.VOLATILITY_TOO_HIGH,
                 message=f"VIX EXTREME ({vix_value:.1f}): long trades blocked",
                 current_value=vix_value if vix_value else 0,
                 limit_value=35.0,
@@ -435,7 +467,7 @@ class RiskManager:
         if direction.lower() == 'long' and not allow_longs:
             return RiskCheckResult(
                 passed=False,
-                violation_type=RiskViolationType.MAX_DAILY_LOSS,
+                violation_type=RiskViolationType.VOLATILITY_TOO_HIGH,
                 message=f"VIX {level.upper()} ({vix_value}): longs not allowed",
                 current_value=vix_value if vix_value else 0,
                 limit_value=35.0,
@@ -445,7 +477,7 @@ class RiskManager:
         if direction.lower() == 'short' and not allow_shorts:
             return RiskCheckResult(
                 passed=False,
-                violation_type=RiskViolationType.MAX_DAILY_LOSS,
+                violation_type=RiskViolationType.VOLATILITY_TOO_HIGH,
                 message=f"VIX {level.upper()} ({vix_value}): shorts not allowed",
                 current_value=vix_value if vix_value else 0,
                 limit_value=35.0,
@@ -459,6 +491,60 @@ class RiskManager:
             limit_value=35.0,
             risk_level=RiskLevel.LOW
         )
+
+    def _check_strategy_positions(self, strategy_name: str) -> RiskCheckResult:
+        """Check if a strategy has exceeded its per-strategy position limit."""
+        limit = self.strategy_position_limits.get(
+            strategy_name, self.default_strategy_position_limit
+        )
+        current = sum(
+            1 for p in self.open_positions.values()
+            if p.get('strategy_name', 'rrs_momentum') == strategy_name
+        )
+        passed = current < limit
+
+        return RiskCheckResult(
+            passed=passed,
+            violation_type=RiskViolationType.MAX_OPEN_POSITIONS if not passed else None,
+            message=f"Strategy '{strategy_name}' positions: {current} / {limit} max",
+            current_value=current,
+            limit_value=limit,
+            risk_level=RiskLevel.MEDIUM if not passed else RiskLevel.LOW,
+        )
+
+    def _check_strategy_symbol_conflict(self, symbol: str, strategy_name: str) -> RiskCheckResult:
+        """
+        Check if another strategy already has a position in this symbol.
+
+        If two strategies signal the same symbol, only the first one should
+        take the position to avoid conflicting stop/target management.
+        """
+        for pos_symbol, pos_data in self.open_positions.items():
+            if pos_symbol == symbol:
+                existing_strategy = pos_data.get('strategy_name', 'rrs_momentum')
+                if existing_strategy != strategy_name:
+                    return RiskCheckResult(
+                        passed=False,
+                        violation_type=RiskViolationType.MAX_OPEN_POSITIONS,
+                        message=(
+                            f"Symbol {symbol} already held by strategy "
+                            f"'{existing_strategy}', cannot open for '{strategy_name}'"
+                        ),
+                        current_value=1,
+                        limit_value=1,
+                        risk_level=RiskLevel.MEDIUM,
+                    )
+
+        return RiskCheckResult(
+            passed=True,
+            message=f"No strategy conflict for {symbol}",
+            risk_level=RiskLevel.LOW,
+        )
+
+    def set_strategy_position_limit(self, strategy_name: str, limit: int):
+        """Set per-strategy position limit."""
+        self.strategy_position_limits[strategy_name] = limit
+        logger.info(f"Strategy '{strategy_name}' position limit set to {limit}")
 
     def check_daily_loss_limit(self) -> bool:
         """Quick check if daily loss limit exceeded"""
@@ -487,12 +573,56 @@ class RiskManager:
             risk_level=RiskLevel.HIGH if not passed else RiskLevel.LOW
         )
 
+    # ==================== Balance Sync ====================
+
+    def sync_balance_from_broker(self, broker) -> bool:
+        """
+        Sync account balance from broker (IBKR provides real account info).
+        Falls back gracefully for paper broker.
+
+        Args:
+            broker: BrokerInterface instance
+
+        Returns:
+            True if balance was synced, False if using internal tracking
+        """
+        try:
+            account_info = broker.get_account()
+            broker_equity = account_info.equity
+
+            if broker_equity <= 0:
+                logger.debug("Broker returned zero equity, skipping sync")
+                return False
+
+            # Log discrepancy between internal and broker balance
+            if self.current_balance > 0:
+                discrepancy_pct = abs(broker_equity - self.current_balance) / self.current_balance * 100
+                if discrepancy_pct > 1.0:
+                    logger.warning(
+                        f"BALANCE DISCREPANCY: internal=${self.current_balance:,.2f} "
+                        f"broker=${broker_equity:,.2f} diff={discrepancy_pct:.1f}%"
+                    )
+
+            self.update_balance(broker_equity)
+
+            # Sync buying power if available
+            if account_info.buying_power and account_info.buying_power > 0:
+                self._broker_buying_power = account_info.buying_power
+
+            logger.info(f"Balance synced from broker: ${broker_equity:,.2f}")
+            return True
+
+        except Exception as e:
+            logger.debug(f"Could not sync balance from broker (using internal): {e}")
+            return False
+
     # ==================== Position Management ====================
 
     def add_position(self, symbol: str, position_data: Dict):
-        """Track a new open position"""
+        """Track a new open position (position_data should include strategy_name)."""
         self.open_positions[symbol] = position_data
-        logger.debug(f"Added position: {symbol}")
+        strategy = position_data.get('strategy_name', 'rrs_momentum')
+        logger.debug(f"Added position: {symbol} (strategy: {strategy})")
 
     def remove_position(self, symbol: str):
         """Remove a closed position"""

@@ -11,6 +11,7 @@ Provides fill quality analysis with:
 """
 
 import statistics
+import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
@@ -351,11 +352,17 @@ class ExecutionTracker:
         # Trim history if needed
         if len(self._executions) > self._max_history:
             self._executions = self._executions[-self._max_history:]
-
-        # Update per-symbol tracking
-        if record.symbol not in self._symbol_executions:
-            self._symbol_executions[record.symbol] = []
-        self._symbol_executions[record.symbol].append(record)
+            # Rebuild per-symbol index to match trimmed history
+            self._symbol_executions = {}
+            for rec in self._executions:
+                if rec.symbol not in self._symbol_executions:
+                    self._symbol_executions[rec.symbol] = []
+                self._symbol_executions[rec.symbol].append(rec)
+        else:
+            # Update per-symbol tracking
+            if record.symbol not in self._symbol_executions:
+                self._symbol_executions[record.symbol] = []
+            self._symbol_executions[record.symbol].append(record)
 
         # Persist to database
         self._save_to_db(record)
@@ -730,11 +737,14 @@ class ExecutionTracker:
 
 # Global execution tracker instance
 _execution_tracker: Optional[ExecutionTracker] = None
+_execution_tracker_lock = threading.Lock()
 
 
 def get_execution_tracker() -> ExecutionTracker:
     """Get or create the global ExecutionTracker instance."""
     global _execution_tracker
     if _execution_tracker is None:
-        _execution_tracker = ExecutionTracker()
+        with _execution_tracker_lock:
+            if _execution_tracker is None:
+                _execution_tracker = ExecutionTracker()
     return _execution_tracker

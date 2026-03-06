@@ -1,6 +1,6 @@
 """
 Scanner Agent
-Scans market for RRS trading signals
+Scans market for trading signals across multiple strategies
 """
 
 import asyncio
@@ -12,6 +12,7 @@ from loguru import logger
 from agents.base import ScheduledAgent, AgentState
 from agents.events import Event, EventType
 from shared.indicators.rrs import RRSCalculator, check_daily_strength_relaxed, check_daily_weakness_relaxed
+from strategies.registry import StrategyRegistry
 
 # Import distributed tracing
 try:
@@ -65,6 +66,7 @@ class ScannerAgent(ScheduledAgent):
         # Cooldown to avoid spamming signals
         self.signal_cooldown: Dict[str, datetime] = {}
         self.cooldown_minutes = 15
+        self._market_open = False  # Wait for MARKET_OPEN event before scanning
 
     async def initialize(self):
         """Initialize scanner resources"""
@@ -89,15 +91,18 @@ class ScannerAgent(ScheduledAgent):
         """Handle incoming events"""
         if event.event_type == EventType.MARKET_OPEN:
             logger.info("Market opened - scanner active")
+            self._market_open = True
             # Clear cooldowns at market open
             self.signal_cooldown.clear()
 
         elif event.event_type == EventType.MARKET_CLOSE:
             logger.info("Market closed - scanner idle")
-            # Could pause scanning during closed hours
+            self._market_open = False
 
     async def run_scheduled_task(self):
-        """Run the market scan"""
+        """Run the market scan (only during market hours)"""
+        if not self._market_open:
+            return
         await self.scan_market()
 
     @trace_async("scanner.scan_market", capture_args=["self"], attributes={"component": "scanner"})
@@ -217,10 +222,79 @@ class ScannerAgent(ScheduledAgent):
                 f"{len(strong_rs)} RS, {len(strong_rw)} RW in {scan_elapsed:.1f}s"
             )
 
+            # Run additional registered strategies
+            await self._run_multi_strategy_scan(batch_data, spy_data)
+
         except Exception as e:
-            logger.error(f"Scan error: {e}")
+            logger.error(f"Scan error: {e}", exc_info=True)
             if span:
                 span.set_attribute("scanner.error", str(e))
+
+    async def _run_multi_strategy_scan(self, batch_data: Dict, spy_data: Dict):
+        """
+        Run scan for all registered strategies (except rrs_momentum which is
+        handled by the primary scan flow above).
+
+        Each strategy receives the batch data and produces StrategySignal objects
+        tagged with strategy_name.
+        """
+        active_strategies = StrategyRegistry.get_active()
+        if not active_strategies:
+            return
+
+        import pandas as pd
+
+        total_signals = 0
+        for strategy in active_strategies:
+            # Skip RRS momentum — already handled by primary scan
+            if strategy.name == 'rrs_momentum':
+                continue
+
+            try:
+                scan_start = time.monotonic()
+
+                # Build stock_data dict with DataFrames for the strategy's scan()
+                # Most strategies need daily OHLCV data from the batch
+                stock_frames = {}
+                for symbol, sdata in batch_data.items():
+                    daily = sdata.get('daily_data')
+                    if daily is not None and isinstance(daily, pd.DataFrame) and len(daily) > 0:
+                        stock_frames[symbol] = daily
+
+                # Build market_data (SPY) DataFrame
+                spy_daily = spy_data.get('daily_data')
+                if spy_daily is None or not isinstance(spy_daily, pd.DataFrame) or len(spy_daily) == 0:
+                    logger.debug(f"Strategy {strategy.name}: no SPY daily data, skipping")
+                    continue
+
+                signals = strategy.scan(stock_frames, spy_daily)
+                scan_elapsed = time.monotonic() - scan_start
+
+                if signals:
+                    for signal in signals[:5]:  # Limit to top 5 per strategy
+                        signal_dict = signal.to_dict()
+                        signal_dict['strategy_name'] = strategy.name
+                        # Normalize field names to match analyzer expectations
+                        if 'price' not in signal_dict and 'entry_price' in signal_dict:
+                            signal_dict['price'] = signal_dict['entry_price']
+                        if 'rrs' not in signal_dict:
+                            signal_dict['rrs'] = signal_dict.get('rrs_value') or 0.0
+                        await self._publish_signal(signal_dict)
+                        total_signals += 1
+
+                    logger.info(
+                        f"Strategy '{strategy.name}': {len(signals)} signals "
+                        f"({min(5, len(signals))} published) in {scan_elapsed:.1f}s"
+                    )
+                else:
+                    logger.debug(f"Strategy '{strategy.name}': 0 signals in {scan_elapsed:.1f}s")
+
+            except Exception as e:
+                logger.warning(f"Strategy '{strategy.name}' scan error: {e}")
+                continue
+
+        if total_signals > 0:
+            logger.info(f"Multi-strategy scan: {total_signals} total signals from {len(active_strategies) - 1} strategies")
 
     def _process_symbol(self, symbol: str, stock_data: Dict, spy_data: Dict) -> Optional[Dict]:
         """
@@ -247,17 +321,28 @@ class ScannerAgent(ScheduledAgent):
             return None
 
         # Calculate RRS
+        # Guard against missing/zero price data
+        stock_current = stock_data.get("current_price")
+        stock_prev = stock_data.get("previous_close")
+        spy_current = spy_data.get("current_price")
+        spy_prev = spy_data.get("previous_close")
+        if not all([stock_current, stock_prev, spy_current, spy_prev]):
+            return None
+
         rrs_data = self.rrs_calculator.calculate_rrs_current(
             stock_data={
-                "current_price": stock_data["current_price"],
-                "previous_close": stock_data["previous_close"]
+                "current_price": stock_current,
+                "previous_close": stock_prev
             },
             spy_data={
-                "current_price": spy_data["current_price"],
-                "previous_close": spy_data["previous_close"]
+                "current_price": spy_current,
+                "previous_close": spy_prev
             },
             stock_atr=stock_data.get("atr", 1.0)
         )
+
+        if rrs_data is None:
+            return None
 
         rrs = rrs_data["rrs"]
 
@@ -298,6 +383,7 @@ class ScannerAgent(ScheduledAgent):
             "daily_weak": daily_weakness["is_weak"],
             "ema3": daily_strength.get("ema3"),
             "ema8": daily_strength.get("ema8"),
+            "strategy_name": "rrs_momentum",
             "timestamp": datetime.now().isoformat()
         }
 
@@ -317,7 +403,7 @@ class ScannerAgent(ScheduledAgent):
 
         logger.info(
             f"Signal: {signal['symbol']} {signal['direction'].upper()} "
-            f"RRS={signal['rrs']:.2f} @ ${signal['price']:.2f}"
+            f"RRS={signal.get('rrs') or 0:.2f} @ ${signal.get('price') or 0:.2f}"
         )
 
     def update_watchlist(self, symbols: List[str]):

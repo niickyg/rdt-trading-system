@@ -30,14 +30,17 @@ rdt-trading-system/
 │       └── auth.py        # GraphQL auth decorators
 │
 ├── options/               # Options trading module
-│   ├── models.py          # OptionContract, OptionGreeks, OptionsStrategy, etc.
-│   ├── config.py          # OptionsConfig (Pydantic, env vars)
-│   ├── chain.py           # OptionsChainManager (IBKR chain + Greeks + cache)
-│   ├── iv_analyzer.py     # IVAnalyzer (IV rank/percentile/HV)
+│   ├── models.py          # OptionContract, OptionGreeks, OptionsStrategy, IVAnalysis, etc.
+│   ├── config.py          # OptionsConfig (Pydantic, OPTIONS_ env prefix)
+│   ├── chain_provider.py  # ChainProvider ABC + IBKRChainProvider + PaperChainProvider
+│   ├── chain.py           # OptionsChainManager (delta selection, caching, rate limiting)
+│   ├── iv_analyzer.py     # IVAnalyzer (IV rank/percentile/HV, requires provider + chain_manager)
 │   ├── strategy_selector.py # StrategySelector (signal → strategy via IV regime)
 │   ├── position_sizer.py  # OptionsPositionSizer (contracts from risk budget)
-│   ├── executor.py        # OptionsExecutor (single-leg + combo IBKR orders)
-│   ├── exit_manager.py    # OptionsExitManager (profit/stop/time/delta/IV exits)
+│   ├── executor.py        # OptionsExecutor facade + IBKROptionsExecutor
+│   ├── paper_executor.py  # PaperOptionsExecutor (simulated fills, DB persistence)
+│   ├── exit_manager.py    # OptionsExitManager (6 exit triggers, requires chain_manager)
+│   ├── pricing.py         # Black-Scholes engine (pure stdlib math)
 │   └── risk.py            # OptionsRiskManager (portfolio delta/theta/premium)
 │
 ├── brokers/               # Trading execution
@@ -51,7 +54,7 @@ rdt-trading-system/
 │   ├── ensemble.py        # StackedEnsemble (XGBoost + RF + LSTM)
 │   ├── safe_model_loader.py # Secure model loading with SHA-256 verification
 │   ├── regime_detector.py # Market regime detection (HMM/heuristic)
-│   ├── feature_engineering.py # 70+ technical features
+│   ├── feature_engineering.py # 87 technical features
 │   ├── model_monitor.py   # Production model tracking
 │   ├── drift_detector.py  # Model degradation detection
 │   ├── model_version.py   # Model versioning with checksum validation
@@ -73,7 +76,7 @@ rdt-trading-system/
 │   └── mean_reversion_scanner.py # DISABLED — contradicts RDT momentum philosophy
 │
 ├── shared/
-│   ├── data_provider.py   # DataProvider with bounded cache (max 200)
+│   ├── data_provider.py   # DataProvider: IBKR quotes + yfinance daily history, bounded cache
 │   └── indicators/
 │       └── rrs.py         # RRS calculation with NaN/infinity guards
 │
@@ -102,8 +105,10 @@ rdt-trading-system/
 │   ├── trading_init.py    # Component initialization (validates config)
 │   ├── auth.py            # Authentication/sessions (brute force protection)
 │   ├── middleware.py       # Security headers, CSP, rate limiting
-│   ├── websocket.py       # SocketIO events (authenticated, header-only)
+│   ├── websocket.py       # SocketIO events (6 rooms: signals, positions, scanner, alerts, prices, options)
 │   ├── session_manager.py # Session tracking
+│   ├── routes/
+│   │   └── options.py     # Options API blueprint (9 endpoints under /api/options)
 │   ├── static/
 │   │   ├── sw.js          # Self-destruct service worker (clears caches)
 │   │   └── js/
@@ -111,6 +116,7 @@ rdt-trading-system/
 │   │       └── websocket.js # WebSocket client (XSS-safe, uses textContent)
 │   └── templates/
 │       ├── base.html      # Base template (inline SW killer script)
+│       ├── dashboard_options.html # Options dashboard (4 tabs: overview, chain, IV, risk)
 │       ├── dashboard_signals.html # Signals with Live Price + P&L columns
 │       └── dashboard_backtest.html # Backtest with SW bypass
 │
@@ -126,11 +132,19 @@ rdt-trading-system/
 │   ├── train_ensemble.py
 │   ├── train_from_history.py  # Train ML from historical yfinance data
 │   ├── run_walkforward.py     # Walk-forward backtest V1 (1yr, baseline vs filtered)
-│   └── run_walkforward_v2.py  # Walk-forward backtest V2 (2yr, 3-way comparison)
+│   ├── run_walkforward_v2.py  # Walk-forward backtest V2 (2yr, 3-way comparison)
+│   └── run_signal_research.py   # Factor testing CLI (--days, --forward-days, --walk-forward)
 │
 ├── tests/
 │   ├── integration/       # End-to-end tests
 │   └── unit/              # Unit tests
+│
+├── research/                 # Signal research framework (standalone)
+│   ├── __init__.py
+│   ├── factors.py           # 30 standardized factors (momentum, mean-reversion, technical)
+│   ├── factor_tester.py     # IC analysis engine (Spearman rank correlation)
+│   ├── signal_combiner.py   # Multi-factor z-score combination, IC-weighting, walk-forward
+│   └── backtest_harness.py  # Quintile-based long/short signal backtester
 │
 ├── migrations/            # Alembic database migrations
 ├── models/                # Trained ML model files
@@ -189,10 +203,16 @@ RDT filters take fewer but higher-quality trades. 98% of raw signals are filtere
 ### Agent Architecture
 Agents communicate via EventBus (pub-sub):
 ```
-Scanner -> SIGNAL_FOUND -> Analyzer -> SETUP_VALID -> Executor -> ORDER_PLACED
-                              |
-                    RiskAgent monitors all events
+ScannerAgent -> SIGNAL_FOUND -> AnalyzerAgent -> SETUP_VALID -> ExecutorAgent -> ORDER_PLACED
+                                     |
+                           RiskAgent monitors all events
 ```
+
+**Agent System Startup (March 2026):** The orchestrator runs in a background daemon thread in `web/app.py` via `asyncio.run(run_trading_system(...))`. `nest_asyncio.apply()` is required so `ib_insync` can run nested event loops. The `_market_close_watchdog` runs continuously — it emits MARKET_OPEN at 9:30 AM ET and MARKET_CLOSE at 4:00 PM ET, but does NOT stop the orchestrator (flags reset at midnight for the next trading day).
+
+**ScannerAgent** gates on `_market_open` flag — waits for MARKET_OPEN event before scanning, goes idle on MARKET_CLOSE. This is separate from the **RealTimeScanner** which runs in its own thread and feeds `active_signals.json` for dashboard display.
+
+**DataProvider** requires `set_broker(broker)` to use IBKR for quotes. Without it, falls back to ProviderManager. Called in `trading_init.py` after broker initialization.
 
 ### Risk Limits (Defaults)
 - Max 2% risk per trade
@@ -242,6 +262,15 @@ Scanner -> SIGNAL_FOUND -> Analyzer -> SETUP_VALID -> Executor -> ORDER_PLACED
 - P&L column: calculated directionally (long vs short), colored green/red
 - CSV export includes live price and P&L data
 - Columns: Symbol, Direction, Entry, Stop, Target, RRS, Live Price, P&L, Confidence, Regime, Timeframe, Generated
+
+### Options Page (`/dashboard/options`)
+- 4-tabbed interface: Overview, Chain Viewer, IV Analysis, Risk Dashboard
+- **Overview**: Summary cards (premium at risk, net delta, daily theta, open positions) + positions table with close buttons
+- **Chain Viewer**: Symbol search → expiry selector → full Greeks grid (calls/puts with strike center column, ITM/OTM highlighting) + strategy recommendation button
+- **IV Analysis**: IV Rank gauge (0-100), IV Percentile, regime badge (LOW/NORMAL/HIGH/VERY_HIGH), HV comparison, regime-based strategy advice
+- **Risk Dashboard**: Risk utilization bars (premium, delta, theta vs limits), expiration distribution view
+- Auto-refreshes every 30 seconds (matches existing position page pattern)
+- All data fetched from `/api/options/*` endpoints
 
 ### Backtest Page (`/dashboard/backtest`)
 - POST `/api/v1/backtest` with configurable params (days, RRS threshold, ATR multipliers)
@@ -293,11 +322,13 @@ The system initializes components in this order (see `web/trading_init.py`):
 1. **Configuration** - Load from environment, validate (account_size > 0, 0 < max_risk < 1, etc.)
 2. **Infrastructure** - Database, EventBus, DataProvider
 3. **Broker** - Paper/Schwab/IBKR with auto-connect
-4. **Risk Management** - RiskManager with limits, start-of-day balance
-5. **Trading Tracking** - PositionTracker, OrderMonitor, ExecutionTracker
-6. **ML/Analysis** - EnsembleModel, RegimeDetector, FeaturePipeline
-7. **Agents** (optional) - All agents via Orchestrator
-8. **Monitoring** - AlertManager, Prometheus metrics
+4. **DataProvider ↔ Broker** - `data_provider.set_broker(broker)` for IBKR streaming/snapshot quotes
+5. **Risk Management** - RiskManager with limits, start-of-day balance
+6. **Trading Tracking** - PositionTracker, OrderMonitor, ExecutionTracker
+6. **Options** (if OPTIONS_ENABLED) - ChainProvider, ChainManager, IVAnalyzer, StrategySelector, PositionSizer, OptionsExecutor, ExitManager, RiskManager → stored in `components['options']` dict
+7. **ML/Analysis** - EnsembleModel, RegimeDetector, FeaturePipeline
+8. **Agents** - Orchestrator started in background daemon thread (auto-starts, not optional)
+9. **Monitoring** - AlertManager, Prometheus metrics
 
 ## API Endpoints
 
@@ -319,6 +350,20 @@ GET  /api/v1/health            # Basic health (public)
 GET  /api/v1/health/detailed   # Detailed health (admin only)
 GET  /metrics                  # Prometheus metrics (admin only)
 ```
+
+### Options Endpoints (`/api/options/*`, CSRF-exempt, `@login_required`)
+```
+GET  /api/options/chain/<symbol>          # Expirations + strikes
+GET  /api/options/chain/<symbol>/<expiry> # Greeks grid (calls + puts)
+GET  /api/options/iv/<symbol>             # IV rank, percentile, HV, regime
+GET  /api/options/strategies/<symbol>     # Recommended strategies (both directions)
+GET  /api/options/positions               # Open options positions with P&L
+POST /api/options/positions/<symbol>/close # Close position by underlying symbol
+POST /api/options/execute                 # Execute strategy (select→size→risk→fill)
+GET  /api/options/risk                    # Portfolio risk summary (delta, theta, premium)
+GET  /api/options/config                  # Read-only options configuration
+```
+These routes are defined in `web/routes/options.py` as a Flask Blueprint. Components accessed via `_trading_components['options']` dict (initialized in `trading_init.py`). Position close uses underlying symbol (e.g., `AAPL`) not a position ID.
 
 ## Environment Variables
 
@@ -346,10 +391,24 @@ DATABASE_URL=postgresql://rdt:rdt_paper_2026@localhost:5432/rdt_trading
 # Broker
 BROKER_TYPE=ibkr             # paper, schwab, ibkr
 IBKR_HOST=127.0.0.1
-IBKR_PORT=4002               # 4001=live, 4002=paper
-IBKR_CLIENT_ID=1
+IBKR_PORT=4000               # 4001=live gateway, 4002=paper TWS, 4000=paper gateway
+IBKR_CLIENT_ID=20
 IBKR_PAPER_TRADING=true
 IBKR_READONLY=false
+IBKR_MARKET_DATA_TYPE=1      # 1=live, 2=frozen, 3=delayed, 4=delayed-frozen
+
+# Options
+OPTIONS_ENABLED=true         # Master switch
+OPTIONS_MODE=both            # stocks, options, or both
+OPTIONS_DTE_TARGET=35        # Target days to expiry
+OPTIONS_DTE_MIN=14
+OPTIONS_DTE_MAX=60
+OPTIONS_IV_RANK_LOW=30       # Below = low IV regime
+OPTIONS_IV_RANK_HIGH=50      # Above = high IV regime
+OPTIONS_IV_RANK_VERY_HIGH=80 # Above = very high (iron condors)
+OPTIONS_MAX_PREMIUM_RISK_PCT=0.10
+OPTIONS_MAX_PORTFOLIO_DELTA=200
+OPTIONS_MAX_PER_UNDERLYING=2
 
 # Stripe
 STRIPE_WEBHOOK_SECRET=       # Required for webhook signature verification
@@ -396,13 +455,26 @@ The PWA service worker was DISABLED because it intercepted POST requests, breaki
 **If you re-enable the SW, ALL POST endpoints will break.** Do not register a new service worker.
 
 ### SQLAlchemy Session in Auth Module
-`web/auth.py` uses a global `_db_session` which causes stale session errors ("identity map is no longer valid"). The `session.close()` calls in `finally` blocks help but the root issue is the global singleton pattern. If refactoring, use scoped sessions or per-request sessions instead.
+`web/auth.py` uses `scoped_session` for thread-safe per-thread sessions (fixed March 2026). The `_db_session_factory` global holds the `scoped_session` factory; calling `get_db_session()` returns a thread-local session instance.
 
 ### Scanner Performance
 - **OLD MTF** (`mtf_enabled`): Very slow (~6 min for 54 symbols) — makes per-symbol per-timeframe API calls. Disabled by default.
 - **NEW Lightweight MTF** (`mtf_lightweight_enabled`, default True): Resamples existing 5m data to 15m/1h, reuses daily data. Zero extra API calls. Blocks signals with weak (<3/4 timeframe) alignment. Adds `mtf_alignment`, `mtf_score`, `mtf_details` fields to signals.
 - Batch scan without MTF is ~30 seconds
 - `get_spy_price()` does a live yfinance call (~12 seconds) - should be cached
+
+### ib_insync + asyncio Threading
+- `ib_insync` methods (`qualifyContracts`, `reqMktData`, etc.) require an asyncio event loop
+- The IB connection is established on the Flask main thread during `initialize_broker()`
+- The agent orchestrator runs `asyncio.run()` in a separate daemon thread
+- `nest_asyncio.apply()` is required before `asyncio.run()` so ib_insync can run nested loops
+- Without `nest_asyncio`: "Cannot run the event loop while another loop is running" errors
+- `DataProvider._fetch_ibkr_quotes` runs in `_run_in_thread` — the worker thread needs an event loop for ib_insync
+
+### yahooquery Removed (March 2026)
+- `yahooquery` was never installed in the Docker container, causing `No module named 'yahooquery'` errors
+- Replaced with `yfinance` (already installed) in `shared/data_provider.py` and `agents/outcome_tracker.py`
+- `yfinance.download()` returns MultiIndex columns for multi-symbol downloads — handle accordingly
 
 ### Missing Dependencies
 - `hmmlearn` is optional - regime detector falls back to heuristic mode
@@ -413,6 +485,20 @@ The PWA service worker was DISABLED because it intercepted POST requests, breaki
 - `User` now has compatibility properties: `user_id` (alias for `id`), `subscription_tier` (derived from subscriptions), `is_expired` (always False)
 - Admin users get `ELITE` tier, others get `PRO` by default (or tier from active subscription)
 - When adding new attributes to `APIUserDTO`, add matching properties to `User` in `data/database/models.py`
+
+### Options Component Constructor Signatures
+When initializing options components, the constructor signatures must be followed exactly:
+- `PaperChainProvider()` — no args
+- `IBKRChainProvider(ib_client)` — takes the IBKR broker client
+- `OptionsChainManager(provider, config)` — ChainProvider + OptionsConfig
+- `IVAnalyzer(provider, chain_manager)` — ChainProvider + OptionsChainManager (NOT config)
+- `StrategySelector(chain_manager, iv_analyzer, config)`
+- `OptionsPositionSizer(config)`
+- `PaperOptionsExecutor(chain_provider, config)` — requires ChainProvider as first arg
+- `IBKROptionsExecutor(ib_client, config)`
+- `OptionsExecutor(broker_executor, config)` — wraps raw executor as facade
+- `OptionsExitManager(chain_manager, config)` — takes OptionsChainManager (NOT executor)
+- `OptionsRiskManager(chain_manager, config)`
 
 ### yfinance Column Format
 - Modern yfinance returns `MultiIndex` columns even for single symbols: `('Close', 'AAPL')`
@@ -466,12 +552,13 @@ Two comprehensive code audits were performed. Key changes:
 ## Broker: Interactive Brokers (IBKR)
 
 ### Setup
-- IB Gateway running on port 4002 (paper trading)
-- Paper account: DUP995654 ($1M equity)
+- IB Gateway running on port 4000 (paper trading via IBC/systemd)
+- Paper account: DUP995654 ($25K equity, funded Feb 2026)
 - `ib_insync` library for API communication
 - Python 3.14 compatibility: explicit `asyncio.set_event_loop()` before ib_insync import
+- Docker volume mounts include `shared/` (added March 2026) — code changes picked up on restart
 - `TrailingStopOrder` doesn't exist in current ib_insync — use `IBOrder(orderType='TRAIL')` instead
-- Paper trading requires `reqMarketDataType(3)` for delayed data
+- Live market data (type 1) active — requires funded IBKR account with market data subscriptions. Set via `IBKR_MARKET_DATA_TYPE=1` in .env
 
 ### Trade Metadata Columns (16 fields on `Trade` model)
 ```
@@ -502,8 +589,8 @@ Options integrates into `ExecutorAgent.execute_trade()` — if OPTIONS_ENABLED, 
 | SHORT | Long Put | Bear Put Spread | Bear Call Spread | Iron Condor |
 
 ### Key Config (env vars with OPTIONS_ prefix)
-- `OPTIONS_ENABLED=false` — master switch
-- `OPTIONS_MODE=stocks` — stocks/options/both
+- `OPTIONS_ENABLED=true` — master switch (enabled in .env)
+- `OPTIONS_MODE=both` — stocks/options/both (set to `both` in .env)
 - `OPTIONS_DTE_TARGET=35` — target days to expiry
 - `OPTIONS_LONG_DELTA_TARGET=0.60` — delta for long legs
 - `OPTIONS_IV_RANK_LOW=30` / `OPTIONS_IV_RANK_HIGH=50` — strategy selection thresholds
@@ -524,11 +611,28 @@ Options integrates into `ExecutorAgent.execute_trade()` — if OPTIONS_ENABLED, 
 - Daily theta < 0.5% of account
 - Max 2 options positions per underlying
 
+### Web Dashboard Integration
+- **Dashboard route**: `/dashboard/options` renders `dashboard_options.html`
+- **API Blueprint**: `web/routes/options.py` registered in `app.py` with CSRF exemption
+- **Component access**: Routes call `_get_options_components()` which imports `_trading_components['options']` from `web.app`
+- **Initialization**: `trading_init.py` creates all options components after broker init, stores as nested dict in `components['options']`
+- **WebSocket**: `ROOM_OPTIONS` added to `websocket.py` with `broadcast_options_signal()` and `broadcast_options_position_update()` functions
+- **Sidebar**: "Options" link added to Analysis section in all 10+ dashboard templates
+- **Chain provider selection**: IBKR broker → `IBKRChainProvider` + `IBKROptionsExecutor`; Paper → `PaperChainProvider` + `PaperOptionsExecutor`; both wrapped in `OptionsExecutor` facade
+
 ### IBKR Integration
 - `brokers/ibkr/client.py` has: `place_option_order()`, `place_combo_order()`, `get_option_chain_params()`, `get_option_greeks()`, `qualify_option_contract()`
 - Combo orders use BAG contract with ComboLeg objects for atomic spread execution
 - `get_positions()` recognizes `secType == 'OPT'` portfolio items
 - Always LIMIT orders at mid price + configurable slippage ticks
+- **Market data subscriptions** (configured in IBKR Account Management portal, not code): US Securities Snapshot and Futures Value Bundle OR US Equity and Options Add-On Streaming Bundle; Level 2: NYSE ArcaBook / NASDAQ TotalView. Without OPRA subscription, options quotes fall back to delayed data via `reqMarketDataType(3)`
+
+### IBKR Bug Fixes (Feb 2026)
+- **NaN quote crash**: `int(ticker.volume)` crashed on NaN (truthy but not int-convertible). Fixed with `_safe_int()`/`_safe_float()` helpers using `math.isnan()` at 3 quote-processing locations in `client.py`
+- **Batch wait time scaling**: Fixed 1.5s hardcoded wait → `max(2.0, len(tickers) * 0.06)` scales with batch size. Was causing 274/503 quotes with "Can't find EId" errors
+- **Quote filter too strict**: `data_provider.py` required both `last > 0` AND `prev_close > 0`. IBKR snapshots often omit prev_close. Relaxed to accept any valid last or bid price, falls back prev_close to current price
+- **`from_env=True` missing**: `main.py` created broker without `from_env=True`, so `IBKR_MARKET_DATA_TYPE` env var was ignored. Added to `get_broker()` call
+- **DB schema drift**: ORM had columns (peak_mfe, peak_mae, etc.) not in database. Fixed with ALTER TABLE ADD COLUMN for 8+ missing trade metadata columns
 
 ## Murphy-Inspired Enhancements (Technical Analysis of the Financial Markets)
 
@@ -569,6 +673,36 @@ Total features now: 87 (was 70). New `murphy_features` category with 17 features
 ### Priority 5: Oscillator Divergence Detection (FUTURE)
 - RSI bearish/bullish divergence (price vs RSI swing comparison)
 - Weighted more heavily when RSI in overbought/oversold territory
+
+## Comprehensive Audit & Fixes (March 2026)
+
+Six-agent deep code review covering all subsystems. 18 fixes across 12 files:
+
+### Critical Fixes
+- **`executor_agent.py`**: Fixed undefined `current_premium` variable in `check_options_exits()` — NameError crashed options exit handling
+- **`orchestrator.py`**: Added MARKET_OPEN event emission in `_market_close_watchdog()` — without this, daily risk resets, scanner cooldown clearing, and daily stats tracking never triggered
+- **`orchestrator.py`**: Fixed `_halting` flag never resetting in `resume_trading()` — second halt after resume was silently ignored
+
+### High-Priority Fixes
+- **`orchestrator.py`**: `check_market_hours()` now uses Eastern Time via `utils.timezone.is_market_open()` (was using local MST)
+- **`orchestrator.py`**: Fixed TRADING_HALTED re-publish loop — external halt events no longer re-emit
+- **`risk_agent.py`**: DAILY_LIMIT_HIT only emitted when actual limit exceeded (was emitting on any losing day, halting trading)
+- **`auth.py`**: Thread-safe `scoped_session` replaced non-thread-safe global `_db_session` singleton
+- **`brokers/ibkr/client.py`**: Pump loop detects IB disconnection and exits cleanly (was silently running on stale data); caps consecutive errors at 10
+- **`ml/feature_engineering.py`**: Fixed 5 NaN/Inf-producing operations (VWAP division, volume ratio, RSI div-by-zero, RRS tanh, price momentum)
+- **`data_provider.py`**: `_run_in_thread` returning `None` no longer crashes `.update()` (2 locations)
+
+### Medium-Priority Fixes
+- **`dashboard.html`**: None-safe format strings for signal price, RRS, timestamp
+- **`dashboard_options.html`**: None-safe `total_premium` sum with `rejectattr`
+- **`export_trading_stats.py`**: All 7 DB queries wrapped in try/except for missing table resilience
+- **`realtime_scanner.py`**: `calculate_stock_rrs` returns `None` early if `spy_data` is missing
+- **`health_check.sh`**: Market hours boundary corrected for MST (7-14 instead of 6-13)
+- **`executor_agent.py`**: Fixed `_intraday_exit_manager` None check (getattr instead of hasattr)
+
+### Other Fixes
+- **`main.py`**: Removed duplicate XOM/CVX from fallback watchlist
+- **`data/database/models.py`**: Added `STALE_RECONCILED` to `ExitReason` enum (position reconciliation was failing)
 
 ## Patterns to Follow When Making Changes
 

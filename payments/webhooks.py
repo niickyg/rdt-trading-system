@@ -124,7 +124,7 @@ class WebhookHandler:
                     'status': 'error',
                     'event_type': event_type,
                     'event_id': event_id,
-                    'error': str(e)
+                    'error': 'Event processing failed'
                 }
         else:
             logger.debug(f"No handler for event type: {event_type}")

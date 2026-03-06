@@ -64,10 +64,7 @@ try:
     PROVIDERS_AVAILABLE = True
 except ImportError:
     PROVIDERS_AVAILABLE = False
-    logger.warning("Data providers module not available, falling back to direct yfinance")
-
-# Legacy yfinance import for fallback
-import yfinance as yf
+    logger.warning("Data providers module not available")
 
 # Module-level SPY price cache (price, timestamp) with 30-second TTL
 _spy_cache: Dict = {}
@@ -123,9 +120,9 @@ except ImportError:
 try:
     from scanner.sector_filter import SectorStrengthFilter
     SECTOR_FILTER_AVAILABLE = True
-except ImportError:
+except Exception as e:
     SECTOR_FILTER_AVAILABLE = False
-    logger.debug("Sector strength filter not available")
+    logger.warning(f"Sector strength filter not available: {type(e).__name__}: {e}")
 
 # Intermarket analysis (optional -- Murphy framework, leading macro indicator)
 try:
@@ -216,7 +213,7 @@ class RealTimeScanner:
                 provider_order = self._provider_manager.get_provider_order()
                 logger.info(f"Scanner using redundant data providers: {provider_order}")
             except Exception as e:
-                logger.warning(f"Failed to initialize provider manager: {e}, falling back to direct yfinance")
+                logger.warning(f"Failed to initialize provider manager: {e}")
                 self._use_providers = False
 
         # Initialize multi-timeframe analyzer
@@ -648,34 +645,24 @@ class RealTimeScanner:
         try:
             logger.info(f"Fetching batch data for {len(symbols)} symbols via ProviderManager")
 
-            # Get batch historical data for intraday (5m)
-            from data.providers.yfinance_provider import YFinanceProvider
+            # Use ProviderManager batch historical
+            try:
+                batch_5m_data = self._provider_manager.get_batch_historical(symbols, period="1d", interval="5m")
+                batch_daily_data = self._provider_manager.get_batch_historical(symbols, period="60d", interval="1d")
 
-            # First try to get a YFinance provider for batch operations
-            yf_provider = None
-            for name in self._provider_manager.get_provider_order():
-                provider = self._provider_manager.get_provider(name)
-                if isinstance(provider, YFinanceProvider):
-                    yf_provider = provider
-                    break
+                if batch_5m_data and batch_daily_data:
+                    # Convert HistoricalData dict to DataFrame format expected by existing code
+                    batch_5m = self._convert_historical_dict_to_batch_df(batch_5m_data)
+                    batch_daily = self._convert_historical_dict_to_batch_df(batch_daily_data)
 
-            if yf_provider:
-                # Use batch download from YFinance provider
-                try:
-                    batch_5m_data = yf_provider.get_batch_historical(symbols, period="1d", interval="5m")
-                    batch_daily_data = yf_provider.get_batch_historical(symbols, period="60d", interval="1d")
+                    if not batch_5m.empty and not batch_daily.empty:
+                        n5m = len(batch_5m.columns.get_level_values(0).unique()) if isinstance(batch_5m.columns, pd.MultiIndex) else 0
+                        nday = len(batch_daily.columns.get_level_values(0).unique()) if isinstance(batch_daily.columns, pd.MultiIndex) else 0
+                        logger.info(f"Successfully fetched batch data via ProviderManager (5m: {n5m} symbols, daily: {nday} symbols)")
+                        return batch_5m, batch_daily
 
-                    if batch_5m_data and batch_daily_data:
-                        # Convert HistoricalData dict to DataFrame format expected by existing code
-                        batch_5m = self._convert_historical_dict_to_batch_df(batch_5m_data)
-                        batch_daily = self._convert_historical_dict_to_batch_df(batch_daily_data)
-
-                        if not batch_5m.empty and not batch_daily.empty:
-                            logger.info(f"Successfully fetched batch data via ProviderManager")
-                            return batch_5m, batch_daily
-
-                except Exception as e:
-                    logger.warning(f"Batch fetch via provider failed: {e}")
+            except Exception as e:
+                logger.warning(f"Batch fetch via provider failed: {e}")
 
             # Fall back to individual requests through provider manager
             logger.info("Falling back to individual symbol requests via ProviderManager")
@@ -774,7 +761,7 @@ class RealTimeScanner:
     def fetch_batch_data(self, max_retries: int = 3) -> tuple:
         """
         Fetch all stock data in batch using the ProviderManager with automatic
-        failover, then fall back to direct yfinance only as a last resort.
+        failover via ProviderManager.
 
         Retry schedule uses exponential backoff: 1 s, 2 s, 4 s.
 
@@ -817,37 +804,6 @@ class RealTimeScanner:
 
                     raise ValueError("ProviderManager returned empty batch data")
 
-                # Direct yfinance fallback (ProviderManager unavailable)
-                logger.info(
-                    f"ProviderManager not available; using direct yfinance batch download "
-                    f"(attempt {attempt + 1}/{max_retries})"
-                )
-                batch_5m = yf.download(
-                    symbols,
-                    period='1d',
-                    interval='5m',
-                    group_by='ticker',
-                    progress=False,
-                    threads=True,
-                )
-                batch_daily = yf.download(
-                    symbols,
-                    period='60d',
-                    interval='1d',
-                    group_by='ticker',
-                    progress=False,
-                    threads=True,
-                )
-
-                if batch_5m.empty or batch_daily.empty:
-                    raise ValueError("Empty batch data received from direct yfinance")
-
-                logger.info(
-                    f"Successfully downloaded batch data for {len(symbols)} symbols "
-                    f"via direct yfinance"
-                )
-                return batch_5m, batch_daily
-
             except Exception as e:
                 error_msg = str(e).lower()
                 if attempt < max_retries - 1:
@@ -876,8 +832,8 @@ class RealTimeScanner:
         Extract SPY data from batch download results.
 
         Args:
-            batch_5m: Batch 5-minute data from yf.download
-            batch_daily: Batch daily data from yf.download
+            batch_5m: Batch 5-minute data
+            batch_daily: Batch daily data
 
         Returns:
             Dict with SPY data or None if extraction fails
@@ -924,14 +880,63 @@ class RealTimeScanner:
             logger.error(f"Error extracting SPY data from batch: {e}")
             return None
 
+    def _estimate_beta(self, stock_data: Dict, batch_daily=None) -> Optional[float]:
+        """
+        Estimate stock beta vs SPY from 30-day daily returns.
+        Returns None if insufficient data.
+        """
+        try:
+            import numpy as np
+            stock_daily = stock_data.get('daily')
+            if stock_daily is None or len(stock_daily) < 30:
+                return None
+
+            # Get SPY daily returns
+            spy_daily = None
+            if batch_daily is not None and 'SPY' in batch_daily.columns.get_level_values(0):
+                spy_daily = batch_daily['SPY'].dropna(how='all')
+                spy_daily.columns = spy_daily.columns.str.lower()
+            elif hasattr(self, 'spy_data') and self.spy_data and 'daily' in self.spy_data:
+                spy_daily = self.spy_data['daily']
+
+            if spy_daily is None or len(spy_daily) < 30:
+                return None
+
+            # Calculate 30-day returns
+            stock_returns = stock_daily['close'].pct_change().iloc[-30:]
+            spy_returns = spy_daily['close'].pct_change().iloc[-30:]
+
+            # Align indices
+            common_idx = stock_returns.index.intersection(spy_returns.index)
+            if len(common_idx) < 20:
+                return None
+
+            sr = stock_returns.loc[common_idx].values
+            mr = spy_returns.loc[common_idx].values
+
+            # Remove NaN
+            mask = ~(np.isnan(sr) | np.isnan(mr))
+            sr, mr = sr[mask], mr[mask]
+            if len(sr) < 20:
+                return None
+
+            # Beta = Cov(stock, market) / Var(market)
+            cov = np.cov(sr, mr)
+            if cov[1, 1] == 0:
+                return None
+            beta = cov[0, 1] / cov[1, 1]
+            return float(beta)
+        except Exception:
+            return None
+
     def _extract_stock_data(self, symbol: str, batch_5m: pd.DataFrame, batch_daily: pd.DataFrame) -> Dict:
         """
         Extract single stock data from batch download results.
 
         Args:
             symbol: Stock ticker symbol
-            batch_5m: Batch 5-minute data from yf.download
-            batch_daily: Batch daily data from yf.download
+            batch_5m: Batch 5-minute data
+            batch_daily: Batch daily data
 
         Returns:
             Dict with stock data or None if extraction fails
@@ -1027,48 +1032,9 @@ class RealTimeScanner:
                             return self.spy_data
 
                 except Exception as e:
-                    logger.warning(f"Provider manager SPY fetch failed: {e}, falling back to yfinance")
+                    logger.error(f"Provider manager SPY fetch failed: {e}")
 
-            # Direct yfinance fallback with exponential backoff (3 retries: 1s, 2s, 4s)
-            logger.warning(
-                "Failing over to direct yfinance for SPY data "
-                "(ProviderManager unavailable or failed)"
-            )
-            last_exc: Optional[Exception] = None
-            for attempt in range(3):
-                wait_time = 1.0 * (2 ** attempt)
-                try:
-                    spy = yf.Ticker('SPY')
-                    spy_5m = spy.history(period='1d', interval='5m')
-                    spy_daily = spy.history(period='60d', interval='1d')
-
-                    if len(spy_daily) < 2:
-                        raise ValueError("Insufficient SPY daily data from direct yfinance")
-
-                    spy_5m.columns = spy_5m.columns.str.lower()
-                    spy_daily.columns = spy_daily.columns.str.lower()
-
-                    self.spy_data = {
-                        '5m': spy_5m,
-                        'daily': spy_daily,
-                        'current_price': spy_5m['close'].iloc[-1],
-                        'previous_close': spy_daily['close'].iloc[-2],
-                    }
-                    _spy_cache['spy_data'] = self.spy_data
-                    _spy_cache['fetched_at'] = time.time()
-                    return self.spy_data
-
-                except Exception as exc:
-                    last_exc = exc
-                    if attempt < 2:
-                        logger.warning(
-                            f"Direct yfinance SPY fetch failed "
-                            f"(attempt {attempt + 1}/3): {exc}; "
-                            f"retrying in {wait_time}s"
-                        )
-                        time.sleep(wait_time)
-
-            logger.error(f"Direct yfinance SPY fetch failed after 3 attempts: {last_exc}")
+            logger.error("Failed to fetch SPY data — no providers available")
             return None
 
         except Exception as e:
@@ -1114,58 +1080,9 @@ class RealTimeScanner:
                         }
 
                 except Exception as e:
-                    logger.warning(
-                        f"ProviderManager fetch for {symbol} failed: {e}; "
-                        f"failing over to direct yfinance"
-                    )
+                    logger.warning(f"ProviderManager fetch for {symbol} failed: {e}")
 
-            # Direct yfinance fallback with exponential backoff (3 retries: 1s, 2s, 4s)
-            logger.warning(
-                f"Failing over to direct yfinance for {symbol} "
-                f"(ProviderManager unavailable or failed)"
-            )
-            last_exc: Optional[Exception] = None
-            for attempt in range(3):
-                wait_time = 1.0 * (2 ** attempt)
-                try:
-                    ticker = yf.Ticker(symbol)
-                    data_5m = ticker.history(period='1d', interval='5m')
-                    data_daily = ticker.history(period='60d', interval='1d')
-
-                    if data_5m.empty or data_daily.empty:
-                        raise ValueError(f"Empty data returned for {symbol}")
-
-                    data_5m.columns = data_5m.columns.str.lower()
-                    data_daily.columns = data_daily.columns.str.lower()
-
-                    atr_series = self.rrs_calc.calculate_atr(data_daily)
-                    current_atr = atr_series.iloc[-1]
-
-                    if len(data_daily) < 2:
-                        raise ValueError(f"Insufficient daily data for {symbol}")
-
-                    return {
-                        '5m': data_5m,
-                        'daily': data_daily,
-                        'current_price': data_5m['close'].iloc[-1],
-                        'previous_close': data_daily['close'].iloc[-2],
-                        'atr': current_atr,
-                        'volume': data_daily['volume'].iloc[-1],
-                    }
-
-                except Exception as exc:
-                    last_exc = exc
-                    if attempt < 2:
-                        logger.warning(
-                            f"Direct yfinance fetch for {symbol} failed "
-                            f"(attempt {attempt + 1}/3): {exc}; "
-                            f"retrying in {wait_time}s"
-                        )
-                        time.sleep(wait_time)
-
-            logger.debug(
-                f"Direct yfinance fetch for {symbol} failed after 3 attempts: {last_exc}"
-            )
+            logger.debug(f"No providers available for {symbol}")
             return None
 
         except Exception as e:
@@ -1257,37 +1174,7 @@ class RealTimeScanner:
                     except Exception as e:
                         logger.debug(f"Provider failed for {symbol} {tf.value}: {e}")
 
-                # Fallback to direct yfinance with exponential backoff
-                logger.warning(
-                    f"ProviderManager failed for {symbol} {tf.value}; "
-                    f"failing over to direct yfinance"
-                )
-                last_exc: Optional[Exception] = None
-                fetched = False
-                for attempt in range(3):
-                    wait_time = 1.0 * (2 ** attempt)
-                    try:
-                        ticker = yf.Ticker(symbol)
-                        df = ticker.history(period=period, interval=interval)
-                        if not df.empty:
-                            df.columns = [c.lower() for c in df.columns]
-                            data_by_tf[tf] = df
-                        fetched = True
-                        break
-                    except Exception as exc:
-                        last_exc = exc
-                        if attempt < 2:
-                            logger.warning(
-                                f"Direct yfinance MTF fetch for {symbol} {tf.value} "
-                                f"failed (attempt {attempt + 1}/3): {exc}; "
-                                f"retrying in {wait_time}s"
-                            )
-                            time.sleep(wait_time)
-                if not fetched and last_exc is not None:
-                    logger.debug(
-                        f"Direct yfinance MTF fetch for {symbol} {tf.value} "
-                        f"failed after 3 attempts: {last_exc}"
-                    )
+                logger.debug(f"No provider data for {symbol} {tf.value}")
 
             except Exception as e:
                 logger.debug(f"Error fetching {symbol} {tf.value}: {e}")
@@ -1336,7 +1223,7 @@ class RealTimeScanner:
             for tf in self._mtf_timeframes:
                 if tf not in data_by_tf:
                     additional = self.fetch_mtf_data(symbol)
-                    for add_tf, add_df in additional.items():
+                    for add_tf, add_df in (additional or {}).items():
                         if add_tf not in data_by_tf:
                             data_by_tf[add_tf] = add_df
                     break  # Only need to fetch once
@@ -1516,7 +1403,7 @@ Time: {get_eastern_time().strftime('%I:%M:%S %p ET')}
 
         Args:
             symbol: Stock ticker
-            daily_df: Pre-fetched daily DataFrame (optional; fetches via yfinance if None)
+            daily_df: Pre-fetched daily DataFrame (optional; fetches via ProviderManager if None)
 
         Returns:
             dict with keys:
@@ -1546,13 +1433,12 @@ Time: {get_eastern_time().strftime('%I:%M:%S %p ET')}
             if close_series is None or len(close_series) < 50:
                 # Must fetch — don't have enough for even the 50 SMA
                 try:
-                    ticker = yf.Ticker(symbol)
-                    hist = ticker.history(period='1y', interval='1d')
-                    if hist is not None and not hist.empty:
-                        hist.columns = [c.lower() for c in hist.columns]
-                        close_series = hist['close'].dropna()
+                    if self._use_providers and self._provider_manager:
+                        hist_data = self._provider_manager.get_historical(symbol, period='1y', interval='1d')
+                        if hist_data and not hist_data.data.empty:
+                            close_series = hist_data.data['close'].dropna()
                 except Exception as fetch_err:
-                    logger.debug(f"yfinance 1y fetch for {symbol} SMA failed: {fetch_err}")
+                    logger.debug(f"Provider 1y fetch for {symbol} SMA failed: {fetch_err}")
 
             if close_series is None or len(close_series) < 50:
                 logger.debug(f"Insufficient daily data for {symbol} SMA (need 50, got {len(close_series) if close_series is not None else 0})")
@@ -2622,7 +2508,7 @@ Time: {get_eastern_time().strftime('%I:%M:%S %p ET')}
             except Exception as e:
                 logger.debug(f"WebSocket broadcast error: {e}")
 
-        # Try provider manager first, fall back to direct yfinance
+        # Fetch batch data via provider manager
         batch_5m = None
         batch_daily = None
 
@@ -2634,9 +2520,8 @@ Time: {get_eastern_time().strftime('%I:%M:%S %p ET')}
             except Exception as e:
                 logger.warning(f"ProviderManager batch fetch error: {e}")
 
-        # Fall back to direct yfinance if provider manager failed
+        # Try legacy batch fetch (also uses ProviderManager internally)
         if batch_5m is None or batch_daily is None:
-            logger.info("Falling back to direct yfinance batch download")
             batch_5m, batch_daily = self.fetch_batch_data()
 
         if batch_5m is None or batch_daily is None:
@@ -2671,6 +2556,7 @@ Time: {get_eastern_time().strftime('%I:%M:%S %p ET')}
         strong_rw = []
         processed_count = 0
         skipped_count = 0
+        skip_reasons = {'extract_failed': 0, 'low_volume': 0, 'low_price': 0, 'dead_rvol': 0, 'rrs_failed': 0}
 
         # Process each stock from the batch data (no API calls, no delays needed)
         for symbol in self.watchlist:
@@ -2679,15 +2565,38 @@ Time: {get_eastern_time().strftime('%I:%M:%S %p ET')}
                 stock_data = self._extract_stock_data(symbol, batch_5m, batch_daily)
                 if stock_data is None:
                     skipped_count += 1
+                    skip_reasons['extract_failed'] += 1
                     continue
 
                 # Filter by volume and price
                 if stock_data['volume'] < self.config.get('min_volume', 500000):
                     skipped_count += 1
+                    skip_reasons['low_volume'] += 1
                     continue
                 if stock_data['current_price'] < self.config.get('min_price', 5.0):
                     skipped_count += 1
+                    skip_reasons['low_price'] += 1
                     continue
+
+                # Relative volume check (soft gate)
+                rvol = 1.0  # default if can't calculate
+                try:
+                    daily_vol = stock_data['daily']['volume']
+                    if len(daily_vol) >= 20:
+                        avg_20d_vol = daily_vol.iloc[-21:-1].mean()
+                        if avg_20d_vol > 0:
+                            rvol = float(stock_data['volume'] / avg_20d_vol)
+                except Exception:
+                    pass
+                stock_data['rvol'] = rvol
+
+                if rvol < 0.5:
+                    logger.debug(f"{symbol} blocked: rvol={rvol:.2f} < 0.5 (dead volume)")
+                    skipped_count += 1
+                    skip_reasons['dead_rvol'] += 1
+                    continue
+                if rvol < 0.8:
+                    logger.debug(f"{symbol} low rvol warning: rvol={rvol:.2f} < 0.8")
 
                 # Calculate RRS with MTF analysis
                 if self._mtf_enabled:
@@ -2697,6 +2606,7 @@ Time: {get_eastern_time().strftime('%I:%M:%S %p ET')}
 
                 if analysis is None:
                     skipped_count += 1
+                    skip_reasons['rrs_failed'] += 1
                     continue
 
                 processed_count += 1
@@ -2732,6 +2642,17 @@ Time: {get_eastern_time().strftime('%I:%M:%S %p ET')}
                     if rrs > threshold:
                         # Attach raw stock_data so save_signals can run quality validation
                         analysis['_raw_stock_data'] = stock_data
+                        # Attach relative volume for dashboard display
+                        analysis['rvol'] = stock_data.get('rvol', 1.0)
+                        if stock_data.get('rvol', 1.0) < 0.8:
+                            analysis['low_rvol_warning'] = True
+                        # Beta-awareness flag for high-beta names
+                        stock_beta = self._estimate_beta(stock_data, batch_daily)
+                        if stock_beta is not None:
+                            analysis['beta'] = round(stock_beta, 2)
+                            # Flag if high beta and RRS only marginally above threshold
+                            if stock_beta > 1.5 and rrs < threshold * 1.5:
+                                analysis['high_beta_caution'] = True
                         # Attach VIX position size multiplier for downstream use
                         if vix_regime is not None:
                             analysis['vix_position_size_multiplier'] = vix_regime['position_size_multiplier']
@@ -2765,6 +2686,16 @@ Time: {get_eastern_time().strftime('%I:%M:%S %p ET')}
                     elif rrs < -threshold:
                         # Attach raw stock_data so save_signals can run quality validation
                         analysis['_raw_stock_data'] = stock_data
+                        # Attach relative volume for dashboard display
+                        analysis['rvol'] = stock_data.get('rvol', 1.0)
+                        if stock_data.get('rvol', 1.0) < 0.8:
+                            analysis['low_rvol_warning'] = True
+                        # Beta-awareness flag for high-beta names
+                        stock_beta = self._estimate_beta(stock_data, batch_daily)
+                        if stock_beta is not None:
+                            analysis['beta'] = round(stock_beta, 2)
+                            if stock_beta > 1.5 and abs(rrs) < threshold * 1.5:
+                                analysis['high_beta_caution'] = True
                         # Attach VIX position size multiplier for downstream use
                         if vix_regime is not None:
                             analysis['vix_position_size_multiplier'] = vix_regime['position_size_multiplier']
@@ -2808,6 +2739,8 @@ Time: {get_eastern_time().strftime('%I:%M:%S %p ET')}
         # Print summary with session info
         session_prefix = f"[EXTENDED_HOURS:{session.upper()}] " if is_extended else ""
         logger.info(f"{session_prefix}Scan complete in {scan_duration:.1f}s: processed {processed_count}, skipped {skipped_count}")
+        if skipped_count > 0:
+            logger.info(f"Skip breakdown: {skip_reasons}")
         logger.info(f"{session_prefix}Found {len(strong_rs)} RS stocks, {len(strong_rw)} RW stocks")
 
         if strong_rs:
@@ -2980,6 +2913,25 @@ Time: {get_eastern_time().strftime('%I:%M:%S %p ET')}
                     skipped_count += 1
                     continue
 
+                # Relative volume check (soft gate)
+                rvol = 1.0
+                try:
+                    daily_vol = stock_data['daily']['volume']
+                    if len(daily_vol) >= 20:
+                        avg_20d_vol = daily_vol.iloc[-21:-1].mean()
+                        if avg_20d_vol > 0:
+                            rvol = float(stock_data['volume'] / avg_20d_vol)
+                except Exception:
+                    pass
+                stock_data['rvol'] = rvol
+
+                if rvol < 0.5:
+                    logger.debug(f"{symbol} blocked: rvol={rvol:.2f} < 0.5 (dead volume)")
+                    skipped_count += 1
+                    continue
+                if rvol < 0.8:
+                    logger.debug(f"{symbol} low rvol warning: rvol={rvol:.2f} < 0.8")
+
                 # Calculate RRS with MTF analysis
                 if self._mtf_enabled:
                     analysis = self.calculate_stock_rrs_with_mtf(symbol, stock_data)
@@ -3005,6 +2957,9 @@ Time: {get_eastern_time().strftime('%I:%M:%S %p ET')}
                 if should_include and rrs > threshold:
                     # Attach raw stock_data so save_signals can run quality validation
                     analysis['_raw_stock_data'] = stock_data
+                    analysis['rvol'] = stock_data.get('rvol', 1.0)
+                    if stock_data.get('rvol', 1.0) < 0.8:
+                        analysis['low_rvol_warning'] = True
                     strong_rs.append(analysis)
                     if self.should_alert(symbol, rrs):
                         message = self.format_alert_message(analysis)
@@ -3014,6 +2969,9 @@ Time: {get_eastern_time().strftime('%I:%M:%S %p ET')}
                 elif should_include and rrs < -threshold:
                     # Attach raw stock_data so save_signals can run quality validation
                     analysis['_raw_stock_data'] = stock_data
+                    analysis['rvol'] = stock_data.get('rvol', 1.0)
+                    if stock_data.get('rvol', 1.0) < 0.8:
+                        analysis['low_rvol_warning'] = True
                     strong_rw.append(analysis)
                     if self.should_alert(symbol, rrs):
                         message = self.format_alert_message(analysis)
@@ -3026,9 +2984,20 @@ Time: {get_eastern_time().strftime('%I:%M:%S %p ET')}
             except Exception as e:
                 logger.debug(f"Error processing {symbol}: {e}")
                 skipped_count += 1
+                consecutive_errors = getattr(self, '_consecutive_scan_errors', 0) + 1
+                self._consecutive_scan_errors = consecutive_errors
                 continue
 
         scan_duration = time_module.time() - scan_start
+
+        # Escalate if many symbols failed — indicates a systematic issue
+        error_rate = skipped_count / max(processed_count + skipped_count, 1)
+        if error_rate > 0.5 and skipped_count > 10:
+            logger.warning(
+                f"High scan error rate: {skipped_count}/{processed_count + skipped_count} "
+                f"symbols failed ({error_rate:.0%}) — possible provider or network issue"
+            )
+        self._consecutive_scan_errors = 0
 
         logger.info(f"Individual scan complete in {scan_duration:.1f}s: processed {processed_count}, skipped {skipped_count}")
         logger.info(f"Found {len(strong_rs)} RS stocks, {len(strong_rw)} RW stocks")
@@ -3078,9 +3047,31 @@ Time: {get_eastern_time().strftime('%I:%M:%S %p ET')}
             status = self.get_provider_status()
             logger.info(f"Data providers: {status.get('provider_order', ['yfinance'])}")
 
+        consecutive_failures = 0
+        max_backoff = 300  # 5 minutes max backoff
+
         try:
             while True:
-                self.scan_once()
+                try:
+                    self.scan_once()
+                    consecutive_failures = 0
+                except KeyboardInterrupt:
+                    raise
+                except Exception as e:
+                    consecutive_failures += 1
+                    backoff = min(scan_interval * (2 ** (consecutive_failures - 1)), max_backoff)
+                    logger.error(
+                        f"Unhandled exception in scan_once() (failure #{consecutive_failures}): {e}",
+                        exc_info=True
+                    )
+                    if consecutive_failures >= 5:
+                        logger.critical(
+                            f"Scanner has failed {consecutive_failures} consecutive times. "
+                            f"Backing off {backoff}s. Manual intervention may be needed."
+                        )
+                    time.sleep(backoff)
+                    continue
+
                 logger.info(f"Waiting {scan_interval} seconds until next scan...")
                 time.sleep(scan_interval)
 

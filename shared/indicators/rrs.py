@@ -173,6 +173,119 @@ class RRSCalculator:
             'current_price': stock_data['current_price']
         }
 
+    def calculate_intraday_rrs(
+        self,
+        stock_bars_5m: pd.DataFrame,
+        spy_bars_5m: pd.DataFrame,
+        lookback_bars: int = 12,
+    ) -> Optional[Dict]:
+        """
+        Calculate Real Relative Strength on 5-minute bars.
+
+        Uses the same formula as daily RRS but applied to intraday data,
+        with a trend classification computed at 3 offset points.
+
+        Args:
+            stock_bars_5m: DataFrame with stock 5m OHLCV (lowercase columns).
+            spy_bars_5m: DataFrame with SPY 5m OHLCV (lowercase columns).
+            lookback_bars: Number of 5m bars for the lookback window (default 12 = 1 hour).
+
+        Returns:
+            Dict with intraday_rrs, stock_5m_pct, spy_5m_pct, status, rrs_trend
+            or None if insufficient data.
+        """
+        if (stock_bars_5m is None or spy_bars_5m is None
+                or len(stock_bars_5m) < lookback_bars + 1
+                or len(spy_bars_5m) < lookback_bars + 1):
+            return None
+
+        try:
+            # Align stock and SPY DataFrames on their index to avoid
+            # comparing mismatched timestamps when bars have gaps
+            aligned_stock, aligned_spy = stock_bars_5m.align(
+                spy_bars_5m, join='inner', axis=0
+            )
+            if len(aligned_stock) < lookback_bars + 1:
+                return None
+
+            stock_close = aligned_stock['close']
+            spy_close = aligned_spy['close']
+
+            # Current RRS (at offset 0)
+            stock_pc = (float(stock_close.iloc[-1]) - float(stock_close.iloc[-lookback_bars])) / float(stock_close.iloc[-lookback_bars]) * 100
+            spy_pc = (float(spy_close.iloc[-1]) - float(spy_close.iloc[-lookback_bars])) / float(spy_close.iloc[-lookback_bars]) * 100
+
+            # ATR from 5m bars as % of price
+            atr_series = self.calculate_atr(aligned_stock)
+            atr_val = float(atr_series.iloc[-1])
+            current_price = float(stock_close.iloc[-1])
+
+            if current_price <= 0 or atr_val <= 0 or pd.isna(atr_val):
+                return None
+
+            atr_pct = (atr_val / current_price) * 100
+            if atr_pct <= 0:
+                return None
+
+            intraday_rrs = (stock_pc - spy_pc) / atr_pct
+
+            # Guard against inf/NaN
+            if np.isnan(intraday_rrs) or np.isinf(intraday_rrs):
+                return None
+
+            # Determine status (same thresholds as daily)
+            if intraday_rrs > 2.0:
+                status = 'STRONG_RS'
+            elif intraday_rrs > 0.5:
+                status = 'MODERATE_RS'
+            elif intraday_rrs > -0.5:
+                status = 'NEUTRAL'
+            elif intraday_rrs > -2.0:
+                status = 'MODERATE_RW'
+            else:
+                status = 'STRONG_RW'
+
+            # Trend: compute RRS at offsets 0, -6, -12 bars to classify direction
+            rrs_trend = 'flat'
+            half_lb = lookback_bars // 2
+            if len(aligned_stock) >= lookback_bars + half_lb * 2 + 1:
+                rrs_values = []
+                for offset in [0, half_lb, half_lb * 2]:
+                    end_idx = -1 - offset if offset > 0 else -1
+                    start_idx = end_idx - lookback_bars
+
+                    s_end = float(stock_close.iloc[end_idx])
+                    s_start = float(stock_close.iloc[start_idx])
+                    sp_end = float(spy_close.iloc[end_idx])
+                    sp_start = float(spy_close.iloc[start_idx])
+
+                    if s_start > 0 and sp_start > 0:
+                        s_pct = (s_end - s_start) / s_start * 100
+                        sp_pct = (sp_end - sp_start) / sp_start * 100
+                        rrs_values.append((s_pct - sp_pct) / atr_pct)
+                    else:
+                        rrs_values.append(0.0)
+
+                # rrs_values[0] = most recent, rrs_values[2] = oldest
+                if len(rrs_values) == 3:
+                    if rrs_values[0] > rrs_values[1] > rrs_values[2]:
+                        rrs_trend = 'rising'
+                    elif rrs_values[0] < rrs_values[1] < rrs_values[2]:
+                        rrs_trend = 'falling'
+
+            return {
+                'intraday_rrs': intraday_rrs,
+                'stock_5m_pct': stock_pc,
+                'spy_5m_pct': spy_pc,
+                'status': status,
+                'rrs_trend': rrs_trend,
+            }
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return None
+
     def is_relative_strength(self, rrs: float, threshold: float = 0.5) -> bool:
         """Check if RRS indicates relative strength"""
         return rrs > threshold
@@ -215,8 +328,11 @@ def calculate_vwap(df: pd.DataFrame) -> pd.Series:
     Returns:
         Series with VWAP values
     """
+    if df['volume'].sum() == 0:
+        return None
     typical_price = (df['high'] + df['low'] + df['close']) / 3
-    return (typical_price * df['volume']).cumsum() / df['volume'].cumsum()
+    vol_cumsum = df['volume'].cumsum().replace(0, float('nan'))
+    return (typical_price * df['volume']).cumsum() / vol_cumsum
 
 
 def check_daily_strength(df: pd.DataFrame) -> Dict:

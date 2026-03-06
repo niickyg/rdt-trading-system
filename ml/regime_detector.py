@@ -45,13 +45,7 @@ except ImportError:
     GaussianHMM = None
     logger.warning("hmmlearn not available. Install with: pip install hmmlearn")
 
-try:
-    import yfinance as yf
-    YF_AVAILABLE = True
-except ImportError:
-    YF_AVAILABLE = False
-    yf = None
-    logger.warning("yfinance not available. Install with: pip install yfinance")
+YF_AVAILABLE = False  # yfinance removed — using IBKR/DB cache for historical data
 
 warnings.filterwarnings('ignore', category=FutureWarning, module='sklearn')
 warnings.filterwarnings('ignore', category=DeprecationWarning, module='sklearn')
@@ -157,29 +151,78 @@ class MarketRegimeDetector:
         interval: str = "1d"
     ) -> pd.DataFrame:
         """
-        Fetch historical market data using yfinance.
+        Fetch historical market data from DB cache or IBKR.
+
+        For short periods (3mo or less), uses the PostgreSQL daily bar cache.
+        For longer periods (training), attempts IBKR direct historical request.
 
         Args:
             symbol: Ticker symbol to fetch
-            period: Data period (5y = 5 years)
+            period: Data period (e.g. '3mo', '5y')
             interval: Data interval (1d = daily)
 
         Returns:
-            DataFrame with OHLCV data
+            DataFrame with OHLCV data (columns: Open, High, Low, Close, Volume)
         """
-        if not YF_AVAILABLE:
-            raise ImportError("yfinance is required for data fetching. Install with: pip install yfinance")
-
         try:
-            logger.info(f"Fetching {period} of {symbol} data...")
-            ticker = yf.Ticker(symbol)
-            data = ticker.history(period=period, interval=interval)
+            from data.database.historical_cache import get_historical_cache
+            cache = get_historical_cache()
 
-            if data.empty:
-                raise ValueError(f"No data retrieved for {symbol}")
+            # Map period to lookback days
+            period_map = {
+                '1mo': 30, '3mo': 90, '6mo': 180,
+                '1y': 365, '2y': 730, '5y': 1825,
+            }
+            lookback = period_map.get(period, 90)
 
-            logger.info(f"Successfully fetched {len(data)} data points for {symbol}")
-            return data
+            # For short lookbacks, use DB cache
+            if lookback <= 365:
+                df = cache.get_daily_bars(symbol, lookback_days=lookback)
+                if df is not None and not df.empty:
+                    # Uppercase columns for compatibility with existing code
+                    df_out = df.rename(columns={
+                        'open': 'Open', 'high': 'High', 'low': 'Low',
+                        'close': 'Close', 'volume': 'Volume',
+                    })
+                    logger.info(f"Fetched {len(df_out)} data points for {symbol} from DB cache")
+                    return df_out
+
+            # For longer periods or if DB cache is empty, try IBKR
+            # Map period to IBKR duration string
+            ibkr_duration_map = {
+                '1mo': '1 M', '3mo': '3 M', '6mo': '6 M',
+                '1y': '1 Y', '2y': '2 Y', '5y': '5 Y',
+            }
+            ibkr_duration = ibkr_duration_map.get(period, '3 M')
+
+            # Try to get IBKR client
+            try:
+                from web.trading_init import initialize_all_components
+                # Import won't re-initialize if already done
+            except ImportError:
+                pass
+
+            # Try the broker's get_historical_bars
+            try:
+                from brokers.ibkr.client import IBKRClient
+                # Access global broker if available
+                import gc
+                for obj in gc.get_referrers(IBKRClient):
+                    if isinstance(obj, dict):
+                        for v in obj.values():
+                            if isinstance(v, IBKRClient) and v._connected:
+                                df = v.get_historical_bars(symbol, ibkr_duration, '1 day')
+                                if df is not None and not df.empty:
+                                    df_out = df.rename(columns={
+                                        'open': 'Open', 'high': 'High', 'low': 'Low',
+                                        'close': 'Close', 'volume': 'Volume',
+                                    })
+                                    logger.info(f"Fetched {len(df_out)} data points for {symbol} from IBKR")
+                                    return df_out
+            except Exception:
+                pass
+
+            raise ValueError(f"No data available for {symbol} (period={period})")
 
         except Exception as e:
             logger.error(f"Error fetching data for {symbol}: {e}")

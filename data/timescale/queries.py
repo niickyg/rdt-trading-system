@@ -7,6 +7,7 @@ TimescaleDB-specific functions like time_bucket, first(), last(), etc.
 All functions gracefully fall back to standard SQL when TimescaleDB is not available.
 """
 
+import re
 from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, timedelta, date
 from decimal import Decimal
@@ -18,6 +19,46 @@ from sqlalchemy.orm import Session
 from .setup import check_timescale_available
 
 from loguru import logger
+
+
+# Valid SQL identifier pattern (alphanumeric + underscores only)
+_SAFE_IDENTIFIER = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+
+# Allowed table names for dynamic queries
+_ALLOWED_TABLES = {
+    'signals', 'trades', 'positions', 'market_data_cache',
+    'order_executions', 'options_positions', 'rejected_signals',
+}
+
+# Allowed column names for dynamic queries
+_ALLOWED_COLUMNS = {
+    'timestamp', 'created_at', 'updated_at', 'entry_time', 'exit_time',
+    'execution_time', 'symbol', 'price', 'entry_price', 'exit_price',
+    'quantity', 'shares', 'pnl', 'direction', 'strategy_name',
+    'signal_strength', 'confidence', 'status', 'close', 'open',
+    'high', 'low', 'volume', 'premium', 'current_premium',
+    'unrealized_pnl', 'strike_price', 'delta', 'id',
+}
+
+
+def _validate_identifier(name: str, allowed: set = None) -> str:
+    """Validate a SQL identifier to prevent injection.
+
+    Args:
+        name: The identifier to validate
+        allowed: Optional whitelist of allowed names
+
+    Returns:
+        The validated identifier
+
+    Raises:
+        ValueError: If the identifier is invalid or not in the whitelist
+    """
+    if not name or not _SAFE_IDENTIFIER.match(name):
+        raise ValueError(f"Invalid SQL identifier: {name!r}")
+    if allowed and name not in allowed:
+        raise ValueError(f"Identifier not allowed: {name!r}")
+    return name
 
 
 # =============================================================================
@@ -607,6 +648,9 @@ def _query_continuous_aggregate(
     engine: Engine
 ) -> List[Dict[str, Any]]:
     """Query a continuous aggregate view."""
+    # Validate view_name is a safe identifier
+    _validate_identifier(view_name)
+
     where_clauses = ["1=1"]
     params = {'limit': limit}
 
@@ -673,9 +717,15 @@ def get_last_n_periods(
         manager = get_db_manager()
         engine = manager.engine
 
+    # Validate identifiers
+    _validate_identifier(table_name, _ALLOWED_TABLES)
+    _validate_identifier(time_column, _ALLOWED_COLUMNS)
+
     use_timescale = check_timescale_available(engine)
 
     if columns:
+        for col in columns:
+            _validate_identifier(col, _ALLOWED_COLUMNS)
         select_sql = ", ".join(columns)
     else:
         select_sql = "*"
@@ -736,6 +786,11 @@ def get_time_weighted_average(
         from data.database.connection import get_db_manager
         manager = get_db_manager()
         engine = manager.engine
+
+    # Validate identifiers
+    _validate_identifier(table_name, _ALLOWED_TABLES)
+    _validate_identifier(value_column, _ALLOWED_COLUMNS)
+    _validate_identifier(time_column, _ALLOWED_COLUMNS)
 
     # Using a simple weighted average based on time between points
     query = text(f"""

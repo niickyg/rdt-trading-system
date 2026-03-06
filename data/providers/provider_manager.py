@@ -267,34 +267,47 @@ class ProviderManager:
         Returns:
             List of configured providers
         """
-        from data.providers.yfinance_provider import YFinanceProvider
-        from data.providers.alpha_vantage_provider import AlphaVantageProvider
-
         providers = []
 
         # Read provider priority from environment
-        provider_priority = os.environ.get("DATA_PROVIDER_PRIORITY", "yfinance,alpha_vantage")
+        provider_priority = os.environ.get("DATA_PROVIDER_PRIORITY", "ibkr")
         priority_list = [p.strip().lower() for p in provider_priority.split(",")]
 
-        # YFinance - always available, no API key needed
-        yf_priority = priority_list.index("yfinance") * 10 if "yfinance" in priority_list else 10
-        providers.append(YFinanceProvider(priority=yf_priority))
+        # IBKR - primary provider, uses dedicated ib_insync connection
+        if "ibkr" in priority_list:
+            try:
+                from data.providers.ibkr_provider import IBKRProvider
+                ibkr_priority = priority_list.index("ibkr") * 10
+                providers.append(IBKRProvider(priority=ibkr_priority))
+            except Exception as e:
+                logger.error(f"Failed to initialize IBKRProvider: {e}")
 
-        # Alpha Vantage - requires API key
-        av_api_key = os.environ.get("ALPHA_VANTAGE_API_KEY", "")
-        if av_api_key:
-            av_priority = priority_list.index("alpha_vantage") * 10 if "alpha_vantage" in priority_list else 20
-            av_premium = os.environ.get("ALPHA_VANTAGE_PREMIUM", "false").lower() == "true"
-            av_daily_limit = int(os.environ.get("ALPHA_VANTAGE_DAILY_LIMIT", "25"))
+        # YFinance - removed from live trading (IBKR is sole data source)
+        if "yfinance" in priority_list:
+            logger.info("YFinance provider skipped (removed from live trading — use IBKR)")
 
-            providers.append(AlphaVantageProvider(
-                api_key=av_api_key,
-                priority=av_priority,
-                premium=av_premium,
-                daily_limit=av_daily_limit,
-            ))
-        else:
-            logger.info("Alpha Vantage API key not configured, provider disabled")
+        # Alpha Vantage - requires API key and explicit listing
+        if "alpha_vantage" in priority_list:
+            av_api_key = os.environ.get("ALPHA_VANTAGE_API_KEY", "")
+            if av_api_key:
+                try:
+                    from data.providers.alpha_vantage_provider import AlphaVantageProvider
+                    av_priority = priority_list.index("alpha_vantage") * 10
+                    av_premium = os.environ.get("ALPHA_VANTAGE_PREMIUM", "false").lower() == "true"
+                    av_daily_limit = int(os.environ.get("ALPHA_VANTAGE_DAILY_LIMIT", "25"))
+                    providers.append(AlphaVantageProvider(
+                        api_key=av_api_key,
+                        priority=av_priority,
+                        premium=av_premium,
+                        daily_limit=av_daily_limit,
+                    ))
+                except Exception as e:
+                    logger.warning(f"Failed to initialize AlphaVantageProvider: {e}")
+            else:
+                logger.info("Alpha Vantage API key not configured, provider disabled")
+
+        if not providers:
+            logger.error("No data providers configured! Set DATA_PROVIDER_PRIORITY env var.")
 
         return providers
 
@@ -576,29 +589,28 @@ class ProviderManager:
         Returns:
             Dictionary mapping symbols to HistoricalData objects
         """
-        from data.providers.yfinance_provider import YFinanceProvider
-
-        # Check for YFinance provider which supports batch historical
+        # Check for providers that support batch historical
         for name in self._provider_order:
             provider = self._providers[name]
             circuit = self._circuits[name]
 
-            if isinstance(provider, YFinanceProvider) and circuit.can_execute():
+            if hasattr(provider, 'get_batch_historical') and circuit.can_execute():
                 try:
-                    result = provider.get_batch_historical(symbols, period, interval)
+                    batch_result = provider.get_batch_historical(symbols, period, interval)
 
                     # Cache results
-                    if use_cache:
+                    if use_cache and batch_result:
                         cache_ttl = max(self._cache_ttl * 10, 300.0)
-                        for symbol, data in result.items():
+                        for symbol, data in batch_result.items():
                             cache_key = f"historical:{symbol}:{period}:{interval}"
                             self._cache.set(cache_key, data, provider.name, cache_ttl)
 
-                    circuit.record_success()
-                    return result
+                    if batch_result:
+                        circuit.record_success()
+                        return batch_result
 
                 except Exception as e:
-                    logger.warning(f"Batch historical failed: {e}")
+                    logger.warning(f"Batch historical failed for {name}: {e}")
                     circuit.record_failure()
 
         # Fall back to individual requests
@@ -842,11 +854,12 @@ class ProviderManager:
 
 # Global provider manager instance
 _provider_manager: Optional[ProviderManager] = None
+_provider_manager_lock = threading.Lock()
 
 
 def get_provider_manager() -> ProviderManager:
     """
-    Get the global provider manager instance.
+    Get the global provider manager instance (thread-safe).
 
     Creates one with default configuration if not exists.
 
@@ -855,7 +868,9 @@ def get_provider_manager() -> ProviderManager:
     """
     global _provider_manager
     if _provider_manager is None:
-        _provider_manager = ProviderManager()
+        with _provider_manager_lock:
+            if _provider_manager is None:
+                _provider_manager = ProviderManager()
     return _provider_manager
 
 

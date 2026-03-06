@@ -3,27 +3,16 @@ Data Provider
 Unified interface for market data
 
 - Streaming quotes from IBKR for actively subscribed symbols (~95 at a time)
-- IBKR snapshot quotes for remaining symbols (no Yahoo dependency)
-- Daily history loaded once at startup via yahooquery (~33s for 503 symbols)
-- yfinance fallback only when IBKR is unavailable
+- IBKR snapshot quotes for remaining symbols
+- Daily history loaded from PostgreSQL cache (populated by IBKR background refresh)
+- No yfinance dependency
 """
-
-# Fix curl_cffi chrome136 impersonation issue in Docker
-# curl_cffi 0.13.0 maps 'chrome' to 'chrome136' which may not be supported
-try:
-    from curl_cffi.requests import impersonate
-    # Use chrome110 which is widely supported
-    impersonate.DEFAULT_CHROME = 'chrome110'
-    if hasattr(impersonate, 'REAL_TARGET_MAP'):
-        impersonate.REAL_TARGET_MAP['chrome'] = 'chrome110'
-except ImportError:
-    pass  # curl_cffi not installed
 
 import asyncio
 import threading
+import time as _time
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
-import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -39,8 +28,8 @@ class DataProvider:
     Supports:
     - IBKR streaming quotes (active rotation group, ~95 symbols)
     - IBKR snapshot quotes (remaining symbols, chunked in batches of 50)
-    - Daily history caching via yahooquery (loaded once, refreshed daily)
-    - yfinance fallback when IBKR is unavailable
+    - Daily history from PostgreSQL cache (HistoricalBarCache)
+    - Background refresh thread to keep DB cache current via IBKR
     """
 
     MAX_CACHE_SIZE = 600
@@ -67,12 +56,77 @@ class DataProvider:
         # Optional broker reference for IBKR snapshot quotes
         self._broker = None
 
+        # Historical bar cache (PostgreSQL-backed)
+        self._historical_cache = None
+
+        # Background refresh thread
+        self._bg_refresh_thread: Optional[threading.Thread] = None
+        self._bg_refresh_stop = threading.Event()
+
         logger.info("DataProvider initialized")
 
     def set_broker(self, broker):
         """Store a broker reference for fetching IBKR snapshot quotes."""
         self._broker = broker
         logger.info(f"DataProvider: broker set ({type(broker).__name__})")
+
+    def set_historical_cache(self, cache):
+        """Store a reference to the HistoricalBarCache for DB-backed daily bars."""
+        self._historical_cache = cache
+        logger.info("DataProvider: historical cache set")
+
+    def start_background_refresh(self, watchlist: List[str]):
+        """Start a daemon thread that refreshes stale symbols from IBKR."""
+        if self._bg_refresh_thread is not None:
+            return  # Already running
+
+        if not self._historical_cache:
+            logger.warning("Cannot start background refresh: no historical cache set")
+            return
+
+        if not self._broker or not hasattr(self._broker, 'get_historical_bars'):
+            logger.warning("Cannot start background refresh: broker has no get_historical_bars()")
+            return
+
+        self._bg_refresh_stop.clear()
+        self._bg_refresh_thread = threading.Thread(
+            target=self._background_refresh_loop,
+            args=(list(watchlist),),
+            daemon=True,
+            name="dataprovider-bg-refresh",
+        )
+        self._bg_refresh_thread.start()
+        logger.info(f"Background refresh thread started for {len(watchlist)} symbols")
+
+    def _background_refresh_loop(self, watchlist: List[str]):
+        """Background thread: refresh stale daily bars from IBKR."""
+        # Wait a bit for startup to settle
+        if self._bg_refresh_stop.wait(30):
+            return
+
+        while not self._bg_refresh_stop.is_set():
+            try:
+                stale = self._historical_cache.get_stale_symbols(watchlist, max_age_hours=20, min_bars=200)
+                if stale:
+                    logger.info(f"Background refresh: {len(stale)} stale symbols to update from IBKR")
+                    self._historical_cache.refresh_from_ibkr(
+                        self._broker, stale, duration='1 Y'
+                    )
+                    # Reload daily history from DB after refresh
+                    refreshed = self._historical_cache.get_bulk_daily_bars(stale, lookback_days=365)
+                    if refreshed:
+                        self._daily_history.update(refreshed)
+                        logger.info(f"Background refresh: updated {len(refreshed)} symbols in memory")
+                else:
+                    logger.debug("Background refresh: all symbols are fresh")
+            except Exception as e:
+                logger.error(f"Background refresh error: {e}")
+
+            # Sleep for 10 minutes between cycles
+            if self._bg_refresh_stop.wait(600):
+                break
+
+        logger.info("Background refresh thread stopped")
 
     async def _run_in_thread(self, func, *args, timeout=120):
         """Run a sync function in a separate thread, compatible with ib_insync.
@@ -96,7 +150,6 @@ class DataProvider:
         thread.start()
 
         # Poll until thread completes, yielding control to the event loop
-        import time as _time
         start = _time.monotonic()
         while thread.is_alive():
             if _time.monotonic() - start > timeout:
@@ -141,7 +194,7 @@ class DataProvider:
         return self._daily_history_loaded_at.date() == datetime.now().date()
 
     # =========================================================================
-    # Single-symbol API (unchanged, uses yfinance)
+    # Single-symbol API (uses ProviderManager)
     # =========================================================================
 
     async def get_stock_data(self, symbol: str) -> Optional[Dict]:
@@ -181,77 +234,60 @@ class DataProvider:
 
     def _fetch_stock_data_sync(self, symbol: str) -> Optional[Dict]:
         """
-        Synchronous data fetch with exponential backoff retry logic.
-
-        Attempts up to 3 fetches with delays of 1 s, 2 s, and 4 s between
-        failures before giving up.
+        Synchronous data fetch via ProviderManager.
         """
-        import time as _time
+        try:
+            from data.providers.provider_manager import get_provider_manager
+            pm = get_provider_manager()
 
-        last_exc: Optional[Exception] = None
+            # Get daily data for ATR and trends
+            hist_daily = pm.get_historical(symbol, period="60d", interval="1d")
+            if hist_daily is None or hist_daily.data.empty:
+                logger.debug(f"No daily data for {symbol}")
+                return None
 
-        for attempt in range(3):
-            wait_time = 1.0 * (2 ** attempt)  # 1s, 2s, 4s
+            daily = hist_daily.data.copy()
+
+            # Get intraday for current price
             try:
-                ticker = yf.Ticker(symbol)
-
-                # Get daily data for ATR and trends
-                daily = ticker.history(period="60d", interval="1d")
-                if daily.empty:
-                    raise ValueError(f"No daily data returned for {symbol}")
-
-                # Normalize columns
-                daily.columns = [c.lower() for c in daily.columns]
-
-                # Get intraday for current price
-                intraday = ticker.history(period="1d", interval="5m")
-                if intraday.empty:
-                    current_price = daily['close'].iloc[-1]
+                hist_5m = pm.get_historical(symbol, period="1d", interval="5m")
+                if hist_5m and not hist_5m.data.empty:
+                    current_price = hist_5m.data['close'].iloc[-1]
                 else:
-                    intraday.columns = [c.lower() for c in intraday.columns]
-                    current_price = intraday['close'].iloc[-1]
+                    current_price = daily['close'].iloc[-1]
+            except Exception:
+                current_price = daily['close'].iloc[-1]
 
-                # Calculate ATR
-                atr = self.rrs_calc.calculate_atr(daily).iloc[-1]
+            # Calculate ATR
+            atr = self.rrs_calc.calculate_atr(daily).iloc[-1]
 
-                return {
-                    "symbol": symbol,
-                    "current_price": float(current_price),
-                    "previous_close": float(daily['close'].iloc[-2]),
-                    "open": float(daily['open'].iloc[-1]),
-                    "high": float(daily['high'].iloc[-1]),
-                    "low": float(daily['low'].iloc[-1]),
-                    "volume": int(daily['volume'].iloc[-1]),
-                    "atr": float(atr),
-                    "daily_data": daily,
-                }
+            return {
+                "symbol": symbol,
+                "current_price": float(current_price),
+                "previous_close": float(daily['close'].iloc[-2]),
+                "open": float(daily['open'].iloc[-1]),
+                "high": float(daily['high'].iloc[-1]),
+                "low": float(daily['low'].iloc[-1]),
+                "volume": int(daily['volume'].iloc[-1]),
+                "atr": float(atr),
+                "daily_data": daily,
+            }
 
-            except Exception as e:
-                last_exc = e
-                if attempt < 2:
-                    logger.warning(
-                        f"DataProvider fetch for {symbol} failed "
-                        f"(attempt {attempt + 1}/3): {e}; "
-                        f"retrying in {wait_time}s"
-                    )
-                    _time.sleep(wait_time)
-
-        logger.debug(
-            f"DataProvider fetch for {symbol} failed after 3 attempts: {last_exc}"
-        )
-        return None
+        except Exception as e:
+            logger.debug(f"DataProvider fetch for {symbol} failed: {e}")
+            return None
 
     # =========================================================================
-    # Batch API (uses yahooquery for fast bulk fetching)
+    # Batch API (uses DB cache + IBKR streaming/snapshots)
     # =========================================================================
 
     async def get_batch_stock_data(self, symbols: List[str]) -> Dict[str, Dict]:
         """
-        Fetch data for many symbols using yahooquery bulk API.
+        Fetch data for many symbols using DB-cached daily history + IBKR quotes.
 
         Architecture:
-        1. Daily history: loaded once per day (~33s for 503 symbols), cached in memory
-        2. Bulk quotes: fetched each call (~26s for 503 symbols) for current prices
+        1. Daily history: loaded from PostgreSQL cache (populated by IBKR background refresh)
+        2. Bulk quotes: IBKR streaming + snapshots for current prices
         3. Merges quotes + cached history into the standard stock data dict
 
         Returns dict mapping symbol -> stock data dict.
@@ -272,32 +308,30 @@ class DataProvider:
 
         logger.info(f"Batch fetch: {len(results)} cached, {len(uncached)} to fetch")
 
-        loop = asyncio.get_running_loop()
-
-        # Step 1: Ensure daily history is loaded (once per day)
+        # Step 1: Ensure daily history is loaded (once per day from DB)
         if not self._is_daily_history_fresh():
-            logger.info(f"Loading daily history for {len(uncached)} symbols (once per day)...")
+            logger.info(f"Loading daily history for {len(uncached)} symbols from DB cache...")
             history = await self._run_in_thread(
-                self._fetch_bulk_history_sync, uncached
+                self._load_daily_history_from_cache, uncached
             )
             if history:
                 self._daily_history.update(history)
-                logger.info(f"Daily history loaded: {len(history)} symbols")
+                logger.info(f"Daily history loaded from cache: {len(history)} symbols")
             else:
-                logger.warning("Daily history fetch returned no data")
+                logger.warning("Daily history: no data in DB cache")
             self._daily_history_loaded_at = datetime.now()
         else:
             # Load history for any new symbols not yet in the store
             missing = [s for s in uncached if s not in self._daily_history]
             if missing:
-                logger.info(f"Loading daily history for {len(missing)} new symbols...")
+                logger.info(f"Loading daily history for {len(missing)} new symbols from DB cache...")
                 history = await self._run_in_thread(
-                    self._fetch_bulk_history_sync, missing
+                    self._load_daily_history_from_cache, missing
                 )
                 if history:
                     self._daily_history.update(history)
 
-        # Step 2: Fetch current quotes — prefer streaming, then snapshots, then yfinance
+        # Step 2: Fetch current quotes — prefer streaming, then IBKR snapshots
         quotes = {}
         if self._broker and hasattr(self._broker, 'is_connected') and self._broker.is_connected:
             # Try streaming cache first (instant, no API calls)
@@ -323,37 +357,45 @@ class DataProvider:
                 # Trigger rotation for next scan cycle
                 self._broker.rotate_streaming()
 
-            # Fill missing symbols with IBKR snapshots
+            # Fill missing symbols with IBKR snapshots (30s timeout — don't block scan)
             missing = [s for s in uncached if s not in quotes]
             if missing:
                 logger.info(f"Streaming covered {len(quotes)}/{len(uncached)}, fetching {len(missing)} via IBKR snapshots")
-                ibkr_quotes = await self._run_in_thread(self._fetch_ibkr_quotes, missing)
+                ibkr_quotes = await self._run_in_thread(self._fetch_ibkr_quotes, missing, timeout=30)
                 if not isinstance(ibkr_quotes, dict):
                     logger.warning(
-                        "DATA_WARN[IBKR_QUOTES_TIMEOUT] IBKR snapshot fetch timed out or returned invalid data; using empty result"
+                        "DATA_WARN[IBKR_QUOTES_TIMEOUT] IBKR snapshot fetch timed out"
                     )
                     ibkr_quotes = {}
                 quotes.update(ibkr_quotes)
 
-                # Fallback to yfinance for any still missing (IBKR failures)
+                # For still-missing symbols, use last known close from DB as fallback
                 still_missing = [s for s in missing if s not in ibkr_quotes]
                 if still_missing:
-                    logger.info(f"IBKR snapshots missed {len(still_missing)}, falling back to yfinance")
-                    yf_quotes = await self._run_in_thread(self._fetch_bulk_quotes_sync, still_missing)
-                    if not isinstance(yf_quotes, dict):
-                        logger.warning(
-                            "DATA_WARN[YF_FALLBACK_INVALID] yfinance fallback returned invalid data; using empty result"
-                        )
-                        yf_quotes = {}
-                    quotes.update(yf_quotes)
+                    logger.info(f"IBKR snapshots missed {len(still_missing)} symbols — using last close from DB")
+                    for sym in still_missing:
+                        daily = self._daily_history.get(sym)
+                        if daily is not None and len(daily) >= 1:
+                            last_close = float(daily['close'].iloc[-1])
+                            if last_close > 0:
+                                quotes[sym] = {
+                                    "price": last_close,
+                                    "previous_close": float(daily['close'].iloc[-2]) if len(daily) >= 2 else last_close,
+                                    "volume": int(daily['volume'].iloc[-1]),
+                                }
         else:
-            # No broker connected — use yfinance
-            quotes = await self._run_in_thread(self._fetch_bulk_quotes_sync, uncached)
-            if not isinstance(quotes, dict):
-                logger.warning(
-                    "DATA_WARN[YF_QUOTES_INVALID] yfinance quote fetch returned invalid data; using empty result"
-                )
-                quotes = {}
+            # No broker connected — use last close from DB cache as price
+            logger.info("No broker connected — using DB cache closes as prices")
+            for sym in uncached:
+                daily = self._daily_history.get(sym)
+                if daily is not None and len(daily) >= 2:
+                    last_close = float(daily['close'].iloc[-1])
+                    if last_close > 0:
+                        quotes[sym] = {
+                            "price": last_close,
+                            "previous_close": float(daily['close'].iloc[-2]),
+                            "volume": int(daily['volume'].iloc[-1]),
+                        }
         logger.info(f"Bulk quotes fetched: {len(quotes)} symbols")
 
         # Step 3: Merge quotes + daily history into standard data dict
@@ -362,7 +404,9 @@ class DataProvider:
             quote = quotes.get(symbol)
             daily = self._daily_history.get(symbol)
 
-            if not quote or daily is None or daily.empty or len(daily) < 3:
+            if not quote:
+                continue
+            if daily is None or (hasattr(daily, 'empty') and daily.empty) or len(daily) < 3:
                 continue
 
             try:
@@ -394,13 +438,28 @@ class DataProvider:
         logger.info(f"Batch fetch complete: {len(results)}/{len(symbols)} symbols")
         return results
 
+    def _load_daily_history_from_cache(self, symbols: List[str]) -> Dict[str, pd.DataFrame]:
+        """
+        Load daily OHLCV history from PostgreSQL cache.
+
+        Pure SQL read — no IBKR API calls, no yfinance.
+        Returns dict mapping symbol -> DataFrame with lowercase columns.
+        """
+        if not self._historical_cache:
+            logger.warning("No historical cache available for daily history")
+            return {}
+
+        return self._historical_cache.get_bulk_daily_bars(symbols, lookback_days=365)
+
     def _fetch_ibkr_quotes(self, symbols: List[str]) -> Dict[str, Dict]:
         """
         Fetch current quotes via IBKR snapshots in chunks of 50.
 
         Uses live or delayed data depending on IBKR_MARKET_DATA_TYPE config.
         Returns dict mapping symbol -> {price, previous_close, volume}.
-        Must be called on the main thread (ib_insync is not thread-safe).
+
+        Note: Caller must ensure nest_asyncio is applied if running inside
+        an async context, since ib_insync needs to run its own event loop.
         """
         if not symbols:
             return {}
@@ -443,84 +502,6 @@ class DataProvider:
         logger.info(f"IBKR quotes fetched: {len(results)}/{len(symbols)} symbols")
         return results
 
-    def _fetch_bulk_history_sync(self, symbols: List[str], chunk_size: int = 100) -> Dict[str, pd.DataFrame]:
-        """
-        Fetch 60-day daily OHLCV history for many symbols using yahooquery.
-
-        Processes in chunks to avoid timeouts with large symbol lists.
-        Returns dict mapping symbol -> DataFrame with lowercase columns.
-        """
-        import time as _time
-        from yahooquery import Ticker
-
-        results = {}
-        chunks = [symbols[i:i + chunk_size] for i in range(0, len(symbols), chunk_size)]
-        logger.info(f"Bulk history: fetching {len(symbols)} symbols in {len(chunks)} chunks of {chunk_size}")
-
-        for idx, chunk in enumerate(chunks):
-            try:
-                t = Ticker(chunk, asynchronous=False, timeout=30)
-                hist = t.history(period="60d", interval="1d")
-
-                if isinstance(hist, pd.DataFrame) and not hist.empty:
-                    for symbol in hist.index.get_level_values(0).unique():
-                        try:
-                            df = hist.loc[symbol].copy()
-                            df.columns = [c.lower() for c in df.columns]
-                            if len(df) >= 3:
-                                results[symbol] = df
-                        except Exception as e:
-                            logger.debug(f"History parse error for {symbol}: {e}")
-
-                logger.info(f"Bulk history chunk {idx + 1}/{len(chunks)}: got {len(results)} symbols so far")
-                if idx < len(chunks) - 1:
-                    _time.sleep(0.5)
-            except Exception as e:
-                logger.warning(f"Bulk history chunk {idx + 1}/{len(chunks)} failed: {e}")
-
-        return results
-
-    def _fetch_bulk_quotes_sync(self, symbols: List[str], chunk_size: int = 100) -> Dict[str, Dict]:
-        """
-        Fetch current quotes for many symbols using yahooquery.
-
-        Processes in chunks to avoid timeouts with large symbol lists.
-        Returns dict mapping symbol -> {price, previous_close, volume}.
-        """
-        import time as _time
-        from yahooquery import Ticker
-
-        results = {}
-        chunks = [symbols[i:i + chunk_size] for i in range(0, len(symbols), chunk_size)]
-        for idx, chunk in enumerate(chunks):
-            try:
-                t = Ticker(chunk, asynchronous=False, timeout=30)
-                prices = t.price
-
-                for symbol, data in prices.items():
-                    if not isinstance(data, dict):
-                        continue
-                    try:
-                        price = data.get("regularMarketPrice")
-                        prev_close = data.get("regularMarketPreviousClose")
-                        volume = data.get("regularMarketVolume", 0)
-
-                        if price is not None and prev_close is not None:
-                            results[symbol] = {
-                                "price": float(price),
-                                "previous_close": float(prev_close),
-                                "volume": int(volume or 0),
-                            }
-                    except (TypeError, ValueError) as e:
-                        logger.debug(f"Quote parse error for {symbol}: {e}")
-
-                if idx < len(chunks) - 1:
-                    _time.sleep(0.3)
-            except Exception as e:
-                logger.warning(f"Bulk quotes chunk {idx + 1}/{len(chunks)} failed: {e}")
-
-        return results
-
     # =========================================================================
     # Convenience methods
     # =========================================================================
@@ -533,7 +514,7 @@ class DataProvider:
                 "symbol": symbol,
                 "price": data["current_price"],
                 "change": data["current_price"] - data["previous_close"],
-                "change_pct": ((data["current_price"] / data["previous_close"]) - 1) * 100,
+                "change_pct": ((data["current_price"] / data["previous_close"]) - 1) * 100 if data["previous_close"] else 0.0,
                 "volume": data["volume"]
             }
         return None

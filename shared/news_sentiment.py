@@ -10,6 +10,7 @@ Integrates news sentiment to improve trade filtering:
 
 import os
 import asyncio
+import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
@@ -497,11 +498,14 @@ class NewsSentimentAnalyzer:
 
 # Global instance
 _analyzer: Optional[NewsSentimentAnalyzer] = None
+_analyzer_lock = threading.Lock()
 
 
 def get_news_analyzer() -> NewsSentimentAnalyzer:
     """Get global news analyzer instance"""
     global _analyzer
     if _analyzer is None:
-        _analyzer = NewsSentimentAnalyzer()
+        with _analyzer_lock:
+            if _analyzer is None:
+                _analyzer = NewsSentimentAnalyzer()
     return _analyzer

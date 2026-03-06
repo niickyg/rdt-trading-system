@@ -84,6 +84,7 @@ class TradesRepository:
                     vix_position_size_mult=trade_data.get('vix_position_size_mult'),
                     sector_boost=trade_data.get('sector_boost'),
                     first_hour_filtered=trade_data.get('first_hour_filtered'),
+                    strategy_name=trade_data.get('strategy_name', 'rrs_momentum'),
                 )
                 session.add(trade)
                 session.flush()  # Get the ID
@@ -293,6 +294,8 @@ class TradesRepository:
                     position.current_price = position_data.get('current_price')
                     position.unrealized_pnl = position_data.get('unrealized_pnl')
                     position.rrs_at_entry = position_data.get('rrs_at_entry') or position_data.get('rrs')
+                    if position_data.get('strategy_name'):
+                        position.strategy_name = position_data['strategy_name']
                     logger.info(f"Updated position: {symbol}")
                 else:
                     # Create new position
@@ -306,7 +309,8 @@ class TradesRepository:
                         take_profit=position_data.get('take_profit') or position_data.get('target_price'),
                         current_price=position_data.get('current_price'),
                         unrealized_pnl=position_data.get('unrealized_pnl'),
-                        rrs_at_entry=position_data.get('rrs_at_entry') or position_data.get('rrs')
+                        rrs_at_entry=position_data.get('rrs_at_entry') or position_data.get('rrs'),
+                        strategy_name=position_data.get('strategy_name', 'rrs_momentum'),
                     )
                     session.add(position)
                     logger.info(f"Created position: {direction.value} {position.shares} {symbol} @ ${position.entry_price:.2f}")
@@ -377,6 +381,23 @@ class TradesRepository:
         except Exception as e:
             logger.error(f"Error updating position {position_id}: {e}")
             return None
+
+    def update_position_price(self, symbol: str, current_price: float, unrealized_pnl: float) -> bool:
+        """Update current_price and unrealized_pnl for an open position by symbol."""
+        try:
+            with self.db_manager.get_session() as session:
+                position = session.query(Position).filter(
+                    Position.symbol == symbol
+                ).first()
+                if not position:
+                    return False
+                position.current_price = current_price
+                position.unrealized_pnl = unrealized_pnl
+                session.flush()
+                return True
+        except Exception as e:
+            logger.debug(f"Error updating position price for {symbol}: {e}")
+            return False
 
     def close_position(self, symbol: str) -> bool:
         """
@@ -589,8 +610,27 @@ class TradesRepository:
             'order_ids': pos.order_ids,
             'legs_json': pos.legs_json,
             'fill_details_json': pos.fill_details_json,
+            'current_premium': float(pos.current_premium) if pos.current_premium is not None else None,
+            'unrealized_pnl': float(pos.unrealized_pnl) if pos.unrealized_pnl is not None else None,
             'updated_at': pos.updated_at.isoformat() if pos.updated_at else None,
         }
+
+    def update_options_position_price(self, symbol: str, current_premium: float, unrealized_pnl: float) -> bool:
+        """Update current_premium and unrealized_pnl for an options position."""
+        try:
+            with self.db_manager.get_session() as session:
+                position = session.query(OptionsPosition).filter(
+                    OptionsPosition.symbol == symbol
+                ).first()
+                if not position:
+                    return False
+                position.current_premium = current_premium
+                position.unrealized_pnl = unrealized_pnl
+                session.flush()
+                return True
+        except Exception as e:
+            logger.debug(f"Error updating options position price for {symbol}: {e}")
+            return False
 
     def _options_trade_to_dict(self, trade: 'OptionsTrade') -> Dict[str, Any]:
         """Convert an OptionsTrade to a dictionary."""
@@ -752,8 +792,8 @@ class TradesRepository:
                 record = RejectedSignal(
                     symbol=data['symbol'].upper(),
                     direction=direction,
-                    rrs=float(data.get('rrs', 0)),
-                    price=float(data.get('price', 0)),
+                    rrs=float(data.get('rrs') or 0),
+                    price=float(data.get('price') or 0),
                     timestamp=data.get('timestamp', datetime.utcnow()),
                     rejection_reasons=reasons,
                     market_regime=data.get('market_regime'),

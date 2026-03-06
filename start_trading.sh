@@ -97,7 +97,16 @@ if [ -f "$PID_FILE" ]; then
     if kill -0 "$PID" 2>/dev/null; then
         echo "Stopping existing bot (PID $PID)..."
         kill "$PID"
-        sleep 2
+        # Wait up to 10s for clean shutdown (IBKR needs time to release client_id)
+        for i in $(seq 1 10); do
+            kill -0 "$PID" 2>/dev/null || break
+            sleep 1
+        done
+        if kill -0 "$PID" 2>/dev/null; then
+            echo "Force killing..."
+            kill -9 "$PID"
+            sleep 2
+        fi
     fi
     rm -f "$PID_FILE"
 fi

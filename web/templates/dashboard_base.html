@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/dashboard.css">
+{% block dashboard_css %}{% endblock %}
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+    <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation">
+        <span></span><span></span><span></span>
+    </button>
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+    <aside class="sidebar" id="sidebar">
+        {% if user %}
+        <div class="sidebar-user">
+            <div class="sidebar-user-label">Logged in as</div>
+            <div class="sidebar-user-name">{{ user.username }}</div>
+            {% if user.is_admin %}
+            <span class="badge-admin">ADMIN</span>
+            {% endif %}
+        </div>
+        {% endif %}
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard" {% if active_page == 'overview' %}class="active"{% endif %}>Overview</a></li>
+            <li><a href="/dashboard/signals" {% if active_page == 'signals' %}class="active"{% endif %}>Active Signals</a></li>
+            <li><a href="/dashboard/positions" {% if active_page == 'positions' %}class="active"{% endif %}>Positions</a></li>
+            <li><a href="/dashboard/history" {% if active_page == 'history' %}class="active"{% endif %}>History</a></li>
+            <li><a href="/dashboard/journal" {% if active_page == 'journal' %}class="active"{% endif %}>Journal</a></li>
+            <li><a href="/dashboard/strategies" {% if active_page == 'strategies' %}class="active"{% endif %}>Strategies</a></li>
+        </ul>
+        <div class="sidebar-section">Analysis</div>
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard/scanner" {% if active_page == 'scanner' %}class="active"{% endif %}>Live Scanner</a></li>
+            <li><a href="/dashboard/backtest" {% if active_page == 'backtest' %}class="active"{% endif %}>Backtest</a></li>
+            <li><a href="/dashboard/agents" {% if active_page == 'agents' %}class="active"{% endif %}>Agent Monitor</a></li>
+            <li><a href="/dashboard/confidence" {% if active_page == 'confidence' %}class="active"{% endif %}>AI Confidence</a></li>
+            <li><a href="/dashboard/options" {% if active_page == 'options' %}class="active"{% endif %}>Options</a></li>
+            <li><a href="/performance">Performance</a></li>
+        </ul>
+        <div class="sidebar-section">Settings</div>
+        <ul class="sidebar-nav">
+            <li><a href="/dashboard/alerts" {% if active_page == 'alerts' %}class="active"{% endif %}>Alerts</a></li>
+            <li><a href="/dashboard/settings" {% if active_page == 'settings' %}class="active"{% endif %}>Settings</a></li>
+            <li><a href="/api/v1/health" target="_blank">API Status</a></li>
+        </ul>
+        <div class="sidebar-section">Account</div>
+        <ul class="sidebar-nav">
+            <li><a href="/logout" style="color: #e74c3c;">Logout</a></li>
+        </ul>
+    </aside>
+
+    <main class="main-content">
+        {% block page_content %}{% endblock %}
+    </main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="/static/js/dashboard-common.js"></script>
+<script>
+(function() {
+    var toggle = document.getElementById('sidebar-toggle');
+    var sidebar = document.getElementById('sidebar');
+    var overlay = document.getElementById('sidebar-overlay');
+    if (!toggle || !sidebar) return;
+    function open() { sidebar.classList.add('open'); overlay.classList.add('open'); }
+    function close() { sidebar.classList.remove('open'); overlay.classList.remove('open'); }
+    toggle.addEventListener('click', function() { sidebar.classList.contains('open') ? close() : open(); });
+    overlay.addEventListener('click', close);
+    // Close on nav link click (mobile)
+    sidebar.querySelectorAll('a').forEach(function(a) { a.addEventListener('click', close); });
+})();
+</script>
+{% block dashboard_js %}{% endblock %}
+{% endblock %}

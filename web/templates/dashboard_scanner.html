@@ -1,44 +1,10 @@
-{% extends "base.html" %}
+{% extends "dashboard_base.html" %}
+{% set active_page = "scanner" %}
 
 {% block title %}Live Scanner - RDT Trading{% endblock %}
 
-{% block extra_css %}
+{% block dashboard_css %}
 <style>
-    .dashboard-layout {
-        display: grid;
-        grid-template-columns: 240px 1fr;
-        min-height: calc(100vh - 60px);
-    }
-    .sidebar {
-        background: var(--primary);
-        padding: 20px;
-        position: sticky;
-        top: 60px;
-        height: calc(100vh - 60px);
-    }
-    .sidebar-nav { list-style: none; }
-    .sidebar-nav li { margin-bottom: 5px; }
-    .sidebar-nav a {
-        display: block;
-        padding: 12px 15px;
-        color: rgba(255,255,255,0.7);
-        border-radius: 5px;
-        transition: all 0.3s;
-    }
-    .sidebar-nav a:hover, .sidebar-nav a.active {
-        background: rgba(255,255,255,0.1);
-        color: white;
-        text-decoration: none;
-    }
-    .sidebar-section {
-        color: rgba(255,255,255,0.5);
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        margin: 20px 0 10px;
-        padding-left: 15px;
-    }
-    .main-content { padding: 25px; }
-
     /* Scanner specific styles */
     .scanner-header {
         background: var(--card);
@@ -426,8 +392,6 @@
     }
 
     @media (max-width: 1024px) {
-        .dashboard-layout { grid-template-columns: 1fr; }
-        .sidebar { display: none; }
         .scanner-results { grid-template-columns: 1fr; }
         .scan-summary { grid-template-columns: repeat(2, 1fr); }
         .mtf-detail-grid { grid-template-columns: repeat(3, 1fr); }
@@ -435,146 +399,121 @@
 </style>
 {% endblock %}
 
-{% block content %}
-<div class="dashboard-layout">
-    <aside class="sidebar">
-        <ul class="sidebar-nav">
-            <li><a href="/dashboard">Overview</a></li>
-            <li><a href="/dashboard/signals">Active Signals</a></li>
-            <li><a href="/dashboard/positions">Positions</a></li>
-            <li><a href="/dashboard/history">History</a></li>
-        </ul>
-        <div class="sidebar-section">Analysis</div>
-        <ul class="sidebar-nav">
-            <li><a href="/dashboard/scanner" class="active">Live Scanner</a></li>
-            <li><a href="/dashboard/backtest">Backtest</a></li>
-            <li><a href="/performance">Performance</a></li>
-        </ul>
-        <div class="sidebar-section">Settings</div>
-        <ul class="sidebar-nav">
-            <li><a href="/dashboard/alerts">Alerts</a></li>
-            <li><a href="/dashboard/settings">Settings</a></li>
-            <li><a href="/api/v1/health" target="_blank">API Status</a></li>
-        </ul>
-    </aside>
-
-    <main class="main-content">
-        <!-- Scanner Header -->
-        <div class="scanner-header">
-            <div class="scanner-info">
-                <div class="scanner-status">
-                    <span class="status-dot" id="scanner-status-dot"></span>
-                    <div>
-                        <div class="scanner-status-label">Scanner Status</div>
-                        <div class="scanner-status-value" id="scanner-status">Ready</div>
-                    </div>
-                </div>
-                <div class="scanner-status">
-                    <div>
-                        <div class="scanner-status-label">Last Scan</div>
-                        <div class="scanner-status-value" id="last-scan-time">Never</div>
-                    </div>
-                </div>
-                <div class="scanner-status">
-                    <div>
-                        <div class="scanner-status-label">Symbols Scanned</div>
-                        <div class="scanner-status-value" id="symbols-count">0</div>
-                    </div>
-                </div>
-            </div>
-            <div class="scanner-controls">
-                <label class="auto-refresh-toggle">
-                    <input type="checkbox" id="auto-refresh" checked>
-                    Auto-refresh (60s)
-                </label>
-                <button class="btn btn-primary btn-scan" id="scan-btn" onclick="runScan()">
-                    <span id="scan-btn-text">Run Scan</span>
-                </button>
+{% block page_content %}
+<!-- Scanner Header -->
+<div class="scanner-header">
+    <div class="scanner-info">
+        <div class="scanner-status">
+            <span class="status-dot" id="scanner-status-dot"></span>
+            <div>
+                <div class="scanner-status-label">Scanner Status</div>
+                <div class="scanner-status-value" id="scanner-status">Ready</div>
             </div>
         </div>
-
-        <!-- SPY Benchmark -->
-        <div class="benchmark-card">
-            <div class="benchmark-main">
-                <div class="benchmark-symbol">SPY</div>
-                <div class="benchmark-price">$<span id="spy-price">---</span></div>
-                <div class="benchmark-change" id="spy-change">---%</div>
-            </div>
-            <div class="benchmark-details">
-                <div class="benchmark-detail">
-                    <div class="benchmark-detail-label">Day High</div>
-                    <div class="benchmark-detail-value" id="spy-high">---</div>
-                </div>
-                <div class="benchmark-detail">
-                    <div class="benchmark-detail-label">Day Low</div>
-                    <div class="benchmark-detail-value" id="spy-low">---</div>
-                </div>
-                <div class="benchmark-detail">
-                    <div class="benchmark-detail-label">Volume</div>
-                    <div class="benchmark-detail-value" id="spy-volume">---</div>
-                </div>
+        <div class="scanner-status">
+            <div>
+                <div class="scanner-status-label">Last Scan</div>
+                <div class="scanner-status-value" id="last-scan-time">Never</div>
             </div>
         </div>
-
-        <!-- Scan Summary Stats -->
-        <div class="scan-summary">
-            <div class="summary-stat">
-                <div class="summary-stat-label">Strong RS Stocks</div>
-                <div class="summary-stat-value text-success" id="strong-rs-count">0</div>
-            </div>
-            <div class="summary-stat">
-                <div class="summary-stat-label">Strong RW Stocks</div>
-                <div class="summary-stat-value text-danger" id="strong-rw-count">0</div>
-            </div>
-            <div class="summary-stat">
-                <div class="summary-stat-label">Avg RS Score</div>
-                <div class="summary-stat-value" id="avg-rs-score">---</div>
-            </div>
-            <div class="summary-stat">
-                <div class="summary-stat-label">Avg RW Score</div>
-                <div class="summary-stat-value" id="avg-rw-score">---</div>
+        <div class="scanner-status">
+            <div>
+                <div class="scanner-status-label">Symbols Scanned</div>
+                <div class="scanner-status-value" id="symbols-count">0</div>
             </div>
         </div>
+    </div>
+    <div class="scanner-controls">
+        <label class="auto-refresh-toggle">
+            <input type="checkbox" id="auto-refresh" checked>
+            Auto-refresh (60s)
+        </label>
+        <button class="btn btn-primary btn-scan" id="scan-btn" onclick="runScan()">
+            <span id="scan-btn-text">Run Scan</span>
+        </button>
+    </div>
+</div>
 
-        <!-- Scanner Results -->
-        <div class="scanner-results">
-            <!-- Strong RS (Relative Strength) -->
-            <div class="results-card">
-                <div class="results-header">
-                    <div class="results-title">
-                        <span class="indicator rs"></span>
-                        Strong RS (Relative Strength vs SPY)
-                    </div>
-                    <span class="results-count" id="rs-results-count">0 stocks</span>
-                </div>
-                <div class="results-body" id="rs-results">
-                    <div class="empty-state">
-                        <p>Run a scan to see strong RS stocks</p>
-                    </div>
-                </div>
+<!-- SPY Benchmark -->
+<div class="benchmark-card">
+    <div class="benchmark-main">
+        <div class="benchmark-symbol">SPY</div>
+        <div class="benchmark-price">$<span id="spy-price">---</span></div>
+        <div class="benchmark-change" id="spy-change">---%</div>
+    </div>
+    <div class="benchmark-details">
+        <div class="benchmark-detail">
+            <div class="benchmark-detail-label">Day High</div>
+            <div class="benchmark-detail-value" id="spy-high">---</div>
+        </div>
+        <div class="benchmark-detail">
+            <div class="benchmark-detail-label">Day Low</div>
+            <div class="benchmark-detail-value" id="spy-low">---</div>
+        </div>
+        <div class="benchmark-detail">
+            <div class="benchmark-detail-label">Volume</div>
+            <div class="benchmark-detail-value" id="spy-volume">---</div>
+        </div>
+    </div>
+</div>
+
+<!-- Scan Summary Stats -->
+<div class="scan-summary">
+    <div class="summary-stat">
+        <div class="summary-stat-label">Strong RS Stocks</div>
+        <div class="summary-stat-value text-success" id="strong-rs-count">0</div>
+    </div>
+    <div class="summary-stat">
+        <div class="summary-stat-label">Strong RW Stocks</div>
+        <div class="summary-stat-value text-danger" id="strong-rw-count">0</div>
+    </div>
+    <div class="summary-stat">
+        <div class="summary-stat-label">Avg RS Score</div>
+        <div class="summary-stat-value" id="avg-rs-score">---</div>
+    </div>
+    <div class="summary-stat">
+        <div class="summary-stat-label">Avg RW Score</div>
+        <div class="summary-stat-value" id="avg-rw-score">---</div>
+    </div>
+</div>
+
+<!-- Scanner Results -->
+<div class="scanner-results">
+    <!-- Strong RS (Relative Strength) -->
+    <div class="results-card">
+        <div class="results-header">
+            <div class="results-title">
+                <span class="indicator rs"></span>
+                Strong RS (Relative Strength vs SPY)
             </div>
-
-            <!-- Strong RW (Relative Weakness) -->
-            <div class="results-card">
-                <div class="results-header">
-                    <div class="results-title">
-                        <span class="indicator rw"></span>
-                        Strong RW (Relative Weakness vs SPY)
-                    </div>
-                    <span class="results-count" id="rw-results-count">0 stocks</span>
-                </div>
-                <div class="results-body" id="rw-results">
-                    <div class="empty-state">
-                        <p>Run a scan to see strong RW stocks</p>
-                    </div>
-                </div>
+            <span class="results-count" id="rs-results-count">0 stocks</span>
+        </div>
+        <div class="results-body" id="rs-results">
+            <div class="empty-state">
+                <p>Run a scan to see strong RS stocks</p>
             </div>
         </div>
-    </main>
+    </div>
+
+    <!-- Strong RW (Relative Weakness) -->
+    <div class="results-card">
+        <div class="results-header">
+            <div class="results-title">
+                <span class="indicator rw"></span>
+                Strong RW (Relative Weakness vs SPY)
+            </div>
+            <span class="results-count" id="rw-results-count">0 stocks</span>
+        </div>
+        <div class="results-body" id="rw-results">
+            <div class="empty-state">
+                <p>Run a scan to see strong RW stocks</p>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
-{% block extra_js %}
+{% block dashboard_js %}
 <script src="{{ url_for('static', filename='js/websocket.js') }}"></script>
 <script>
     // Scanner state
@@ -1101,7 +1040,7 @@
         const container = document.getElementById(containerId);
         container.innerHTML = `
             <div class="empty-state">
-                <p class="text-danger">Error: ${message}</p>
+                <p class="text-danger">Error: ${escapeHtml(message)}</p>
                 <p class="text-muted mt-1">Please try again or check your API key</p>
             </div>
         `;

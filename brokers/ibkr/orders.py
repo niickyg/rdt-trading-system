@@ -77,7 +77,12 @@ def convert_order_side(side: OrderSide) -> str:
         OrderSide.BUY: "BUY",
         OrderSide.SELL: "SELL",
         OrderSide.BUY_TO_COVER: "BUY",
-        OrderSide.SELL_SHORT: "SELL",
+        OrderSide.SELL_SHORT: "SSHORT",
+        # Options sides — IBKR uses BUY/SELL with contract type determining open/close
+        OrderSide.BUY_TO_OPEN: "BUY",
+        OrderSide.SELL_TO_OPEN: "SELL",
+        OrderSide.BUY_TO_CLOSE: "BUY",
+        OrderSide.SELL_TO_CLOSE: "SELL",
     }
     return mapping.get(side, "BUY")
 
@@ -309,6 +314,12 @@ def create_trailing_stop_order(
 
     if trailing_amount is None and trailing_percent is None:
         raise ValueError("Either trailing_amount or trailing_percent must be specified")
+
+    if TrailingStopOrder is None:
+        raise ImportError(
+            "TrailingStopOrder not available in this ib_insync version. "
+            "Upgrade to ib_insync>=0.9.87 or use IBOrder directly."
+        )
 
     order = TrailingStopOrder(action, quantity)
     order.tif = convert_time_in_force(time_in_force)
