@@ -67,3 +67,8 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# Operator backtest data caches (re-fetched by scripts/operator/)
+scratchpad/
+data/backtest_cache/
+scripts/operator/yahoo_cache/
