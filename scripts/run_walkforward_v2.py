@@ -1114,6 +1114,69 @@ def main():
 
     print_results(baseline_results, old_filtered_results, rdt_filtered_results)
 
+    print_honest_verdict_vs_spy(spy_data, baseline_results, old_filtered_results, rdt_filtered_results)
+
+
+def print_honest_verdict_vs_spy(spy_data, baseline_results, old_filtered_results, rdt_filtered_results):
+    """The mandate's actual bar: net-of-cost P&L vs SPY buy-and-hold.
+
+    The 3-way A/B/C comparison above only shows the strategy variants against
+    each other. It never answers the question that determines whether this
+    system should exist: did it beat parking the same capital in SPY, after
+    honest trading costs? This block answers exactly that.
+    """
+    from backtesting.benchmark import CostModel, spy_buy_and_hold, estimate_trading_costs
+
+    # Combined window: first window start → last window end.
+    all_dates = sorted(spy_data.index.date)
+    if not all_dates:
+        return
+    close_col = 'Close' if 'Close' in spy_data.columns else 'close'
+    win_start = min(r.start_date for r in rdt_filtered_results)
+    win_end = max(r.end_date for r in rdt_filtered_results)
+    spy_slice = spy_data[(spy_data.index.date >= win_start) & (spy_data.index.date <= win_end)]
+    spy_prices = [float(x) for x in spy_slice[close_col].tolist()]
+    trading_days = len(spy_prices)
+
+    spy = spy_buy_and_hold(spy_prices, INITIAL_CAPITAL, trading_days=trading_days)
+
+    w = 120
+    print("=" * w)
+    print("HONEST VERDICT — NET OF COSTS vs SPY BUY-AND-HOLD".center(w))
+    print("=" * w)
+    print()
+    print(f"  Window: {win_start} to {win_end}  ({trading_days} trading bars)")
+    print(f"  SPY buy-and-hold (incl. ~1.3%/yr dividends): "
+          f"{spy['total_return_pct']:+.1f}%  =  ${spy['dollar_profit']:+,.0f} on ${INITIAL_CAPITAL:,.0f}  "
+          f"({spy['annualized_pct']:+.1f}%/yr)")
+    print()
+
+    model = CostModel()
+    header = f"  {'Config':<18} {'Gross $':>14} {'Est. Costs $':>14} {'Net $':>14} {'Net %':>10} {'vs SPY $':>14} {'Beats SPY?':>12}"
+    print(header)
+    print("  " + "-" * (w - 4))
+
+    for label, results in [
+        ("A) Baseline", baseline_results),
+        ("B) Old Filters", old_filtered_results),
+        ("C) RDT Filters", rdt_filtered_results),
+    ]:
+        gross = sum(r.result.total_return for r in results)
+        all_trades = []
+        for r in results:
+            all_trades.extend(r.result.trades)
+        costs = estimate_trading_costs(all_trades, model)["total_cost"]
+        net = gross - costs
+        excess = net - spy["dollar_profit"]
+        beats = "YES" if net > spy["dollar_profit"] else "no"
+        print(f"  {label:<18} {gross:>13,.0f} {costs:>13,.0f} {net:>13,.0f} "
+              f"{net / INITIAL_CAPITAL * 100:>9.1f}% {excess:>+13,.0f} {beats:>12}")
+    print()
+    print("  Cost model: $0.005/share (min $1/order) + 2.5 bps slippage per side (conservative for liquid large caps).")
+    print("  NOTE: daily-bar backtest cannot model intraday VWAP/first-hour gates or real fill quality.")
+    print("=" * w)
+    print()
+
 
 if __name__ == "__main__":
     main()
