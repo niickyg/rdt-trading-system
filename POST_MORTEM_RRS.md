@@ -63,9 +63,42 @@ the conservative tie-break); entry prices for after-hours signals may be
 unrealistic fills; N=88 is a small, one-month, single-regime sample. This is a
 directional read, not proof.
 
-<!-- FORWARD_TEST_RESULTS -->
-_(Results table inserted by the operator once the simulation has run — see the
-dated journal entry for 2026-07-30 and `research`/scratch scripts.)_
+**Results (real IBKR daily bars; reproducible in `research/forward_test/`).**
+
+First-touch R-multiples (each trade risks 1R; planned R:R ≈ 1.98):
+
+| Horizon | Win rate | Avg R (net 0.05R cost) | Profit factor |
+|--------|---------|------------------------|---------------|
+| 5 days | 50.0% | +0.14R | 1.39 |
+| 10 days | 45.5% | +0.25R | 1.58 |
+| 20 days | 44.3% | +0.27R | 1.57 |
+
+Per-trade **alpha vs SPY** over identical holding windows (10-day horizon, 0.10%
+friction/trade):
+
+| Subset | n | Mean trade ret | Mean SPY ret (same window) | Mean alpha | Median alpha | % beat SPY |
+|--------|---|----------------|-----------------------------|-----------|--------------|-----------|
+| All | 88 | +0.59% | −0.17% | +0.76% | −1.35% | 47% |
+| **Long** | 73 | +0.97% | −0.11% | **+1.08%** | **+1.92%** | 52% |
+| **Short** | 15 | −1.27% | −0.46% | **−0.81%** | −1.99% | 20% |
+
+**What this does and does NOT show.**
+
+- The aggregate numbers look positive: net-positive expectancy at every horizon,
+  and the **long** signals produced positive alpha (median +1.92%) even though SPY
+  was flat-to-negative over the same windows — i.e. it is *not* pure market beta.
+- **But the sample is fatally concentrated. 79 of the 88 setups (90%) were
+  generated on just two adjacent days, Feb 3 and Feb 4 2026.** The winning longs
+  are dominated by an energy/materials move (DOW, DVN, SLB). The effective number
+  of *independent* observations is ≈ 2, not 73. This is one good sector event, not
+  evidence of a repeatable edge. Statistically, we cannot reject "luck."
+- The **short** signals are a consistent, unambiguous drag: −1.3% mean return,
+  −0.81% alpha, only 20% beat SPY, across the sample. Shorting relatively-weak
+  names in this chop lost money.
+- Conclusion: **insufficient, over-concentrated evidence — leaning skeptical.**
+  The long side is *interesting enough to keep testing on a much larger, multi-
+  regime signal set*; the short side looks value-destroying and should be
+  scrutinized or disabled; and nothing here justifies risking capital yet.
 
 ## Why the bot is where it is (interpretation)
 
