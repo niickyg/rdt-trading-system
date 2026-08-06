@@ -144,7 +144,7 @@ def spy_benchmark(signals, prices):
 
 
 def main():
-    prices_path = sys.argv[1] if len(sys.argv) > 1 else "scratch_prices.json"
+    prices_path = sys.argv[1] if len(sys.argv) > 1 else "data/operator_journal/artifacts/2026-08-06_ibkr_daily_prices.json"
     signals = load("data/signals/signal_history.json")
     prices = load(prices_path)
     print(f"loaded {len(signals)} signals, prices for {len(prices)} symbols")
