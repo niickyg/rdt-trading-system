@@ -249,7 +249,53 @@ def get_best_worst_trade(result):
     return best, worst
 
 
-def print_comparison_table(configs, results):
+def compute_spy_benchmark(spy_data, start_date, end_date, capital):
+    """Compute SPY buy-and-hold return over the strategy's active window.
+
+    The whole point of this system is to beat buying and holding SPY. That
+    comparison was previously never computed even though SPY data is loaded.
+    Buys SPY at the first close on/after ``start_date`` and holds to the last
+    close on/before ``end_date``.
+
+    Returns (return_dollars, return_pct). Fails open to (0.0, 0.0) on any
+    problem so it can never crash an otherwise-successful backtest run.
+    """
+    try:
+        if spy_data is None or "Close" not in getattr(spy_data, "columns", []):
+            return 0.0, 0.0
+        closes = spy_data["Close"].dropna()
+        if len(closes) < 2:
+            return 0.0, 0.0
+
+        def _to_date(d):
+            # pandas Timestamp / datetime have .date(); a plain date does not.
+            return d.date() if hasattr(d, "date") else d
+
+        sd = _to_date(start_date)
+        ed = _to_date(end_date)
+        idx_dates = [_to_date(ts) for ts in closes.index]
+        in_window = [
+            float(c)
+            for c, d in zip(closes.values, idx_dates)
+            if (sd is None or d >= sd) and (ed is None or d <= ed)
+        ]
+        # If the window filter resolves to nothing (e.g. tz/date mismatch),
+        # fall back to the full loaded series rather than reporting zero.
+        if len(in_window) < 2:
+            in_window = [float(c) for c in closes.values]
+
+        entry = in_window[0]
+        exit_price = in_window[-1]
+        if entry <= 0:
+            return 0.0, 0.0
+
+        ret_frac = exit_price / entry - 1.0
+        return capital * ret_frac, ret_frac * 100.0
+    except Exception:
+        return 0.0, 0.0
+
+
+def print_comparison_table(configs, results, spy_benchmark=(0.0, 0.0)):
     """Print a formatted comparison table for all configurations."""
     w = 110
     print()
@@ -411,6 +457,31 @@ def print_comparison_table(configs, results):
               f"Adjusted return: ${adjusted_return:,.2f} ({adjusted_pct:.2f}%)")
     print()
 
+    # Benchmark vs SPY buy-and-hold — the honest test of whether this system
+    # is worth running at all. Compared against slippage-adjusted returns.
+    bh_dollars, bh_pct = spy_benchmark
+    print("-" * w)
+    print("BENCHMARK: SPY BUY & HOLD (same period, net of est. slippage)".center(w))
+    print("-" * w)
+    print(f"  {'SPY buy & hold':<26} ${bh_dollars:,.2f} ({bh_pct:+.2f}%)")
+    print()
+    any_beats = False
+    for config, result in zip(configs, results):
+        avg_trade_value = INITIAL_CAPITAL / max(config["max_positions"], 1)
+        slippage_cost = result.total_trades * avg_trade_value * SLIPPAGE_PCT * 2
+        adjusted_pct = ((result.total_return - slippage_cost) / INITIAL_CAPITAL) * 100
+        alpha = adjusted_pct - bh_pct
+        verdict = "BEATS SPY" if alpha > 0 else "LAGS SPY"
+        if alpha > 0:
+            any_beats = True
+        print(f"  {config['name']:<26} {adjusted_pct:+.2f}%  vs SPY {bh_pct:+.2f}%  "
+              f"=> alpha {alpha:+.2f}%  [{verdict}]")
+    print()
+    if not any_beats:
+        print("  >> NONE of the configurations beat SPY buy-and-hold on this period.")
+        print("     A passive SPY hold would have done better with zero effort/risk.")
+    print()
+
     # Verdict
     print("=" * w)
     print("VERDICT".center(w))
@@ -463,7 +534,7 @@ def print_comparison_table(configs, results):
     return best_composite_idx
 
 
-def save_results(configs, results):
+def save_results(configs, results, spy_benchmark=(0.0, 0.0)):
     """Save all results to JSON file."""
     results_dir = PROJECT_ROOT / "data" / "backtest_results"
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -471,21 +542,30 @@ def save_results(configs, results):
     timestamp = date.today().isoformat()
     filepath = results_dir / f"enhanced_comparison_{timestamp}.json"
 
+    bh_dollars, bh_pct = spy_benchmark
     data = {
         "timestamp": timestamp,
         "initial_capital": INITIAL_CAPITAL,
         "backtest_days": BACKTEST_DAYS,
         "slippage_pct": SLIPPAGE_PCT,
         "watchlist": WATCHLIST,
+        "spy_buy_hold_return": bh_dollars,
+        "spy_buy_hold_return_pct": bh_pct,
         "configurations": {},
     }
 
     for config, result in zip(configs, results):
         key = config["name"]
         best_trade, worst_trade = get_best_worst_trade(result)
+        avg_trade_value = INITIAL_CAPITAL / max(config["max_positions"], 1)
+        slippage_cost = result.total_trades * avg_trade_value * SLIPPAGE_PCT * 2
+        adjusted_pct = ((result.total_return - slippage_cost) / INITIAL_CAPITAL) * 100
         config_data = {
             "parameters": {k: v for k, v in config.items() if k != "name"},
             "results": result.to_dict(),
+            "slippage_adjusted_return_pct": adjusted_pct,
+            "alpha_vs_spy_pct": adjusted_pct - bh_pct,
+            "beats_spy": bool((adjusted_pct - bh_pct) > 0),
             "best_trade": best_trade,
             "worst_trade": worst_trade,
             "trade_details": [
@@ -557,11 +637,16 @@ def main():
             traceback.print_exc()
             sys.exit(1)
 
+    # Compute SPY buy-and-hold benchmark over the actual traded window.
+    spy_benchmark = compute_spy_benchmark(
+        spy_data, results[0].start_date, results[0].end_date, INITIAL_CAPITAL
+    )
+
     # Step 3: Print comparison
-    best_idx = print_comparison_table(ALL_CONFIGS, results)
+    best_idx = print_comparison_table(ALL_CONFIGS, results, spy_benchmark)
 
     # Step 4: Save results
-    filepath = save_results(ALL_CONFIGS, results)
+    filepath = save_results(ALL_CONFIGS, results, spy_benchmark)
 
     # Step 5: Print top trades from each config
     for config, result in zip(ALL_CONFIGS, results):
