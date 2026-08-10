@@ -828,6 +828,26 @@ def run_rdt_filtered(stock_data, spy_data, vix_data, sector_etf_data, start_date
 # Output
 # ============================================================================
 
+def spy_buy_and_hold(spy_data: pd.DataFrame, start_date: date, end_date: date,
+                     capital: float = INITIAL_CAPITAL) -> Dict[str, float]:
+    """SPY buy-and-hold over [start_date, end_date] — the opportunity-cost benchmark.
+
+    Buys SPY at the first close in the window and holds to the last close. The active
+    strategy must BEAT this net of costs to justify its existence (mandate bar). Uses
+    the same daily SPY series already loaded, so no extra data is required.
+    """
+    close_col = 'Close' if 'Close' in spy_data.columns else 'close'
+    window = spy_data[(spy_data.index.date >= start_date) & (spy_data.index.date <= end_date)]
+    if len(window) < 2:
+        return {"return": 0.0, "return_pct": 0.0}
+    entry = float(window[close_col].iloc[0])
+    exit_price = float(window[close_col].iloc[-1])
+    if entry <= 0:
+        return {"return": 0.0, "return_pct": 0.0}
+    growth = exit_price / entry - 1.0
+    return {"return": capital * growth, "return_pct": growth * 100.0}
+
+
 def get_largest_daily_loss(result: EnhancedBacktestResult) -> float:
     if len(result.equity_curve) < 2:
         return 0.0
@@ -843,6 +863,7 @@ def print_results(
     baseline_results: List[WindowResult],
     old_filtered_results: List[WindowResult],
     rdt_filtered_results: List[WindowResult],
+    spy_data: pd.DataFrame,
 ):
     w = 120
 
@@ -897,6 +918,11 @@ def print_results(
         ol_wd = get_largest_daily_loss(orr)
         rd_wd = get_largest_daily_loss(rr)
         print(row("Worst Single Day", bl_wd, ol_wd, rd_wd, "dollar"))
+
+        # SPY buy-and-hold benchmark for this window (the bar to beat)
+        spy_bh = spy_buy_and_hold(spy_data, bl.start_date, bl.end_date)
+        print(f"  {'SPY Buy & Hold':<28} {'${:>14,.2f}'.format(spy_bh['return'])} "
+              f"({spy_bh['return_pct']:+.2f}%)  <-- opportunity-cost benchmark")
         print()
 
         # Filter details
@@ -966,6 +992,16 @@ def print_results(
     print(agg_row("Profit Factor", ba["profit_factor"], oa["profit_factor"], ra["profit_factor"], "float"))
     print(agg_row("Max Drawdown ($)", ba["max_drawdown"], oa["max_drawdown"], ra["max_drawdown"], "dollar"))
     print(agg_row("Worst Day Loss ($)", ba["worst_day"], oa["worst_day"], ra["worst_day"], "dollar"))
+    print()
+
+    # SPY buy-and-hold aggregate — sum of per-window buy-and-hold returns on INITIAL_CAPITAL.
+    # This is the mandate bar: the active strategy must beat doing nothing but holding SPY.
+    spy_total = sum(spy_buy_and_hold(spy_data, r.start_date, r.end_date)["return"] for r in baseline_results)
+    spy_total_pct = spy_total / INITIAL_CAPITAL * 100
+    print(f"  {'SPY Buy & Hold (summed windows)':<30} ${spy_total:>14,.2f}  ({spy_total_pct:+.2f}%)")
+    print(f"  {'  vs A) Baseline':<30} ${ba['total_return'] - spy_total:>+14,.2f}")
+    print(f"  {'  vs B) Old Filters':<30} ${oa['total_return'] - spy_total:>+14,.2f}")
+    print(f"  {'  vs C) RDT Filters':<30} ${ra['total_return'] - spy_total:>+14,.2f}")
     print()
 
     # Signal filtering summary
@@ -1044,6 +1080,16 @@ def print_results(
     improvement_vs_base = ra["total_return"] - ba["total_return"]
     print(f"  RDT filters (C) vs Baseline (A):    ${improvement_vs_base:+,.2f}")
     print()
+
+    # The bar that actually matters (mandate): beat SPY buy-and-hold.
+    best_active = max(ba["total_return"], oa["total_return"], ra["total_return"])
+    print(f"  Best active strategy: ${best_active:+,.2f}  |  SPY buy-and-hold: ${spy_total:+,.2f}")
+    if best_active > spy_total:
+        print(f"  ==> Best active config BEATS SPY buy-and-hold by ${best_active - spy_total:+,.2f}")
+    else:
+        print(f"  ==> NO active config beats SPY buy-and-hold (short by ${spy_total - best_active:,.2f}). "
+              f"The strategy is not justified over holding SPY.")
+    print()
     print("=" * w)
     print()
 
@@ -1112,7 +1158,7 @@ def main():
         old_filtered_results.append(ol)
         rdt_filtered_results.append(rd)
 
-    print_results(baseline_results, old_filtered_results, rdt_filtered_results)
+    print_results(baseline_results, old_filtered_results, rdt_filtered_results, spy_data)
 
 
 if __name__ == "__main__":
