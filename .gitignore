@@ -67,3 +67,6 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# Operator scratch (temp backtest data)
+scratchpad_bt/
