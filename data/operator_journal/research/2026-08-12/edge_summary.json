@@ -1,0 +1,44 @@
+{
+  "window": "2026-02-03..2026-08-12",
+  "spy_buyhold_pct": 10.9966820355927,
+  "fill_plan": {
+    "n": 550,
+    "win_rate_pct": 36.36363636363637,
+    "avg_r_net": 0.050494024525020643,
+    "avg_ret_net_pct": 0.08547329546562789,
+    "avg_excess_pct": 1.042025424270699,
+    "excess_t": 6.386937291954138,
+    "long_excess_pct": 1.1773195026397498,
+    "long_excess_t": 7.061800360054396
+  },
+  "fill_open": {
+    "n": 544,
+    "win_rate_pct": 36.76470588235294,
+    "avg_r_net": 2.9548595794937293,
+    "avg_ret_net_pct": -1.4667125768576108,
+    "avg_excess_pct": -0.5095367039298165,
+    "excess_t": -0.8159570354503731,
+    "long_excess_pct": -0.5390121922105612,
+    "long_excess_t": -0.7945572243749199
+  },
+  "portfolio_open_fill": {
+    "3": {
+      "equity_mult": 0.9623684057328463,
+      "taken": 6,
+      "skipped": 538
+    },
+    "5": {
+      "equity_mult": 0.9631195147669785,
+      "taken": 10,
+      "skipped": 534
+    },
+    "8": {
+      "equity_mult": 0.9426467479510224,
+      "taken": 15,
+      "skipped": 529
+    }
+  },
+  "hold_days_cap": 20,
+  "slippage_bps": 5.0,
+  "n_symbols": 25
+}

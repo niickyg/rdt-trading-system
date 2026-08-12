@@ -55,8 +55,15 @@ def sig_date(s):
     return s["generated_at"][:10]
 
 
-def eval_signal(sig, bars, day_list, hold_days=HOLD_DAYS):
-    """Return dict with outcome, r_multiple (gross), ret_pct (gross), hold_days, or None."""
+def eval_signal(sig, bars, day_list, hold_days=HOLD_DAYS, fill_mode="plan"):
+    """Return dict with outcome, r_multiple (gross), ret_pct (gross), hold_days, or None.
+
+    fill_mode="plan": fill at the signal's planned entry_price (optimistic — assumes the
+        level is always reachable). fill_mode="open": fill at the entry day's OPEN, which
+        is what you could realistically get acting on an overnight-generated signal. Stop
+        and target remain the planned absolute prices; if the open is already past a level
+        the trade resolves immediately at that level.
+    """
     d0 = sig_date(sig)
     # first trading day on/after signal date
     idx = None
@@ -66,10 +73,12 @@ def eval_signal(sig, bars, day_list, hold_days=HOLD_DAYS):
             break
     if idx is None:
         return None
-    entry = sig["entry_price"]
     stop = sig["stop_price"]
     target = sig["target_price"]
     direction = sig["direction"]
+    entry = sig["entry_price"]
+    if fill_mode == "open":
+        entry = bars[day_list[idx]][0]  # entry-day open
     if not all(isinstance(x, (int, float)) and x > 0 for x in (entry, stop, target)):
         return None
     risk = abs(entry - stop)
@@ -156,93 +165,135 @@ def main():
         seen.add(key)
         deduped.append(s)
     print(f"Raw signals: {len(signals)}  ->  deduped distinct signals: {len(deduped)}")
+    from collections import Counter as _C
+    _dc = sorted(_C(sig_date(s) for s in deduped).items())
+    print(f"Signal-date concentration (EFFECTIVE sample size): {_dc}")
+    print("  ^^ If signals cluster on a few dates, N is misleading — trades on the same day")
+    print("     are correlated bets on one market event, not independent samples.")
     signals = deduped
     covered = set(bars_by_sym) - {"SPY"}
     evald = [s for s in signals if s["symbol"] in covered]
-
-    results = []
-    net_slip = SLIPPAGE_BPS / 10000.0
-    for s in evald:
-        r = eval_signal(s, bars_by_sym[s["symbol"]], days_by_sym[s["symbol"]])
-        if not r:
-            continue
-        # net of round-trip slippage as % of entry
-        r["ret_net_pct"] = r["ret_gross_pct"] - 2 * SLIPPAGE_BPS / 100.0
-        # net R: subtract slippage cost expressed in R units
-        risk_pct = abs(s["entry_price"] - s["stop_price"]) / s["entry_price"] * 100.0
-        slip_r = (2 * SLIPPAGE_BPS / 100.0) / risk_pct if risk_pct > 0 else 0
-        r["r_net"] = r["r_gross"] - slip_r
-        r["spy_ret_pct"] = spy_return(spy_bars, spy_days, sig_date(s), r["hold"])
-        r["excess_pct"] = (r["ret_net_pct"] - r["spy_ret_pct"]) if r["spy_ret_pct"] is not None else None
-        r["symbol"] = s["symbol"]
-        results.append(r)
-
-    n = len(results)
-    if n == 0:
-        print("No evaluable signals.")
-        return
-
-    longs = [r for r in results if r["direction"] == "long"]
-    shorts = [r for r in results if r["direction"] == "short"]
-    wins = [r for r in results if r["outcome"] == "target"]
-    stops = [r for r in results if r["outcome"] == "stop"]
-    timeouts = [r for r in results if r["outcome"] == "timeout"]
 
     def avg(xs):
         xs = [x for x in xs if x is not None]
         return st.mean(xs) if xs else float("nan")
 
+    def build_results(fill_mode):
+        out = []
+        for s in evald:
+            r = eval_signal(s, bars_by_sym[s["symbol"]], days_by_sym[s["symbol"]],
+                            fill_mode=fill_mode)
+            if not r:
+                continue
+            r["ret_net_pct"] = r["ret_gross_pct"] - 2 * SLIPPAGE_BPS / 100.0
+            # entry actually used depends on fill_mode; recompute risk% from it
+            entry_used = (bars_by_sym[s["symbol"]][days_by_sym[s["symbol"]][r["entry_idx"]]][0]
+                          if fill_mode == "open" else s["entry_price"])
+            risk_pct = abs(entry_used - s["stop_price"]) / entry_used * 100.0 if entry_used else 0
+            slip_r = (2 * SLIPPAGE_BPS / 100.0) / risk_pct if risk_pct > 0 else 0
+            r["r_net"] = r["r_gross"] - slip_r
+            r["spy_ret_pct"] = spy_return(spy_bars, spy_days, sig_date(s), r["hold"])
+            r["excess_pct"] = (r["ret_net_pct"] - r["spy_ret_pct"]) if r["spy_ret_pct"] is not None else None
+            r["symbol"] = s["symbol"]
+            r["sigdate"] = sig_date(s)
+            out.append(r)
+        return out
+
+    def tstat(xs):
+        xs = [x for x in xs if x is not None]
+        if len(xs) < 2:
+            return float("nan")
+        m, sd = st.mean(xs), st.pstdev(xs)
+        return m / (sd / (len(xs) ** 0.5)) if sd > 0 else float("nan")
+
+    def report(results, label):
+        n = len(results)
+        longs = [r for r in results if r["direction"] == "long"]
+        shorts = [r for r in results if r["direction"] == "short"]
+        wins = [r for r in results if r["outcome"] == "target"]
+        excess = [r["excess_pct"] for r in results if r["excess_pct"] is not None]
+        long_ex = [r["excess_pct"] for r in longs if r["excess_pct"] is not None]
+        print("-" * 70)
+        print(f"[{label}]  n={n}  ({len(longs)} long / {len(shorts)} short)")
+        print(f"  Win rate (target<stop):   {len(wins)/n*100:.1f}%")
+        print(f"  Avg R-multiple (net):     {avg([r['r_net'] for r in results]):+.3f}")
+        print(f"  Avg return per trade:     {avg([r['ret_net_pct'] for r in results]):+.3f}%")
+        print(f"  Median return per trade:  {st.median([r['ret_net_pct'] for r in results]):+.3f}%")
+        print(f"  Avg SPY over same window: {avg([r['spy_ret_pct'] for r in results]):+.3f}%")
+        print(f"  Avg EXCESS vs SPY:        {avg(excess):+.3f}%   t={tstat(excess):+.2f} (naive, ignores overlap)")
+        print(f"  Long-only avg EXCESS:     {avg(long_ex):+.3f}%   t={tstat(long_ex):+.2f}")
+        print(f"  Avg hold (days):          {avg([r['hold'] for r in results]):.1f}")
+        return {"n": n, "win_rate_pct": len(wins)/n*100,
+                "avg_r_net": avg([r['r_net'] for r in results]),
+                "avg_ret_net_pct": avg([r['ret_net_pct'] for r in results]),
+                "avg_excess_pct": avg(excess), "excess_t": tstat(excess),
+                "long_excess_pct": avg(long_ex), "long_excess_t": tstat(long_ex)}
+
+    def portfolio_sim(results, max_concurrent, risk_frac=0.01):
+        """Realistic-ish equity: process signals in date order, cap concurrent positions,
+        risk risk_frac of equity per trade, realize P&L in R at exit. Approximates calendar
+        overlap by using entry_idx/end_idx on each symbol's own trading-day index. Because
+        symbols share the market calendar, we use the signal DATE for slotting."""
+        # order by entry date, then simulate slot occupancy by date index on SPY calendar
+        date_index = {d: i for i, d in enumerate(spy_days)}
+        evs = sorted(results, key=lambda r: r["sigdate"])
+        equity = 1.0
+        # track open positions as (release_date_index)
+        open_slots = []  # list of release indices
+        taken = skipped = 0
+        for r in evs:
+            di = date_index.get(r["sigdate"])
+            if di is None:
+                continue
+            # free finished slots
+            open_slots = [rel for rel in open_slots if rel > di]
+            if len(open_slots) >= max_concurrent:
+                skipped += 1
+                continue
+            taken += 1
+            equity *= (1 + risk_frac * r["r_net"])
+            open_slots.append(di + r["hold"])
+        return equity, taken, skipped
+
     print("=" * 70)
     print("HONEST SIGNAL EDGE MEASUREMENT")
     print("=" * 70)
-    print(f"Symbols with data: {len(covered)} of 48  |  Signals evaluated: {n} of {len(signals)}")
-    print(f"Hold cap: {HOLD_DAYS} trading days  |  Slippage: {SLIPPAGE_BPS} bps/side")
-    print(f"Direction: {len(longs)} long / {len(shorts)} short")
-    print("-" * 70)
-    print(f"Outcomes: target {len(wins)} ({len(wins)/n*100:.1f}%) | "
-          f"stop {len(stops)} ({len(stops)/n*100:.1f}%) | timeout {len(timeouts)} ({len(timeouts)/n*100:.1f}%)")
-    print(f"Win rate (target before stop): {len(wins)/n*100:.1f}%")
-    print("-" * 70)
-    print("PER-TRADE, NET OF COSTS:")
-    print(f"  Avg R-multiple (net):     {avg([r['r_net'] for r in results]):+.3f}")
-    print(f"  Avg return per trade:     {avg([r['ret_net_pct'] for r in results]):+.3f}%")
-    print(f"  Median return per trade:  {st.median([r['ret_net_pct'] for r in results]):+.3f}%")
-    print(f"  Avg SPY over same window: {avg([r['spy_ret_pct'] for r in results]):+.3f}%")
-    print(f"  Avg EXCESS vs SPY:        {avg([r['excess_pct'] for r in results]):+.3f}%")
-    print(f"  Avg hold (days):          {avg([r['hold'] for r in results]):.1f}")
-    print("-" * 70)
-    print("FRICTIONLESS (for reference only):")
-    print(f"  Avg R-multiple (gross):   {avg([r['r_gross'] for r in results]):+.3f}")
-    print(f"  Avg return per trade:     {avg([r['ret_gross_pct'] for r in results]):+.3f}%")
-    print("-" * 70)
-    # Illustrative sequential equity: 1% risk/trade, compounding, ignores overlap/capital
-    eq = 1.0
-    for r in sorted(results, key=lambda x: x["entry_idx"]):
-        eq *= (1 + 0.01 * r["r_net"])
-    print(f"Illustrative equity (1% risk/trade, {n} trades, compounded, NO overlap cap):")
-    print(f"  Strategy multiple: {eq:.3f}x  (={(eq-1)*100:+.1f}%)")
-    # SPY buy-and-hold over the full signal-to-now window
+    print(f"Symbols with data: {len(covered)} of 48  |  Signals evaluated (of {len(evald)} coverable)")
+    print(f"Hold cap: {HOLD_DAYS} trading days  |  Slippage: {SLIPPAGE_BPS} bps/side round-trip 2x")
+    print("Two fill assumptions: 'plan' = fill at signal's planned entry_price (optimistic);")
+    print("'open' = fill at entry-day open (realistic for an overnight-generated signal).")
+
+    res_plan = build_results("plan")
+    res_open = build_results("open")
+    if not res_plan:
+        print("No evaluable signals.")
+        return
+    s_plan = report(res_plan, "FILL @ PLANNED ENTRY (optimistic)")
+    s_open = report(res_open, "FILL @ ENTRY-DAY OPEN (realistic)")
+
+    print("=" * 70)
     first_sig = min(sig_date(s) for s in evald)
     spy_full = spy_return(spy_bars, spy_days, first_sig, len(spy_days))
-    print(f"  SPY buy&hold from {first_sig} to {spy_days[-1]}: {spy_full:+.1f}%")
+    print(f"BENCHMARK: SPY buy&hold {first_sig} -> {spy_days[-1]}: {spy_full:+.1f}%")
+    print("-" * 70)
+    print("CAPPED PORTFOLIO EQUITY (realistic fills, 1% risk/trade, R realized at exit):")
+    for cap in (3, 5, 8):
+        eq, taken, skipped = portfolio_sim(res_open, cap)
+        print(f"  max {cap} concurrent: {eq:.3f}x ({(eq-1)*100:+.1f}%)  "
+              f"[{taken} taken, {skipped} skipped by cap]")
+    print("  ^ still optimistic: assumes every planned stop/target fills at its exact level,")
+    print("    no gaps through stops, no borrow cost on shorts, single 1-month signal regime.")
     print("=" * 70)
-    # by-direction excess
-    print(f"Long avg excess vs SPY:  {avg([r['excess_pct'] for r in longs]):+.3f}%  (n={len(longs)})")
-    print(f"Short avg excess vs SPY: {avg([r['excess_pct'] for r in shorts]):+.3f}%  (n={len(shorts)})")
-    print("=" * 70)
-    # persist machine-readable summary
+
     summ = {
-        "n_signals": n, "n_symbols": len(covered),
-        "win_rate_pct": len(wins) / n * 100,
-        "avg_r_net": avg([r["r_net"] for r in results]),
-        "avg_ret_net_pct": avg([r["ret_net_pct"] for r in results]),
-        "avg_spy_pct": avg([r["spy_ret_pct"] for r in results]),
-        "avg_excess_pct": avg([r["excess_pct"] for r in results]),
-        "long_excess_pct": avg([r["excess_pct"] for r in longs]),
-        "short_excess_pct": avg([r["excess_pct"] for r in shorts]),
-        "illustrative_equity_mult": eq,
+        "window": f"{first_sig}..{spy_days[-1]}",
         "spy_buyhold_pct": spy_full,
+        "fill_plan": s_plan, "fill_open": s_open,
+        "portfolio_open_fill": {
+            str(c): dict(zip(("equity_mult", "taken", "skipped"), portfolio_sim(res_open, c)))
+            for c in (3, 5, 8)},
         "hold_days_cap": HOLD_DAYS, "slippage_bps": SLIPPAGE_BPS,
+        "n_symbols": len(covered),
     }
     out = os.path.join(ROOT, "scratchpad", "edge_summary.json")
     json.dump(summ, open(out, "w"), indent=2)

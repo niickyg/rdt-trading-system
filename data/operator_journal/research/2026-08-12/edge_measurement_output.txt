@@ -1,0 +1,42 @@
+Raw signals: 1986  ->  deduped distinct signals: 674
+Signal-date concentration (EFFECTIVE sample size): [('2026-02-03', 412), ('2026-02-04', 247), ('2026-02-06', 11), ('2026-02-25', 1), ('2026-03-04', 2), ('2026-03-05', 1)]
+  ^^ If signals cluster on a few dates, N is misleading — trades on the same day
+     are correlated bets on one market event, not independent samples.
+======================================================================
+HONEST SIGNAL EDGE MEASUREMENT
+======================================================================
+Symbols with data: 25 of 48  |  Signals evaluated (of 550 coverable)
+Hold cap: 20 trading days  |  Slippage: 5.0 bps/side round-trip 2x
+Two fill assumptions: 'plan' = fill at signal's planned entry_price (optimistic);
+'open' = fill at entry-day open (realistic for an overnight-generated signal).
+----------------------------------------------------------------------
+[FILL @ PLANNED ENTRY (optimistic)]  n=550  (505 long / 45 short)
+  Win rate (target<stop):   36.4%
+  Avg R-multiple (net):     +0.050
+  Avg return per trade:     +0.085%
+  Median return per trade:  -2.102%
+  Avg SPY over same window: -0.957%
+  Avg EXCESS vs SPY:        +1.042%   t=+6.39 (naive, ignores overlap)
+  Long-only avg EXCESS:     +1.177%   t=+7.06
+  Avg hold (days):          3.4
+----------------------------------------------------------------------
+[FILL @ ENTRY-DAY OPEN (realistic)]  n=544  (499 long / 45 short)
+  Win rate (target<stop):   36.8%
+  Avg R-multiple (net):     +2.955
+  Avg return per trade:     -1.467%
+  Median return per trade:  +0.194%
+  Avg SPY over same window: -0.957%
+  Avg EXCESS vs SPY:        -0.510%   t=-0.82 (naive, ignores overlap)
+  Long-only avg EXCESS:     -0.539%   t=-0.79
+  Avg hold (days):          3.4
+======================================================================
+BENCHMARK: SPY buy&hold 2026-02-03 -> 2026-08-12: +11.0%
+----------------------------------------------------------------------
+CAPPED PORTFOLIO EQUITY (realistic fills, 1% risk/trade, R realized at exit):
+  max 3 concurrent: 0.962x (-3.8%)  [6 taken, 538 skipped by cap]
+  max 5 concurrent: 0.963x (-3.7%)  [10 taken, 534 skipped by cap]
+  max 8 concurrent: 0.943x (-5.7%)  [15 taken, 529 skipped by cap]
+  ^ still optimistic: assumes every planned stop/target fills at its exact level,
+    no gaps through stops, no borrow cost on shorts, single 1-month signal regime.
+======================================================================
+Summary written to /home/user/rdt-trading-system/scratchpad/edge_summary.json
