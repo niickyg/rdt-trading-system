@@ -67,3 +67,6 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# operator session scratch (transient; final artifacts copied to data/operator_journal/research/)
+scratchpad/
