@@ -55,12 +55,12 @@ def sig_date(s):
     return s["generated_at"][:10]
 
 
-def eval_signal(sig, bars, days):
+def eval_signal(sig, bars, day_list, hold_days=HOLD_DAYS):
     """Return dict with outcome, r_multiple (gross), ret_pct (gross), hold_days, or None."""
     d0 = sig_date(sig)
     # first trading day on/after signal date
     idx = None
-    for i, day in enumerate(days):
+    for i, day in enumerate(day_list):
         if day >= d0:
             idx = i
             break
@@ -77,9 +77,9 @@ def eval_signal(sig, bars, days):
         return None
 
     outcome, exit_price, hold = "timeout", None, 0
-    end = min(idx + days, len(days))
+    end = min(idx + hold_days, len(day_list))
     for j in range(idx, end):
-        o, h, l, c = bars[days[j]]
+        o, h, l, c = bars[day_list[j]]
         hold = j - idx + 1
         if direction == "long":
             hit_stop = l <= stop
@@ -100,7 +100,7 @@ def eval_signal(sig, bars, days):
                 outcome, exit_price = "target", target
                 break
     if exit_price is None:
-        exit_price = bars[days[end - 1]][3]  # close of last day
+        exit_price = bars[day_list[end - 1]][3]  # close of last day
         hold = end - idx
 
     if direction == "long":
@@ -110,7 +110,7 @@ def eval_signal(sig, bars, days):
     r_mult = gross / risk
     ret_pct = gross / entry * 100.0
     return {"outcome": outcome, "r_gross": r_mult, "ret_gross_pct": ret_pct,
-            "hold": hold, "entry_idx": idx, "end_idx": min(idx + hold, len(days) - 1),
+            "hold": hold, "entry_idx": idx, "end_idx": min(idx + hold, len(day_list) - 1),
             "direction": direction}
 
 
@@ -144,6 +144,19 @@ def main():
     spy_bars, spy_days = bars_by_sym["SPY"], days_by_sym["SPY"]
 
     signals = json.load(open(SIGNALS))
+    # Dedupe: the scanner re-emits the same signal every scan (~60s), so identical
+    # (symbol, date, direction, entry, stop, target) rows are ONE tradeable signal.
+    seen, deduped = set(), []
+    for s in signals:
+        key = (s["symbol"], sig_date(s), s["direction"],
+               round(s.get("entry_price") or 0, 2), round(s.get("stop_price") or 0, 2),
+               round(s.get("target_price") or 0, 2))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(s)
+    print(f"Raw signals: {len(signals)}  ->  deduped distinct signals: {len(deduped)}")
+    signals = deduped
     covered = set(bars_by_sym) - {"SPY"}
     evald = [s for s in signals if s["symbol"] in covered]
 
