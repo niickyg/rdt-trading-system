@@ -515,18 +515,28 @@ class OldFilteredEngine(EnhancedBacktestEngine):
             return
 
         adjusted_shares = max(1, int(sizing.shares * position_mult))
-        required = adjusted_shares * entry_price
-        if required > self.capital:
+
+        # Apply the same transaction-cost model the parent engine uses on entry
+        entry_side = "buy" if direction == "long" else "sell"
+        fill_price = self._apply_slippage(entry_price, entry_side)
+        self.total_slippage_cost += abs(fill_price - entry_price) * adjusted_shares
+        commission = self._commission(adjusted_shares)
+
+        required = adjusted_shares * fill_price
+        if required + commission > self.capital:
             return
+
+        self.total_commission += commission
 
         trade = EnhancedTrade(
             symbol=symbol, direction=direction, entry_date=entry_date,
-            entry_price=entry_price, shares=adjusted_shares, remaining_shares=adjusted_shares,
+            entry_price=fill_price, shares=adjusted_shares, remaining_shares=adjusted_shares,
             stop_price=sizing.stop_price, original_stop=sizing.stop_price,
             target_price=sizing.target_price, rrs_at_entry=rrs, atr_at_entry=atr,
         )
+        trade.pnl -= commission
         self.positions[symbol] = trade
-        self.capital -= required
+        self.capital -= (required + commission)
 
 
 # ============================================================================
@@ -753,6 +763,8 @@ class WindowResult:
     signals_filtered: int = 0
     high_vix_days: int = 0
     filter_detail: str = ""
+    total_commission: float = 0.0
+    total_slippage_cost: float = 0.0
 
 
 def make_engine_kwargs(config: Dict) -> Dict:
@@ -802,6 +814,8 @@ def run_old_filtered(stock_data, spy_data, vix_data, sector_etf_data, start_date
         signals_generated=engine.signals_generated, signals_filtered=engine.signals_filtered_out,
         high_vix_days=len(engine.high_vix_days),
         filter_detail=f"VIX blocks: {engine.vix_blocks}, Sector adj: {engine.sector_adjustments}, Regime adj: {engine.regime_adjustments}",
+        total_commission=engine.total_commission,
+        total_slippage_cost=engine.total_slippage_cost,
     )
 
 
@@ -821,6 +835,8 @@ def run_rdt_filtered(stock_data, spy_data, vix_data, sector_etf_data, start_date
             f"MTF gate: {engine.mtf_gate_blocks}, VIX blocks: {engine.vix_blocks}, "
             f"Sector adj: {engine.sector_adjustments}, Regime adj: {engine.regime_adjustments}"
         ),
+        total_commission=engine.total_commission,
+        total_slippage_cost=engine.total_slippage_cost,
     )
 
 
@@ -857,6 +873,8 @@ def print_results(
     print("  C) RDT Filters  — Old Filters + SPY Hard Gate + 50/200 SMA + MTF Alignment")
     print()
     print("  NOTE: VWAP + First-Hour filters cannot be simulated with daily bars. Omitted.")
+    print("  NOTE: B and C now model transaction costs (5 bps slippage/fill + $0.005/share,")
+    print("        $1.00 min commission). Returns shown are NET of these costs.")
     print()
 
     # Per-window
@@ -980,6 +998,22 @@ def print_results(
     if total_signals_rdt > 0:
         pct = (total_filtered_rdt / total_signals_rdt) * 100
         print(f"  C) RDT Filters: {total_signals_rdt} signals → {total_filtered_rdt} filtered ({pct:.1f}%)")
+    print()
+
+    # Transaction cost drag (B and C model commissions + slippage; A is the
+    # frictionless baseline engine and is shown for reference only).
+    def cost_sum(results):
+        return (
+            sum(r.total_commission for r in results),
+            sum(r.total_slippage_cost for r in results),
+        )
+    oc_comm, oc_slip = cost_sum(old_filtered_results)
+    rc_comm, rc_slip = cost_sum(rdt_filtered_results)
+    print("-" * w)
+    print("ESTIMATED TRANSACTION COSTS (already deducted from B and C returns above)".center(w))
+    print("-" * w)
+    print(f"  B) Old Filters: commissions ${oc_comm:,.2f} + slippage ${oc_slip:,.2f} = ${oc_comm + oc_slip:,.2f} total")
+    print(f"  C) RDT Filters: commissions ${rc_comm:,.2f} + slippage ${rc_slip:,.2f} = ${rc_comm + rc_slip:,.2f} total")
     print()
 
     # Annualized estimates

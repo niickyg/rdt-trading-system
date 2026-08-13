@@ -157,6 +157,13 @@ class EnhancedBacktestEngine:
         use_time_stop: bool = True,
         max_holding_days: int = 10,  # Close if not profitable after X days
         stale_trade_days: int = 5,  # Close if price hasn't moved after X days
+
+        # Transaction cost model (honest net-of-cost backtesting)
+        # Defaults reflect realistic IBKR-style execution on liquid US equities.
+        # Set all three to 0 to reproduce the legacy frictionless behaviour.
+        commission_per_share: float = 0.005,  # IBKR ~ $0.005/share
+        min_commission: float = 1.0,          # IBKR $1.00 per-order minimum
+        slippage_bps: float = 5.0,            # 5 bps (0.05%) adverse slippage per fill
     ):
         self.initial_capital = initial_capital
         self.risk_limits = risk_limits or RiskLimits()
@@ -186,6 +193,13 @@ class EnhancedBacktestEngine:
         self.use_time_stop = use_time_stop
         self.max_holding_days = max_holding_days
         self.stale_trade_days = stale_trade_days
+
+        # Transaction costs
+        self.commission_per_share = commission_per_share
+        self.min_commission = min_commission
+        self.slippage_bps = slippage_bps
+        self.total_commission = 0.0
+        self.total_slippage_cost = 0.0
 
         self.rrs_calculator = RRSCalculator()
         self.position_sizer = PositionSizer(self.risk_limits)
@@ -219,6 +233,8 @@ class EnhancedBacktestEngine:
         self.breakeven_activations = 0
         self.scale_1_exits = 0
         self.scale_2_exits = 0
+        self.total_commission = 0.0
+        self.total_slippage_cost = 0.0
 
         # Get date range
         all_dates = list(spy_data.index.date)
@@ -401,6 +417,28 @@ class EnhancedBacktestEngine:
         else:
             return position.entry_price - target_distance
 
+    def _apply_slippage(self, price: float, side: str) -> float:
+        """Apply adverse slippage to a fill price.
+
+        Buys (entering longs / covering shorts) fill higher; sells (exiting
+        longs / opening shorts) fill lower. Models the real-world cost of
+        crossing the spread and moving the book, which the frictionless
+        legacy engine ignored.
+        """
+        if self.slippage_bps <= 0 or price <= 0:
+            return price
+        factor = self.slippage_bps / 10000.0
+        return price * (1 + factor) if side == "buy" else price * (1 - factor)
+
+    def _commission(self, shares: int) -> float:
+        """Per-order commission with a floor (IBKR-style)."""
+        shares = abs(int(shares))
+        if shares == 0:
+            return 0.0
+        if self.commission_per_share <= 0 and self.min_commission <= 0:
+            return 0.0
+        return max(self.min_commission, shares * self.commission_per_share)
+
     def _scale_out(
         self,
         position: EnhancedTrade,
@@ -418,18 +456,26 @@ class EnhancedBacktestEngine:
             # Would close entire position
             return
 
-        # Calculate P&L for scaled portion
+        # Apply slippage: exiting a long is a sell, exiting a short is a buy-to-cover
+        exit_side = "sell" if position.direction == "long" else "buy"
+        fill_price = self._apply_slippage(exit_price, exit_side)
+        self.total_slippage_cost += abs(fill_price - exit_price) * shares_to_sell
+        commission = self._commission(shares_to_sell)
+        self.total_commission += commission
+
+        # Calculate P&L for scaled portion (net of commission)
         if position.direction == "long":
-            pnl = (exit_price - position.entry_price) * shares_to_sell
+            pnl = (fill_price - position.entry_price) * shares_to_sell
         else:
-            pnl = (position.entry_price - exit_price) * shares_to_sell
+            pnl = (position.entry_price - fill_price) * shares_to_sell
+        pnl -= commission
 
         # Return capital
         self.capital += (position.entry_price * shares_to_sell) + pnl
         position.remaining_shares -= shares_to_sell
         position.pnl += pnl
 
-        logger.debug(f"{position.symbol}: Scaled out {shares_to_sell} shares at ${exit_price:.2f} ({reason}), P&L: ${pnl:.2f}")
+        logger.debug(f"{position.symbol}: Scaled out {shares_to_sell} shares at ${fill_price:.2f} ({reason}), P&L: ${pnl:.2f}")
 
     def _scan_for_signals(
         self,
@@ -523,15 +569,25 @@ class EnhancedBacktestEngine:
         if sizing.shares == 0:
             return
 
-        required = sizing.shares * entry_price
-        if required > self.capital:
+        # Apply slippage: entering a long is a buy, entering a short is a sell.
+        # Stop/target were sized off the signal price (the trade plan); the fill
+        # comes in slightly worse, which is what the P&L should reflect.
+        entry_side = "buy" if direction == "long" else "sell"
+        fill_price = self._apply_slippage(entry_price, entry_side)
+        self.total_slippage_cost += abs(fill_price - entry_price) * sizing.shares
+        commission = self._commission(sizing.shares)
+
+        required = sizing.shares * fill_price
+        if required + commission > self.capital:
             return
+
+        self.total_commission += commission
 
         trade = EnhancedTrade(
             symbol=symbol,
             direction=direction,
             entry_date=entry_date,
-            entry_price=entry_price,
+            entry_price=fill_price,
             shares=sizing.shares,
             remaining_shares=sizing.shares,
             stop_price=sizing.stop_price,
@@ -540,11 +596,13 @@ class EnhancedBacktestEngine:
             rrs_at_entry=rrs,
             atr_at_entry=atr
         )
+        # Charge the entry commission up front so trade P&L is fully net of costs
+        trade.pnl -= commission
 
         self.positions[symbol] = trade
-        self.capital -= required
+        self.capital -= (required + commission)
 
-        logger.debug(f"Entered {direction} {symbol} @ ${entry_price:.2f}, Stop: ${sizing.stop_price:.2f}, Target: ${sizing.target_price:.2f}")
+        logger.debug(f"Entered {direction} {symbol} @ ${fill_price:.2f}, Stop: ${sizing.stop_price:.2f}, Target: ${sizing.target_price:.2f}")
 
     def _close_position(
         self,
@@ -558,15 +616,24 @@ class EnhancedBacktestEngine:
             return
 
         trade = self.positions[symbol]
+
+        # Apply slippage: exiting a long is a sell, exiting a short is a buy-to-cover
+        exit_side = "sell" if trade.direction == "long" else "buy"
+        fill_price = self._apply_slippage(exit_price, exit_side)
+        self.total_slippage_cost += abs(fill_price - exit_price) * trade.remaining_shares
+        commission = self._commission(trade.remaining_shares)
+        self.total_commission += commission
+
         trade.exit_date = exit_date
-        trade.exit_price = exit_price
+        trade.exit_price = fill_price
         trade.exit_reason = reason
 
-        # Calculate remaining P&L
+        # Calculate remaining P&L (net of commission)
         if trade.direction == "long":
-            remaining_pnl = (exit_price - trade.entry_price) * trade.remaining_shares
+            remaining_pnl = (fill_price - trade.entry_price) * trade.remaining_shares
         else:
-            remaining_pnl = (trade.entry_price - exit_price) * trade.remaining_shares
+            remaining_pnl = (trade.entry_price - fill_price) * trade.remaining_shares
+        remaining_pnl -= commission
 
         trade.pnl += remaining_pnl
         trade.pnl_percent = (trade.pnl / (trade.entry_price * trade.shares)) * 100
