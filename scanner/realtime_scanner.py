@@ -1969,10 +1969,14 @@ Time: {get_eastern_time().strftime('%I:%M:%S %p ET')}
         """
         SPY Hard Gate: block signals that go against the SPY daily trend.
 
-        RDT "Market First" principle — the single most important rule:
-        - SPY BEARISH (below both 50 & 200 EMA): block ALL long signals
-        - SPY BULLISH (above both 50 & 200 EMA): block ALL short signals
-        - SPY MIXED (above one EMA, below other): allow both, add warning flag
+        RDT "Market First" principle — the single most important rule.
+        Shorts are only allowed in a CONFIRMED-bearish tape; otherwise blocked
+        (2026-08-14 operator change, backed by a 1,838-signal first-touch backtest
+        showing raw shorts have ~2% target-hit rate / -0.74R expectancy off-trend):
+        - SPY BEARISH (below both 50 & 200 EMA): block ALL long signals (shorts allowed)
+        - SPY BULLISH (above both 50 & 200 EMA): block ALL short signals (longs allowed)
+        - SPY MIXED (above one EMA, below other): block shorts, allow longs (warn)
+        - SPY UNKNOWN (no trend data): FAIL CLOSED — block everything
 
         This does NOT replace the existing advisory warnings in _apply_sector_filter;
         those are still applied to surviving signals for metadata.
@@ -1989,8 +1993,21 @@ Time: {get_eastern_time().strftime('%I:%M:%S %p ET')}
             return strong_rs, strong_rw
 
         if spy_daily_trend is None:
-            logger.warning("SPY GATE: No SPY trend data available — allowing all signals through")
-            return strong_rs, strong_rw
+            # FAIL CLOSED (changed 2026-08-14 by operator). Previously this allowed ALL
+            # signals through when SPY trend was unknown. An independent first-touch
+            # backtest of 1,838 historical raw signals against real IBKR prices showed
+            # SHORT signals (relative weakness) had a 2.3% target-hit rate and -0.74R
+            # expectancy — they lose money when not aligned with a confirmed-bearish
+            # market. Allowing counter-trend shorts through on missing SPY data (a real
+            # condition: get_spy_daily_trend depends on yfinance, which is flaky) was a
+            # fail-open safety gap. RDT "Market First": no market context => no trades.
+            n = len(strong_rs) + len(strong_rw)
+            if n:
+                logger.warning(
+                    f"SPY GATE: No SPY trend data available — FAILING CLOSED, "
+                    f"blocking all {n} signal(s) (no market context => no trades)"
+                )
+            return [], []
 
         trend = spy_daily_trend.get('daily_trend', 'mixed')
 
@@ -2029,15 +2046,26 @@ Time: {get_eastern_time().strftime('%I:%M:%S %p ET')}
                 )
 
         else:
-            # Mixed trend — allow both directions, flag them
+            # Mixed trend — allow LONGs (with caution flag), BLOCK SHORTs.
+            # (changed 2026-08-14 by operator) Only short a CONFIRMED-bearish market.
+            # The backtest above showed shorts are money-losers unless SPY is clearly
+            # bearish; a "mixed" tape (SPY above one of 50/200 EMA, below the other) is
+            # not confirmation of weakness, so counter-trend shorts are blocked here.
+            # Longs are retained because raw longs showed positive expectancy and RDT is
+            # structurally long-biased in non-bearish tapes.
+            if strong_rw:
+                blocked_symbols = [s.get('symbol', '?') for s in strong_rw]
+                logger.warning(
+                    f"SPY GATE: Blocked {len(strong_rw)} SHORT signal(s) — "
+                    f"SPY trend is MIXED (not confirmed bearish). "
+                    f"Blocked: {', '.join(blocked_symbols)}"
+                )
+                strong_rw = []
             logger.info(
                 f"SPY GATE: SPY trend is MIXED — allowing {len(strong_rs)} LONG "
-                f"and {len(strong_rw)} SHORT signal(s) with caution flag"
+                f"signal(s) with caution flag"
             )
             for s in strong_rs:
-                s['spy_gate_warning'] = True
-                s['spy_gate_reason'] = 'SPY trend is MIXED — use caution'
-            for s in strong_rw:
                 s['spy_gate_warning'] = True
                 s['spy_gate_reason'] = 'SPY trend is MIXED — use caution'
 
