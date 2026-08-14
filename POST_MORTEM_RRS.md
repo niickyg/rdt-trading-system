@@ -58,7 +58,40 @@ target (daily high/low), same-bar ambiguity → stop (conservative), timeout →
 mark-to-market. Costs modeled at ~$0.05/share round trip. Full script and outputs are
 referenced in the 2026-08-14 journal entry.
 
-<!-- RESULTS_PLACEHOLDER: filled in below once simulation completes -->
+**Dataset:** 1,838 of the 1,986 raw signals (45 of 48 symbols resolved to correct IBKR
+contracts; DD excluded for a wrong-contract mismatch, WEC/XEL not fetched). Signals were
+generated Feb 3 – Mar 5 2026; forward window is Feb–Mar 2026, a **rising market**
+(SPY +12.5% Feb→Aug; up over the evaluated windows too). Reproduce with the script
+referenced in the journal entry.
+
+**Headline (MAX_HOLD=10 trading days, same-bar ambiguity → stop, costs ~$0.05/sh RT):**
+
+| Slice | n | Target-hit (win) rate | Net expectancy | Profit factor |
+|-------|---|----------------------|----------------|---------------|
+| All signals | 1,838 | 60.3% | **+0.76 R** | 3.05 |
+| **Longs only** | 1,562 | **69.0%** | **+1.03 R** | 4.49 |
+| **Shorts only** | 276 | **2.3%** | **−0.74 R** | 0.075 |
+
+**Directional alpha test (hold 10d, no stop/target, vs SPY over the same dates):**
+- Longs: stock +1.97% vs SPY +0.57% → **+1.40% alpha**, 64% beat SPY.
+- Shorts: shorted names *rose* +2.39% while SPY was flat → **−2.35% alpha**, only 26% beat SPY.
+
+**What this does and does NOT prove:**
+- ✅ The SHORT side is a clear money-loser in a non-bearish tape (robust: 2.3% hit rate,
+  −0.74R, negative alpha, spread broadly across symbols). This *empirically validates the
+  design of the SPY "Market First" gate* — do not take counter-trend shorts.
+- ⚠️ The LONG edge is real *in this sample* (broad: median 87% win rate across 28 symbols)
+  **but is not beta-adjusted and coincides with a rising market.** The +1.4% "alpha"
+  controls for SPY *direction* but not for *beta magnitude* — high-beta momentum names
+  outrun SPY in an up-tape by construction. It cannot be distinguished from leveraged long
+  beta without a bear-market / multi-regime, beta-adjusted test. **No such test exists yet.**
+- ❌ This is NOT evidence the *deployed* (post-gate) system is profitable, and NOT evidence
+  it beats SPY buy-and-hold risk-adjusted. `signal_history.json` is a *raw pre-gate* log
+  (only 4/1,986 rows carry post-gate metadata), so this measures raw signal edge, not
+  realized performance. The bot still has no P&L ledger.
+
+**Action taken (2026-08-14):** Closed the SPY gate's fail-open holes — see journal entry
+`2026-08-14-first-honest-edge-measurement.md`.
 
 ## Guidance for future instances
 

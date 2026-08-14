@@ -1,0 +1,60 @@
+loaded 1986 signals, 46 price files: ['AIG', 'AMZN', 'BAC', 'BKR', 'BMY', 'C', 'CCI', 'CCL', 'CL', 'CMCSA', 'CMG', 'CSCO', 'CSX', 'D', 'DIS', 'DOW', 'DVN', 'EXC', 'FCX', 'GIS', 'HAL', 'KO', 'LOW', 'MDLZ', 'MO', 'MRK', 'MRNA', 'NEE', 'NKE', 'NOW', 'O', 'OXY', 'PEG', 'PEP', 'PFE', 'PPG', 'PYPL', 'ROST', 'SLB', 'SO', 'SPY', 'T', 'TFC', 'UBER', 'USB', 'VZ']
+
+===== MAX_HOLD=5 days, same-bar=STOP (conservative) (n=1838) =====
+  outcomes: target=622 stop=583 timeout=633
+  win rate (resolved only): 51.6%   (incl timeouts as non-win: 33.8%)
+  avg R:R structure: 2.00  -> breakeven win rate needed (gross): 33.4%
+  expectancy/trade:  gross +0.607R   net +0.565R
+  profit factor (net): 2.675
+  => at $250 risk/trade: net +141.16 $/trade, total over 1838 signals +259,455 $ (NOT a portfolio, see caveat)
+
+===== MAX_HOLD=10 days, same-bar=STOP (conservative) (n=1838) =====
+  outcomes: target=990 stop=651 timeout=197
+  win rate (resolved only): 60.3%   (incl timeouts as non-win: 53.9%)
+  avg R:R structure: 2.00  -> breakeven win rate needed (gross): 33.4%
+  expectancy/trade:  gross +0.804R   net +0.762R
+  profit factor (net): 3.052
+  => at $250 risk/trade: net +190.38 $/trade, total over 1838 signals +349,916 $ (NOT a portfolio, see caveat)
+  skipped: {'no_price_file': 148}
+
+=====   -> LONGS only (MH=10) (n=1562) =====
+  outcomes: target=985 stop=443 timeout=134
+  win rate (resolved only): 69.0%   (incl timeouts as non-win: 63.1%)
+  avg R:R structure: 2.00  -> breakeven win rate needed (gross): 33.4%
+  expectancy/trade:  gross +1.069R   net +1.027R
+  profit factor (net): 4.486
+  => at $250 risk/trade: net +256.85 $/trade, total over 1562 signals +401,192 $ (NOT a portfolio, see caveat)
+
+=====   -> SHORTS only (MH=10) (n=276) =====
+  outcomes: target=5 stop=208 timeout=63
+  win rate (resolved only): 2.3%   (incl timeouts as non-win: 1.8%)
+  avg R:R structure: 2.00  -> breakeven win rate needed (gross): 33.3%
+  expectancy/trade:  gross -0.697R   net -0.743R
+  profit factor (net): 0.075
+  => at $250 risk/trade: net -185.78 $/trade, total over 276 signals -51,276 $ (NOT a portfolio, see caveat)
+
+===== MAX_HOLD=10, same-bar=TARGET (optimistic bound) (n=1838) =====
+  outcomes: target=990 stop=651 timeout=197
+  win rate (resolved only): 60.3%   (incl timeouts as non-win: 53.9%)
+  avg R:R structure: 2.00  -> breakeven win rate needed (gross): 33.4%
+  expectancy/trade:  gross +0.804R   net +0.762R
+  profit factor (net): 3.052
+  => at $250 risk/trade: net +190.38 $/trade, total over 1838 signals +349,916 $ (NOT a portfolio, see caveat)
+
+===== MAX_HOLD=20 days, same-bar=STOP (conservative) (n=1838) =====
+  outcomes: target=1073 stop=761 timeout=4
+  win rate (resolved only): 58.5%   (incl timeouts as non-win: 58.4%)
+  avg R:R structure: 2.00  -> breakeven win rate needed (gross): 33.4%
+  expectancy/trade:  gross +0.753R   net +0.711R
+  profit factor (net): 2.648
+  => at $250 risk/trade: net +177.70 $/trade, total over 1838 signals +326,609 $ (NOT a portfolio, see caveat)
+
+===== DIRECTIONAL ALPHA TEST (hold 10d, no stop/target) =====
+  LONGs (n=1562): mean directional stock move +1.97%, SPY move +0.57%, ALPHA +1.40%  (64% beat SPY)
+  SHORTs (n=276): mean directional stock move -2.39%, SPY move -0.04%, ALPHA -2.35%  (26% beat SPY)
+  interpretation: alpha>0 for BOTH sides = real relative-strength edge; long alpha>0 & short alpha<0 = just market beta.
+
+===== SPY BUY & HOLD BENCHMARK =====
+  SPY 2026-02-03 close: 689.53
+  SPY 2026-08-14 close: 775.82 (from full-year fetch)
+  buy-and-hold Feb 3 -> Aug 14: +12.51%  (= +3,129 on $25k)
