@@ -42,6 +42,12 @@ logger.add(sys.stderr, level="WARNING")
 
 from backtesting.engine_enhanced import EnhancedBacktestEngine, EnhancedBacktestResult
 from backtesting.data_loader import DataLoader
+from backtesting.costs import (
+    DEFAULT_COST_MODEL,
+    total_trade_costs,
+    is_stop_exit,
+    spy_buy_and_hold_return,
+)
 from risk.models import RiskLimits
 from risk.risk_manager import SECTOR_MAP
 from scanner.sector_filter import SECTOR_ETF_MAP
@@ -843,6 +849,7 @@ def print_results(
     baseline_results: List[WindowResult],
     old_filtered_results: List[WindowResult],
     rdt_filtered_results: List[WindowResult],
+    spy_data: Optional[pd.DataFrame] = None,
 ):
     w = 120
 
@@ -928,6 +935,24 @@ def print_results(
         max_dd = max((r.result.max_drawdown for r in results), default=0)
         worst_day = min((get_largest_daily_loss(r.result) for r in results), default=0)
         trading_days = sum(len(r.result.equity_curve) for r in results)
+        # Honest friction: commissions + slippage the frictionless engine ignores.
+        total_costs = total_trade_costs(all_trades)
+        net_return = total_ret - total_costs
+        # Net profit factor: subtract per-trade friction from each trade's P&L.
+        net_wins = 0.0
+        net_losses = 0.0
+        for t in all_trades:
+            cost = DEFAULT_COST_MODEL.round_trip_cost(
+                getattr(t, "entry_price", 0.0), getattr(t, "exit_price", 0.0),
+                getattr(t, "shares", 0) or 0,
+                is_stop_exit=is_stop_exit(getattr(t, "exit_reason", None)),
+            )
+            net_pnl = t.pnl - cost
+            if net_pnl > 0:
+                net_wins += net_pnl
+            else:
+                net_losses += abs(net_pnl)
+        net_pf = net_wins / net_losses if net_losses > 0 else float('inf')
         return {
             "total_return": total_ret,
             "total_return_pct": total_ret / INITIAL_CAPITAL * 100,
@@ -937,6 +962,10 @@ def print_results(
             "max_drawdown": max_dd,
             "worst_day": worst_day,
             "trading_days": trading_days,
+            "total_costs": total_costs,
+            "net_return": net_return,
+            "net_return_pct": net_return / INITIAL_CAPITAL * 100,
+            "net_profit_factor": net_pf,
         }
 
     ba = agg(baseline_results)
@@ -959,11 +988,14 @@ def print_results(
         elif fmt == "int":
             return f"  {label:<28} {'{:>15d}'.format(int(bv))} {'{:>15d}'.format(int(ov))} {'{:>15d}'.format(int(rv))} {'{:>+11d}'.format(int(d_ba))} {'{:>+11d}'.format(int(d_ca))}"
 
-    print(agg_row("Total Return ($)", ba["total_return"], oa["total_return"], ra["total_return"], "dollar"))
-    print(agg_row("Total Return (%)", ba["total_return_pct"], oa["total_return_pct"], ra["total_return_pct"], "pct"))
+    print(agg_row("Gross Return ($)", ba["total_return"], oa["total_return"], ra["total_return"], "dollar"))
+    print(agg_row("Est. Costs ($)", -ba["total_costs"], -oa["total_costs"], -ra["total_costs"], "dollar"))
+    print(agg_row("NET Return ($)", ba["net_return"], oa["net_return"], ra["net_return"], "dollar"))
+    print(agg_row("NET Return (%)", ba["net_return_pct"], oa["net_return_pct"], ra["net_return_pct"], "pct"))
     print(agg_row("Total Trades", ba["total_trades"], oa["total_trades"], ra["total_trades"], "int"))
     print(agg_row("Win Rate", ba["win_rate"], oa["win_rate"], ra["win_rate"], "pct"))
-    print(agg_row("Profit Factor", ba["profit_factor"], oa["profit_factor"], ra["profit_factor"], "float"))
+    print(agg_row("Profit Factor (gross)", ba["profit_factor"], oa["profit_factor"], ra["profit_factor"], "float"))
+    print(agg_row("Profit Factor (net)", ba["net_profit_factor"], oa["net_profit_factor"], ra["net_profit_factor"], "float"))
     print(agg_row("Max Drawdown ($)", ba["max_drawdown"], oa["max_drawdown"], ra["max_drawdown"], "dollar"))
     print(agg_row("Worst Day Loss ($)", ba["worst_day"], oa["worst_day"], ra["worst_day"], "dollar"))
     print()
@@ -990,10 +1022,44 @@ def print_results(
 
     for label, a in [("A) Baseline", ba), ("B) Old Filters", oa), ("C) RDT Filters", ra)]:
         if a["trading_days"] > 0:
-            daily = a["total_return"] / INITIAL_CAPITAL / a["trading_days"]
+            daily = a["net_return"] / INITIAL_CAPITAL / a["trading_days"]
             annual = daily * 252 * 100
-            print(f"  {label:<20} {annual:>8.1f}% annualized  (from {a['trading_days']} trading days)")
+            print(f"  {label:<20} {annual:>8.1f}% annualized NET  (from {a['trading_days']} trading days)")
     print()
+
+    # ------------------------------------------------------------------ #
+    # Benchmark: SPY buy-and-hold over the same span. The mission is to beat
+    # this, net of honest costs — not merely to be positive.
+    # ------------------------------------------------------------------ #
+    if spy_data is not None and len(spy_data) > 1:
+        close_col = 'Close' if 'Close' in spy_data.columns else 'close'
+        span_start = min((r.result.start_date for r in rdt_filtered_results if r.result.start_date), default=None)
+        span_end = max((r.result.end_date for r in rdt_filtered_results if r.result.end_date), default=None)
+        spy_span = spy_data
+        try:
+            if span_start is not None and span_end is not None:
+                spy_span = spy_data[(spy_data.index.date >= span_start) & (spy_data.index.date <= span_end)]
+        except Exception:
+            spy_span = spy_data
+        if len(spy_span) > 1:
+            first_close = float(spy_span[close_col].iloc[0])
+            last_close = float(spy_span[close_col].iloc[-1])
+            bh_dollars = spy_buy_and_hold_return(first_close, last_close, INITIAL_CAPITAL)
+            bh_pct = bh_dollars / INITIAL_CAPITAL * 100
+            print("-" * w)
+            print("BENCHMARK: SPY BUY-AND-HOLD (the bar to beat)".center(w))
+            print("-" * w)
+            print()
+            print(f"  SPY {first_close:.2f} -> {last_close:.2f} over the backtest span")
+            print(f"  Buy-and-hold ${INITIAL_CAPITAL:,.0f}: ${bh_dollars:,.2f} ({bh_pct:+.2f}%)")
+            print()
+            print(f"  {'Strategy':<20} {'NET $':>14} {'NET %':>10} {'vs SPY B&H':>16}")
+            for label, a in [("A) Baseline", ba), ("B) Old Filters", oa), ("C) RDT Filters", ra)]:
+                delta = a["net_return"] - bh_dollars
+                verdict = "BEATS" if delta > 0 else "loses to"
+                print(f"  {label:<20} {a['net_return']:>14,.2f} {a['net_return_pct']:>9.2f}% "
+                      f"{verdict:>9} SPY ({delta:>+,.2f})")
+            print()
 
     # Final verdict
     print("=" * w)
@@ -1002,15 +1068,15 @@ def print_results(
     print()
 
     best_label = "A) Baseline"
-    best_return = ba["total_return"]
-    if oa["total_return"] > best_return:
+    best_return = ba["net_return"]
+    if oa["net_return"] > best_return:
         best_label = "B) Old Filters"
-        best_return = oa["total_return"]
-    if ra["total_return"] > best_return:
+        best_return = oa["net_return"]
+    if ra["net_return"] > best_return:
         best_label = "C) RDT Filters"
-        best_return = ra["total_return"]
+        best_return = ra["net_return"]
 
-    print(f"  Highest Total Return: {best_label} (${best_return:,.2f})")
+    print(f"  Highest NET Return (after costs): {best_label} (${best_return:,.2f})")
     print()
 
     # Risk-adjusted (return / max drawdown)
@@ -1112,7 +1178,7 @@ def main():
         old_filtered_results.append(ol)
         rdt_filtered_results.append(rd)
 
-    print_results(baseline_results, old_filtered_results, rdt_filtered_results)
+    print_results(baseline_results, old_filtered_results, rdt_filtered_results, spy_data=spy_data)
 
 
 if __name__ == "__main__":
