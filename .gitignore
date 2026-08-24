@@ -67,3 +67,6 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# Operator journal runtime market-data cache (not source)
+data/operator_journal/_datacache/
