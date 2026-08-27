@@ -42,6 +42,7 @@ logger.add(sys.stderr, level="WARNING")
 
 from backtesting.engine_enhanced import EnhancedBacktestEngine, EnhancedBacktestResult
 from backtesting.data_loader import DataLoader
+from backtesting.costs import TransactionCostModel, spy_buy_and_hold_return
 from risk.models import RiskLimits
 from risk.risk_manager import SECTOR_MAP
 from scanner.sector_filter import SECTOR_ETF_MAP
@@ -52,6 +53,12 @@ from scanner.sector_filter import SECTOR_ETF_MAP
 # ============================================================================
 
 INITIAL_CAPITAL = 25000.0
+
+# Honest transaction costs (commission + slippage) applied to every fill.
+# Previously ALL results in this script were reported gross of costs, which
+# flattered every configuration. Set to None only to reproduce the old
+# cost-free numbers for comparison.
+COST_MODEL = TransactionCostModel()
 DATA_DAYS = 730  # 2 years
 
 WATCHLIST = [
@@ -764,6 +771,7 @@ def make_engine_kwargs(config: Dict) -> Dict:
     return {
         "initial_capital": INITIAL_CAPITAL,
         "risk_limits": risk_limits,
+        "cost_model": COST_MODEL,
         "rrs_threshold": config["rrs_threshold"],
         "max_positions": config["max_positions"],
         "use_relaxed_criteria": True,
@@ -843,6 +851,7 @@ def print_results(
     baseline_results: List[WindowResult],
     old_filtered_results: List[WindowResult],
     rdt_filtered_results: List[WindowResult],
+    spy_data: Optional[pd.DataFrame] = None,
 ):
     w = 120
 
@@ -928,6 +937,7 @@ def print_results(
         max_dd = max((r.result.max_drawdown for r in results), default=0)
         worst_day = min((get_largest_daily_loss(r.result) for r in results), default=0)
         trading_days = sum(len(r.result.equity_curve) for r in results)
+        total_costs = sum(getattr(r.result, "total_costs", 0.0) for r in results)
         return {
             "total_return": total_ret,
             "total_return_pct": total_ret / INITIAL_CAPITAL * 100,
@@ -937,6 +947,7 @@ def print_results(
             "max_drawdown": max_dd,
             "worst_day": worst_day,
             "trading_days": trading_days,
+            "total_costs": total_costs,
         }
 
     ba = agg(baseline_results)
@@ -966,6 +977,9 @@ def print_results(
     print(agg_row("Profit Factor", ba["profit_factor"], oa["profit_factor"], ra["profit_factor"], "float"))
     print(agg_row("Max Drawdown ($)", ba["max_drawdown"], oa["max_drawdown"], ra["max_drawdown"], "dollar"))
     print(agg_row("Worst Day Loss ($)", ba["worst_day"], oa["worst_day"], ra["worst_day"], "dollar"))
+    print(agg_row("Transaction Costs ($)", ba["total_costs"], oa["total_costs"], ra["total_costs"], "dollar"))
+    cost_note = "included in returns above" if COST_MODEL is not None else "DISABLED — returns are gross"
+    print(f"  (Total Return is NET of transaction costs; costs {cost_note})")
     print()
 
     # Signal filtering summary
@@ -993,6 +1007,38 @@ def print_results(
             daily = a["total_return"] / INITIAL_CAPITAL / a["trading_days"]
             annual = daily * 252 * 100
             print(f"  {label:<20} {annual:>8.1f}% annualized  (from {a['trading_days']} trading days)")
+    print()
+
+    # ------------------------------------------------------------------
+    # SPY BUY-AND-HOLD BENCHMARK — the real bar (operator mandate).
+    # A strategy that does not beat simply holding SPY over the same window,
+    # net of costs, has no reason to exist.
+    # ------------------------------------------------------------------
+    print("-" * w)
+    print("SPY BUY-AND-HOLD BENCHMARK (the bar to beat)".center(w))
+    print("-" * w)
+    print()
+    if spy_data is not None:
+        all_dates = sorted(spy_data.index.date)
+        # Use the actual span the strategies traded across the walk-forward.
+        tested_starts = [r.start_date for r in baseline_results if r.start_date]
+        tested_ends = [r.end_date for r in baseline_results if r.end_date]
+        bench_start = min(tested_starts) if tested_starts else all_dates[0]
+        bench_end = max(tested_ends) if tested_ends else all_dates[-1]
+        spy_ret = spy_buy_and_hold_return(spy_data, bench_start, bench_end)
+        spy_dollars = INITIAL_CAPITAL * spy_ret
+        print(f"  SPY buy-and-hold {bench_start} → {bench_end}: "
+              f"{spy_ret*100:+.2f}%  (${spy_dollars:+,.2f} on ${INITIAL_CAPITAL:,.0f})")
+        print(f"    NOTE: the walk-forward is NOT continuously invested (windows have gaps and")
+        print(f"    idle cash), so this is an approximate, favorable-to-the-strategy comparison.")
+        print()
+        for label, a in [("A) Baseline", ba), ("B) Old Filters", oa), ("C) RDT Filters", ra)]:
+            delta = a["total_return"] - spy_dollars
+            verdict = "BEATS SPY" if delta > 0 else "loses to SPY"
+            print(f"  {label:<20} net ${a['total_return']:>+12,.2f}  vs SPY ${spy_dollars:>+12,.2f}  "
+                  f"→ {verdict} by ${abs(delta):,.2f}")
+    else:
+        print("  (SPY data unavailable — benchmark not computed)")
     print()
 
     # Final verdict
@@ -1112,7 +1158,7 @@ def main():
         old_filtered_results.append(ol)
         rdt_filtered_results.append(rd)
 
-    print_results(baseline_results, old_filtered_results, rdt_filtered_results)
+    print_results(baseline_results, old_filtered_results, rdt_filtered_results, spy_data=spy_data)
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ from shared.indicators.rrs import (
     check_daily_strength_relaxed,
     check_daily_weakness_relaxed
 )
+from backtesting.costs import TransactionCostModel
 
 
 @dataclass
@@ -84,6 +85,7 @@ class EnhancedBacktestResult:
     scale_2_exits: int = 0
     avg_mfe: float = 0  # Average max favorable excursion
     avg_mae: float = 0  # Average max adverse excursion
+    total_costs: float = 0  # Total transaction costs (commission + slippage)
 
     trades: List[EnhancedTrade] = field(default_factory=list)
     equity_curve: List[Dict] = field(default_factory=list)
@@ -112,7 +114,8 @@ class EnhancedBacktestResult:
             "trades_trailing_stopped": self.trades_trailing_stopped,
             "breakeven_activations": self.breakeven_activations,
             "avg_mfe": self.avg_mfe,
-            "avg_mae": self.avg_mae
+            "avg_mae": self.avg_mae,
+            "total_costs": self.total_costs
         }
 
 
@@ -157,9 +160,13 @@ class EnhancedBacktestEngine:
         use_time_stop: bool = True,
         max_holding_days: int = 10,  # Close if not profitable after X days
         stale_trade_days: int = 5,  # Close if price hasn't moved after X days
+
+        # Transaction costs (None => cost-free, preserves legacy behavior)
+        cost_model: Optional[TransactionCostModel] = None,
     ):
         self.initial_capital = initial_capital
         self.risk_limits = risk_limits or RiskLimits()
+        self.cost_model = cost_model
 
         # Entry params
         self.rrs_threshold = rrs_threshold
@@ -201,6 +208,16 @@ class EnhancedBacktestEngine:
         self.breakeven_activations = 0
         self.scale_1_exits = 0
         self.scale_2_exits = 0
+        self.total_costs = 0.0
+
+    def _charge_costs(self, shares: float, price: float) -> float:
+        """Apply transaction costs for a single fill, track total, return cost."""
+        if not self.cost_model:
+            return 0.0
+        cost = self.cost_model.fill_cost(shares, price)
+        self.capital -= cost
+        self.total_costs += cost
+        return cost
 
     def run(
         self,
@@ -219,6 +236,7 @@ class EnhancedBacktestEngine:
         self.breakeven_activations = 0
         self.scale_1_exits = 0
         self.scale_2_exits = 0
+        self.total_costs = 0.0
 
         # Get date range
         all_dates = list(spy_data.index.date)
@@ -429,6 +447,10 @@ class EnhancedBacktestEngine:
         position.remaining_shares -= shares_to_sell
         position.pnl += pnl
 
+        # Exit transaction cost on the scaled-out shares
+        exit_cost = self._charge_costs(shares_to_sell, exit_price)
+        position.pnl -= exit_cost
+
         logger.debug(f"{position.symbol}: Scaled out {shares_to_sell} shares at ${exit_price:.2f} ({reason}), P&L: ${pnl:.2f}")
 
     def _scan_for_signals(
@@ -544,6 +566,10 @@ class EnhancedBacktestEngine:
         self.positions[symbol] = trade
         self.capital -= required
 
+        # Entry transaction cost (reduces trade P&L so win/loss stats stay honest)
+        entry_cost = self._charge_costs(sizing.shares, entry_price)
+        trade.pnl -= entry_cost
+
         logger.debug(f"Entered {direction} {symbol} @ ${entry_price:.2f}, Stop: ${sizing.stop_price:.2f}, Target: ${sizing.target_price:.2f}")
 
     def _close_position(
@@ -569,15 +595,20 @@ class EnhancedBacktestEngine:
             remaining_pnl = (trade.entry_price - exit_price) * trade.remaining_shares
 
         trade.pnl += remaining_pnl
+
+        # Return capital
+        self.capital += (trade.entry_price * trade.remaining_shares) + remaining_pnl
+
+        # Exit transaction cost on the remaining shares (after capital returned)
+        exit_cost = self._charge_costs(trade.remaining_shares, exit_price)
+        trade.pnl -= exit_cost
+
         trade.pnl_percent = (trade.pnl / (trade.entry_price * trade.shares)) * 100
 
         if isinstance(trade.entry_date, datetime):
             trade.holding_days = (exit_date - trade.entry_date.date()).days
         else:
             trade.holding_days = (exit_date - trade.entry_date).days
-
-        # Return capital
-        self.capital += (trade.entry_price * trade.remaining_shares) + remaining_pnl
 
         self.trades.append(trade)
         del self.positions[symbol]
@@ -618,6 +649,7 @@ class EnhancedBacktestEngine:
                 max_drawdown_pct=0,
                 sharpe_ratio=0,
                 avg_holding_days=0,
+                total_costs=self.total_costs,
                 trades=self.trades,
                 equity_curve=self.equity_curve
             )
@@ -683,6 +715,7 @@ class EnhancedBacktestEngine:
             scale_2_exits=self.scale_2_exits,
             avg_mfe=avg_mfe,
             avg_mae=avg_mae,
+            total_costs=self.total_costs,
             trades=self.trades,
             equity_curve=self.equity_curve
         )
