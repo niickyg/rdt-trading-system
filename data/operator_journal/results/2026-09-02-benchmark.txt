@@ -1,0 +1,48 @@
+Honest benchmark — RRS strategy vs SPY buy-and-hold, net of costs
+Generated: 2026-09-02T13:03:20Z by operator genesis run
+Command: scripts/honest_benchmark.py --days 730 [--rrs-threshold X]
+Window: 2024-09-02 to 2026-09-02 (daily-bar EnhancedBacktestEngine, 20 mega-cap watchlist)
+Data source: yfinance Ticker.history via agent proxy (real download, 20/20 symbols)
+
+===== rrs_threshold=1.75 =====
+Loading data 2024-09-02 → 2026-09-02 ...
+============================================================
+HONEST BENCHMARK — strategy vs SPY buy-and-hold (net of costs)
+============================================================
+  Strategy gross return : +4.54%
+  Transaction costs     : 3.21%  (191 trades)
+  Strategy NET return   : +1.33%
+  SPY buy-and-hold NET  : +41.12%
+------------------------------------------------------------
+  Edge vs SPY           : -39.79%
+  VERDICT               : FAIL ❌
+============================================================
+
+===== rrs_threshold=2.0 =====
+Loading data 2024-09-02 → 2026-09-02 ...
+============================================================
+HONEST BENCHMARK — strategy vs SPY buy-and-hold (net of costs)
+============================================================
+  Strategy gross return : +4.60%
+  Transaction costs     : 2.11%  (124 trades)
+  Strategy NET return   : +2.49%
+  SPY buy-and-hold NET  : +41.12%
+------------------------------------------------------------
+  Edge vs SPY           : -38.63%
+  VERDICT               : FAIL ❌
+============================================================
+
+===== rrs_threshold=2.5 =====
+Loading data 2024-09-02 → 2026-09-02 ...
+============================================================
+HONEST BENCHMARK — strategy vs SPY buy-and-hold (net of costs)
+============================================================
+  Strategy gross return : +4.63%
+  Transaction costs     : 1.15%  (67 trades)
+  Strategy NET return   : +3.47%
+  SPY buy-and-hold NET  : +41.12%
+------------------------------------------------------------
+  Edge vs SPY           : -37.65%
+  VERDICT               : FAIL ❌
+============================================================
+
