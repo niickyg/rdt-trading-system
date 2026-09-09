@@ -167,7 +167,13 @@ def build_trades(signals, prices):
     return trades, skipped_no_px
 
 
-def portfolio_sim(trades):
+def portfolio_sim(trades, order_key=None):
+    """Sequential portfolio. order_key controls how competing signals are ranked
+    (default = entry date only, i.e. arbitrary arrival order for same-day signals).
+    order_key must use only information known at signal time (no look-ahead)."""
+    if order_key is None:
+        order_key = lambda t: (t["entry_dt"],)
+    trades = sorted(trades, key=order_key)
     equity = START_EQUITY
     open_positions = []  # list of (exit_dt, pnl)
     curve = []
@@ -280,6 +286,26 @@ def main():
         bh_ret, bs, be = bh
         L.append(f"- SPY buy-and-hold {bs}..{be}: {bh_ret:+.2%}")
         L.append(f"- **Strategy minus SPY: {port_ret - bh_ret:+.2%}**")
+    L.append("")
+    # ---- Selection-policy comparison (competing signals at the position cap) ----
+    # The live bot enforces the position cap first-come-first-served (arrival order),
+    # with NO cross-signal ranking. These policies use only signal-time info.
+    by_entry = lambda t: (t["entry_dt"],)
+    by_rrs = lambda t: (t["entry_dt"], -abs(t.get("rrs") or 0.0))
+    longs = [t for t in trades if t["direction"] == "long"]
+    pol = [
+        ("Arbitrary arrival order (current bot behavior)", trades, by_entry),
+        ("RRS-priority (strongest RRS gets the slot)", trades, by_rrs),
+        ("RRS-priority + long-only", longs, by_rrs),
+    ]
+    L.append("## Selection policy at the position cap (why arrival order matters)")
+    L.append(f"On {max((sum(1 for t in trades if t['entry_dt']==e) for e in set(t['entry_dt'] for t in trades)))} "
+             f"same-day signals vs a {MAX_CONCURRENT}-slot cap, *which* signals get taken dominates the result:")
+    for name, ts, key in pol:
+        eq, _ = portfolio_sim([dict(t) for t in ts], order_key=key)
+        L.append(f"- {name}: {(eq-START_EQUITY)/START_EQUITY:+.2%}")
+    if bh:
+        L.append(f"- (SPY buy-and-hold same window: {bh[0]:+.2%})")
     L.append("")
     verdict = "BEATS" if (bh and port_ret > bh[0]) else "DOES NOT BEAT"
     L.append(f"## Verdict: strategy {verdict} SPY buy-and-hold over this window "
