@@ -67,3 +67,6 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# Backtest data cache (downloaded market data, regenerated on demand)
+data/backtest_cache/
