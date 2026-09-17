@@ -17,6 +17,9 @@ data/trades/
 data/historical/
 *.csv
 
+# Backtest data cache (regenerable downloaded market data)
+data/backtest_cache/
+
 # Database
 *.db
 *.sqlite
