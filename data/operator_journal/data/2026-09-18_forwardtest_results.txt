@@ -1,0 +1,19 @@
+Unique trade ideas: 601 across 48 symbols
+Signal date span: 2026-02-03 .. 2026-03-05  | bar window 2026-01-31..2026-04-04
+Costs: 10.0 bps round-trip | max hold 10 sessions
+
+Fetched bars for 49/49 symbols
+
+============================================================
+Evaluated trades: 577  (skipped 24)
+Outcomes: {'stop': 203, 'target': 329, 'timeout': 45}
+Win rate (net>0): 64.5%
+Avg net return/trade:   +1.381%
+Median net return/trade:+2.405%
+Avg gross return/trade: +1.481%
+Sum of net returns (equal-$ book): +796.77%
+Best/Worst: +8.38% / -7.84%
+
+SPY buy-and-hold over window: -5.69%  (695.41 -> 655.83)
+Profit factor (net): 2.63
+============================================================
