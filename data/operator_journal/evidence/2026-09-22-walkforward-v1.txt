@@ -1,0 +1,153 @@
+
+====================================================================================================
+                             RDT TRADING SYSTEM - WALK-FORWARD BACKTEST                             
+               Baseline (no filters) vs Filtered (VIX + Sector RS + Regime-Adaptive)                
+====================================================================================================
+
+Loading data for 30 stocks + SPY + 11 sector ETFs + VIX...
+  Date range: 2025-07-24 to 2026-09-22
+
+  Downloading SPY...
+  SPY: 292 trading days
+  Downloading ^VIX...
+  ^VIX: 295 trading days
+  Downloading 11 sector ETFs...
+  Sector ETFs loaded: 11/11
+  Downloading 30 stocks...
+    10/30 loaded...
+    20/30 loaded...
+    30/30 loaded...
+  Stocks loaded: 30/30
+
+Data loading took 18.1s
+
+Total trading dates available: 292
+Date range: 2025-07-24 to 2026-09-21
+
+--- Window 1: days 91-180 (2025-12-02 to 2026-04-13) ---
+  Running Baseline...
+    28 trades, 57.1% WR, 1.75% return (6.9s)
+  Running Filtered...
+    35 trades, 57.1% WR, 1.74% return (7.5s)
+
+--- Window 2: days 181-270 (2026-04-14 to 2026-08-20) ---
+  Running Baseline...
+    47 trades, 57.4% WR, 3.99% return (7.0s)
+  Running Filtered...
+    108 trades, 43.5% WR, 0.93% return (7.2s)
+
+--- Window 3: days 271-365 (2026-08-21 to 2026-09-21) ---
+  Running Baseline...
+    10 trades, 30.0% WR, -0.99% return (1.6s)
+  Running Filtered...
+    30 trades, 36.7% WR, 0.29% return (1.7s)
+
+
+====================================================================================================
+                            WALK-FORWARD BACKTEST: BASELINE vs FILTERED                             
+             Capital: $25,000 | Engine: Config C (Scaled Exits, 1.5x Stop, 2.0x Target)             
+====================================================================================================
+
+  NOTE: First-hour skip cannot be simulated with daily bars. Omitted from this test.
+        In live trading, the first-hour filter avoids choppy opening-range signals.
+
+----------------------------------------------------------------------------------------------------
+                                  Window 1: 2025-12-02 to 2026-04-13                                
+----------------------------------------------------------------------------------------------------
+  Metric                                 Baseline         Filtered            Delta
+  ------------------------------------------------------------------------------------------------
+  Total Return ($)               $      437.19 $      435.57 $       -1.62
+  Total Return (%)                       1.75%         1.74%        -0.01%
+  Win Rate                              57.14%        57.14%        +0.00%
+  Profit Factor                           1.68          1.51         -0.18
+  Sharpe Ratio                            0.22          0.18         -0.04
+  Max Drawdown ($)               $      385.26 $      381.93 $       -3.32
+  Max Drawdown (%)                       1.50%         1.48%        -0.02%
+  Total Trades                              28            35            +7
+  Worst Single Day               $     -262.71 $     -262.71 $       +0.00
+
+  Filter Stats: 2606 signals generated, 2571 filtered out (98.7%)
+  High VIX days (>=25): 14
+  VIX blocks: 0, Sector adj: 1681, Regime adj: 0
+
+----------------------------------------------------------------------------------------------------
+                                  Window 2: 2026-04-14 to 2026-08-20                                
+----------------------------------------------------------------------------------------------------
+  Metric                                 Baseline         Filtered            Delta
+  ------------------------------------------------------------------------------------------------
+  Total Return ($)               $      997.98 $      232.21 $     -765.76
+  Total Return (%)                       3.99%         0.93%        -3.06%
+  Win Rate                              57.45%        43.52%       -13.93%
+  Profit Factor                           1.86          1.08         -0.78
+  Sharpe Ratio                            0.23         -0.01         -0.24
+  Max Drawdown ($)               $      496.82 $      936.78 $     +439.97
+  Max Drawdown (%)                       1.90%         3.60%        +1.70%
+  Total Trades                              47           108           +61
+  Worst Single Day               $     -286.41 $     -259.23 $      +27.18
+
+  Filter Stats: 2345 signals generated, 2237 filtered out (95.4%)
+  High VIX days (>=25): 0
+  VIX blocks: 0, Sector adj: 1771, Regime adj: 91
+
+----------------------------------------------------------------------------------------------------
+                                  Window 3: 2026-08-21 to 2026-09-21                                
+----------------------------------------------------------------------------------------------------
+  Metric                                 Baseline         Filtered            Delta
+  ------------------------------------------------------------------------------------------------
+  Total Return ($)               $     -247.97 $       73.64 $     +321.61
+  Total Return (%)                      -0.99%         0.29%        +1.29%
+  Win Rate                              30.00%        36.67%        +6.67%
+  Profit Factor                           0.37          1.10         +0.73
+  Sharpe Ratio                           -0.33          0.04         +0.37
+  Max Drawdown ($)               $      325.81 $      418.23 $      +92.42
+  Max Drawdown (%)                       1.30%         1.67%        +0.37%
+  Total Trades                              10            30           +20
+  Worst Single Day               $     -164.07 $     -146.31 $      +17.76
+
+  Filter Stats: 525 signals generated, 495 filtered out (94.3%)
+  High VIX days (>=25): 0
+  VIX blocks: 0, Sector adj: 375, Regime adj: 28
+
+====================================================================================================
+                              AGGREGATE RESULTS (All Windows Combined)                              
+====================================================================================================
+
+  Metric                                 Baseline         Filtered            Delta
+  ------------------------------------------------------------------------------------------------
+  Total Return ($)               $    1,187.19 $      741.42 $     -445.78
+  Total Return (%)                       4.75%         2.97%        -1.78%
+  Total Trades                              85           173           +88
+  Win Rate                              54.12%        45.09%        -9.03%
+  Profit Factor                           1.54          1.17         -0.37
+  Max Single-Window Drawdown     $      496.82 $      936.78 $     +439.97
+  Worst Single Day Loss          $     -286.41 $     -262.71 $      +23.70
+
+  Signals: 5476 generated, 5303 filtered out (96.8%)
+  Total high VIX days (>=25): 14
+
+----------------------------------------------------------------------------------------------------
+                                      VIX HIGH-REGIME ANALYSIS                                      
+----------------------------------------------------------------------------------------------------
+  14 trading days had VIX >= 25 across all windows.
+  During high VIX periods, the filter reduces position sizes (0.5x) and raises
+  RRS thresholds (+1.0), blocking marginal signals. VIX > 35 blocks all longs.
+  Max drawdown was similar or worse with filtering (delta: $-439.97)
+
+====================================================================================================
+                                              SUMMARY                                               
+====================================================================================================
+
+  FILTERS HURT: $-445.78 worse than baseline
+  Return improvement: -1.78% of capital
+
+  Filtered system annualized return estimate: 3.7%
+  (Based on 201 trading days tested)
+
+  Baseline annualized return estimate: 6.0%
+
+  Largest single-day loss (Baseline):  $-286.41
+  Largest single-day loss (Filtered):  $-262.71
+  Filters reduced worst daily loss by $23.70
+
+====================================================================================================
+
