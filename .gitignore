@@ -17,6 +17,9 @@ data/trades/
 data/historical/
 *.csv
 
+# Backtest market-data cache (regenerable, downloaded by scripts/run_walkforward*.py)
+data/backtest_cache/
+
 # Database
 *.db
 *.sqlite
