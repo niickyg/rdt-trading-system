@@ -828,6 +828,27 @@ def run_rdt_filtered(stock_data, spy_data, vix_data, sector_etf_data, start_date
 # Output
 # ============================================================================
 
+def spy_buy_hold(spy_data: pd.DataFrame, start_date: date, end_date: date,
+                 capital: float = INITIAL_CAPITAL) -> Dict[str, float]:
+    """SPY buy-and-hold benchmark over [start_date, end_date].
+
+    Buys SPY at the first close on/after start_date and marks to the last
+    close on/before end_date. This is the mission's success benchmark: any
+    active strategy must beat simply holding SPY over the same window.
+    Returns {'return': dollars, 'return_pct': pct, 'ok': bool}.
+    """
+    close_col = 'Close' if 'Close' in spy_data.columns else 'close'
+    window = spy_data[(spy_data.index.date >= start_date) & (spy_data.index.date <= end_date)]
+    if len(window) < 2:
+        return {"return": 0.0, "return_pct": 0.0, "ok": False}
+    entry = float(window[close_col].iloc[0])
+    exit_ = float(window[close_col].iloc[-1])
+    if entry <= 0 or not (np.isfinite(entry) and np.isfinite(exit_)):
+        return {"return": 0.0, "return_pct": 0.0, "ok": False}
+    ret_pct = (exit_ / entry - 1.0) * 100.0
+    return {"return": capital * (exit_ / entry - 1.0), "return_pct": ret_pct, "ok": True}
+
+
 def get_largest_daily_loss(result: EnhancedBacktestResult) -> float:
     if len(result.equity_curve) < 2:
         return 0.0
@@ -843,6 +864,7 @@ def print_results(
     baseline_results: List[WindowResult],
     old_filtered_results: List[WindowResult],
     rdt_filtered_results: List[WindowResult],
+    spy_data: Optional[pd.DataFrame] = None,
 ):
     w = 120
 
@@ -906,6 +928,12 @@ def print_results(
         if rd.signals_generated > 0:
             pct = (rd.signals_filtered / rd.signals_generated) * 100
             print(f"  C) RDT Filters: {rd.signals_generated} signals, {rd.signals_filtered} filtered ({pct:.1f}%) | {rd.filter_detail}")
+
+        # SPY buy-and-hold benchmark for this window (the success bar to beat)
+        if spy_data is not None:
+            bh = spy_buy_hold(spy_data, bl.start_date, bl.end_date)
+            if bh["ok"]:
+                print(f"  BENCHMARK — SPY buy & hold: ${bh['return']:>+,.2f} ({bh['return_pct']:+.2f}%)")
         print()
 
     # Aggregate
@@ -1013,6 +1041,43 @@ def print_results(
     print(f"  Highest Total Return: {best_label} (${best_return:,.2f})")
     print()
 
+    # ---- SPY buy-and-hold benchmark (the mission's success bar) ----
+    if spy_data is not None and baseline_results:
+        # (a) Sum of per-window buy & hold — apples-to-apples with the summed
+        #     strategy returns above (each window a fresh $25K deployment).
+        bh_sum = 0.0
+        bh_ok = False
+        for r in baseline_results:
+            bh = spy_buy_hold(spy_data, r.start_date, r.end_date)
+            if bh["ok"]:
+                bh_sum += bh["return"]
+                bh_ok = True
+        # (b) Continuous full-period buy & hold — buy once at the first window's
+        #     start, hold through the last window's end.
+        full_start = baseline_results[0].start_date
+        full_end = baseline_results[-1].end_date
+        bh_full = spy_buy_hold(spy_data, full_start, full_end)
+
+        if bh_ok:
+            print(f"  BENCHMARK — SPY buy & hold (sum of windows):  ${bh_sum:>+,.2f} "
+                  f"({bh_sum / INITIAL_CAPITAL * 100:+.2f}%)")
+        if bh_full["ok"]:
+            print(f"  BENCHMARK — SPY buy & hold (continuous, {full_start} → {full_end}): "
+                  f"${bh_full['return']:>+,.2f} ({bh_full['return_pct']:+.2f}%)")
+
+        # Verdict: did the best strategy beat simply holding SPY?
+        bench = bh_sum if bh_ok else (bh_full["return"] if bh_full["ok"] else None)
+        if bench is not None:
+            beat = best_return - bench
+            status = "BEATS" if beat > 0 else "TRAILS"
+            print()
+            print(f"  >>> Best strategy ({best_label}) {status} SPY buy & hold by "
+                  f"${beat:>+,.2f} over the same windows.")
+            if beat <= 0:
+                print(f"  >>> The active strategy did NOT beat buy-and-hold. Per the mission, "
+                      f"this is a failing result.")
+        print()
+
     # Risk-adjusted (return / max drawdown)
     def risk_adj(a):
         if a["max_drawdown"] == 0:
@@ -1112,7 +1177,7 @@ def main():
         old_filtered_results.append(ol)
         rdt_filtered_results.append(rd)
 
-    print_results(baseline_results, old_filtered_results, rdt_filtered_results)
+    print_results(baseline_results, old_filtered_results, rdt_filtered_results, spy_data=spy_data)
 
 
 if __name__ == "__main__":
