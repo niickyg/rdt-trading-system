@@ -1,0 +1,9 @@
+{
+  "generated": "2026-10-02T13:01:02.504399",
+  "horizon": 15,
+  "n": 628,
+  "win_rate_pct": 23.4,
+  "expectancy_R": -0.313,
+  "total_R": -196.4,
+  "signal_window": "2026-02-03..2026-03-05"
+}
