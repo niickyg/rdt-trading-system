@@ -17,6 +17,7 @@ from shared.indicators.rrs import (
     check_daily_strength_relaxed,
     check_daily_weakness_relaxed
 )
+from backtesting.costs import CostModel
 
 
 @dataclass
@@ -36,6 +37,17 @@ class BacktestTrade:
     exit_reason: str = ""
     rrs_at_entry: float = 0
     holding_days: int = 0
+    # Honest-cost accounting. entry_price/exit_price stay the *quoted* signal
+    # prices for transparency; the *_fill_price fields are what actually traded
+    # after slippage, and pnl is computed net of slippage + commissions.
+    entry_fill_price: float = 0
+    exit_fill_price: float = 0
+    commission_cost: float = 0
+    slippage_cost: float = 0
+
+    @property
+    def total_costs(self) -> float:
+        return self.commission_cost + self.slippage_cost
 
     @property
     def is_winner(self) -> bool:
@@ -62,6 +74,17 @@ class BacktestResult:
     max_drawdown_pct: float
     sharpe_ratio: float
     avg_holding_days: float
+    # Honest-cost + benchmark fields. Defaults keep older callers/constructors
+    # working. total_costs = commissions + slippage deducted from P&L.
+    # benchmark_* describe SPY buy-and-hold over the same window; alpha is the
+    # strategy's net return minus that benchmark -- the actual mission metric.
+    total_costs: float = 0.0
+    total_commission: float = 0.0
+    total_slippage: float = 0.0
+    benchmark_return: float = 0.0
+    benchmark_return_pct: float = 0.0
+    alpha_vs_benchmark_pct: float = 0.0
+    beats_benchmark: bool = False
     trades: List[BacktestTrade] = field(default_factory=list)
     equity_curve: List[Dict] = field(default_factory=list)
 
@@ -83,7 +106,14 @@ class BacktestResult:
             "max_drawdown": self.max_drawdown,
             "max_drawdown_pct": self.max_drawdown_pct,
             "sharpe_ratio": self.sharpe_ratio,
-            "avg_holding_days": self.avg_holding_days
+            "avg_holding_days": self.avg_holding_days,
+            "total_costs": self.total_costs,
+            "total_commission": self.total_commission,
+            "total_slippage": self.total_slippage,
+            "benchmark_return": self.benchmark_return,
+            "benchmark_return_pct": self.benchmark_return_pct,
+            "alpha_vs_benchmark_pct": self.alpha_vs_benchmark_pct,
+            "beats_benchmark": self.beats_benchmark,
         }
 
 
@@ -102,7 +132,8 @@ class BacktestEngine:
         max_positions: int = 5,
         use_relaxed_criteria: bool = True,  # Use relaxed daily chart checks
         stop_atr_multiplier: float = 1.5,  # Wider stops = fewer stop-outs
-        target_atr_multiplier: float = 1.0  # Tight targets = higher win rate
+        target_atr_multiplier: float = 1.0,  # Tight targets = higher win rate
+        cost_model: Optional[CostModel] = None  # Honest costs ON by default
     ):
         self.initial_capital = initial_capital
         self.risk_limits = risk_limits or RiskLimits()
@@ -111,6 +142,9 @@ class BacktestEngine:
         self.use_relaxed_criteria = use_relaxed_criteria
         self.stop_atr_multiplier = stop_atr_multiplier
         self.target_atr_multiplier = target_atr_multiplier
+        # Default to a realistic cost model so backtests are honest by default.
+        # Pass costs.ZERO_COST explicitly to reproduce legacy gross numbers.
+        self.cost_model = cost_model if cost_model is not None else CostModel()
 
         self.rrs_calculator = RRSCalculator()
         self.position_sizer = PositionSizer(self.risk_limits)
@@ -169,9 +203,48 @@ class BacktestEngine:
 
         # Calculate results
         result = self._calculate_results(all_dates[0], all_dates[-1])
-        logger.info(f"Backtest complete: {result.total_trades} trades, {result.win_rate:.1%} win rate")
+
+        # Benchmark the strategy against SPY buy-and-hold over the SAME window.
+        # This is the actual mission metric: positive return is not enough, the
+        # strategy must beat simply holding the index.
+        self._apply_benchmark(result, spy_data, all_dates[0], all_dates[-1])
+
+        logger.info(
+            f"Backtest complete: {result.total_trades} trades, "
+            f"{result.win_rate:.1%} win rate, net return {result.total_return_pct:.2f}% "
+            f"vs SPY buy-and-hold {result.benchmark_return_pct:.2f}% "
+            f"(alpha {result.alpha_vs_benchmark_pct:+.2f}%)"
+        )
 
         return result
+
+    def _apply_benchmark(
+        self,
+        result: BacktestResult,
+        spy_data: pd.DataFrame,
+        start_date: date,
+        end_date: date
+    ):
+        """Compute SPY buy-and-hold over the window and attach to the result."""
+        try:
+            close_col = 'Close' if 'Close' in spy_data.columns else 'close'
+            window = spy_data[
+                (spy_data.index.date >= start_date) & (spy_data.index.date <= end_date)
+            ]
+            closes = window[close_col].dropna()
+            if len(closes) < 2:
+                return
+            start_px = float(closes.iloc[0])
+            end_px = float(closes.iloc[-1])
+            if start_px <= 0:
+                return
+            bench_pct = (end_px / start_px - 1.0) * 100.0
+            result.benchmark_return_pct = bench_pct
+            result.benchmark_return = self.initial_capital * (end_px / start_px - 1.0)
+            result.alpha_vs_benchmark_pct = result.total_return_pct - bench_pct
+            result.beats_benchmark = result.total_return_pct > bench_pct
+        except Exception as e:
+            logger.debug(f"Could not compute SPY benchmark: {e}")
 
     def _process_day(
         self,
@@ -344,22 +417,30 @@ class BacktestEngine:
         if required > self.capital:
             return
 
+        # Apply slippage to the entry fill: longs buy (fill higher), shorts
+        # sell to open (fill lower). Commission is charged on the entry leg.
+        entry_fill = self.cost_model.fill_price(entry_price, is_buy=(direction == "long"))
+        entry_commission = self.cost_model.commission(sizing.shares, entry_fill)
+
         # Create trade
         trade = BacktestTrade(
             symbol=symbol,
             direction=direction,
             entry_date=entry_date,
             entry_price=entry_price,
+            entry_fill_price=entry_fill,
             shares=sizing.shares,
             stop_price=sizing.stop_price,
             target_price=sizing.target_price,
-            rrs_at_entry=rrs
+            rrs_at_entry=rrs,
+            commission_cost=entry_commission,
+            slippage_cost=abs(entry_fill - entry_price) * sizing.shares,
         )
 
         self.positions[symbol] = trade
         self.capital -= required
 
-        logger.debug(f"Entered {direction} {symbol} @ ${entry_price:.2f}")
+        logger.debug(f"Entered {direction} {symbol} @ ${entry_price:.2f} (fill ${entry_fill:.2f})")
 
     def _close_position(
         self,
@@ -377,23 +458,41 @@ class BacktestEngine:
         trade.exit_price = exit_price
         trade.exit_reason = reason
 
-        # Calculate P&L
-        if trade.direction == "long":
-            trade.pnl = (exit_price - trade.entry_price) * trade.shares
-        else:
-            trade.pnl = (trade.entry_price - exit_price) * trade.shares
+        # Apply slippage to the exit fill: closing a long sells (fill lower),
+        # closing a short buys to cover (fill higher). Stop-loss exits fill
+        # worse than their trigger, so add the extra stop slippage.
+        is_stop = reason == "stop_loss"
+        exit_fill = self.cost_model.fill_price(
+            exit_price, is_buy=(trade.direction == "short"), is_stop=is_stop
+        )
+        exit_commission = self.cost_model.commission(trade.shares, exit_fill)
+        trade.exit_fill_price = exit_fill
 
-        trade.pnl_percent = (trade.pnl / (trade.entry_price * trade.shares)) * 100
+        # Gross P&L from actual fill prices, then net of both commissions.
+        if trade.direction == "long":
+            gross_pnl = (exit_fill - trade.entry_fill_price) * trade.shares
+        else:
+            gross_pnl = (trade.entry_fill_price - exit_fill) * trade.shares
+
+        trade.commission_cost += exit_commission
+        trade.slippage_cost += abs(exit_fill - exit_price) * trade.shares
+        trade.pnl = gross_pnl - trade.commission_cost
+
+        cost_basis = trade.entry_fill_price * trade.shares
+        trade.pnl_percent = (trade.pnl / cost_basis) * 100 if cost_basis else 0.0
         trade.holding_days = (exit_date - trade.entry_date.date()).days if isinstance(trade.entry_date, datetime) else (exit_date - trade.entry_date).days
 
-        # Return capital
+        # Return the reserved capital plus the net P&L.
         self.capital += (trade.entry_price * trade.shares) + trade.pnl
 
         # Move to completed trades
         self.trades.append(trade)
         del self.positions[symbol]
 
-        logger.debug(f"Closed {symbol} @ ${exit_price:.2f} P&L: ${trade.pnl:.2f}")
+        logger.debug(
+            f"Closed {symbol} @ ${exit_price:.2f} (fill ${exit_fill:.2f}) "
+            f"P&L: ${trade.pnl:.2f} costs: ${trade.total_costs:.2f}"
+        )
 
     def _get_price(self, data: pd.DataFrame, target_date: date, column: str) -> Optional[float]:
         """Get price for a specific date"""
@@ -439,6 +538,9 @@ class BacktestEngine:
         total_wins = sum(t.pnl for t in winners)
         total_losses = abs(sum(t.pnl for t in losers))
 
+        total_commission = sum(t.commission_cost for t in self.trades)
+        total_slippage = sum(t.slippage_cost for t in self.trades)
+
         profit_factor = total_wins / total_losses if total_losses > 0 else float('inf')
 
         # Max drawdown
@@ -475,6 +577,9 @@ class BacktestEngine:
             max_drawdown_pct=(max_dd / self.peak_capital) * 100,
             sharpe_ratio=sharpe,
             avg_holding_days=sum(t.holding_days for t in self.trades) / total_trades,
+            total_costs=total_commission + total_slippage,
+            total_commission=total_commission,
+            total_slippage=total_slippage,
             trades=self.trades,
             equity_curve=self.equity_curve
         )
