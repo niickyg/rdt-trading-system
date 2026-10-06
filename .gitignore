@@ -67,3 +67,6 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# Operator backtest data cache (large, regenerable)
+data/backtest_cache/

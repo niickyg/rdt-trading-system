@@ -187,18 +187,28 @@ Additional filters (applied after gates during signal processing):
 
 ### Walk-Forward Backtest Results (2 Years, $25K Capital)
 
-3-way comparison across 6 quarterly windows (Feb 2024 - Nov 2025):
+> ⚠️ **READ `POST_MORTEM_RRS.md` FIRST.** The headline below is that these
+> strategy returns **lose badly to SPY buy-and-hold over the same window.** The
+> engine models **no commission/slippage**, so strategy returns are *gross*.
 
-| Metric | A) Baseline | B) Old Filters | C) RDT Filters |
-|--------|------------|----------------|-----------------|
-| Total Return | $815 (3.3%) | $1,267 (5.1%) | **$1,716 (6.9%)** |
-| Win Rate | 47.7% | 47.9% | **49.5%** |
-| Profit Factor | 1.12 | 1.12 | **1.24** |
-| Total Trades | 235 | 457 | 279 |
-| Worst Day | -$404 | -$378 | **-$257** |
-| Annualized | 1.6% | 2.5% | **3.4%** |
+Verified 3-way walk-forward, re-run 2026-10-06 over 2024-06-10 → 2026-06-23
+(trading-day index 91..600; `python scripts/run_walkforward_v2.py`):
 
-RDT filters take fewer but higher-quality trades. 98% of raw signals are filtered out.
+| Metric | A) Baseline | B) Old Filters | C) RDT Filters | **SPY buy&hold** |
+|--------|------------|----------------|-----------------|------------------|
+| Total Return | $1,517 (6.1%) | $2,003 (8.0%) | **$2,383 (9.5%)** | **$10,161 (40.6%)** |
+| Annualized | 3.0% | 4.0% | **4.7%** | **18.25%** |
+| Win Rate | 47.7% | 47.4% | 49.5% | — |
+| Profit Factor | 1.23 | 1.20 | 1.33 | — |
+| Total Trades | 235 | 424 | 277 | 1 |
+| Max Drawdown | -$713 | -$829 | -$690 | -18.8% |
+
+**The best strategy variant underperformed SPY by ~13.5 percentage points per
+year, gross of costs, in a bull market.** RDT filters discard 98.1% of signals to
+add ~3.5pp total over two years vs baseline — negligible against the benchmark
+gap. Reproduce SPY: `python scripts/benchmark_vs_spy.py`. (The earlier numbers
+here — $1,716 / 6.9% / 3.4% ann., labeled "Feb 2024 – Nov 2025" — were not
+reproducible and never compared to SPY; superseded.)
 
 ### Agent Architecture
 Agents communicate via EventBus (pub-sub):
