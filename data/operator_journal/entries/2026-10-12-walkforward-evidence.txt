@@ -1,0 +1,273 @@
+
+========================================================================================================================
+                             RDT TRADING SYSTEM - WALK-FORWARD BACKTEST V2 (2 YEARS, 3-WAY)                             
+========================================================================================================================
+
+Loading data for 30 stocks + SPY + 11 sector ETFs + VIX...
+  Date range: 2024-02-05 to 2026-10-12 (730 days + 250-day warmup)
+
+  SPY: 674 trading days
+  ^VIX: 676 trading days
+  Sector ETFs loaded: 11/11
+    10/30 loaded...
+    20/30 loaded...
+    30/30 loaded...
+  Stocks loaded: 30/30
+
+Data loading took 20.3s
+
+Total trading dates available: 674
+Date range: 2024-02-05 to 2026-10-12
+
+--- Window 1 (Q2 2024): days 91-175 (2024-06-14 to 2024-10-15) ---
+  Running A) Baseline...
+    40 trades, 37.5% WR, -0.68% return (5.2s)
+  Running B) Old Filters...
+    47 trades, 38.3% WR, -0.34% return (4.9s)
+  Running C) RDT Filters...
+    41 trades, 36.6% WR, -0.20% return (14.8s)
+
+--- Window 2 (Q3 2024): days 176-260 (2024-10-16 to 2025-02-19) ---
+  Running A) Baseline...
+    54 trades, 48.1% WR, 0.78% return (4.4s)
+  Running B) Old Filters...
+    87 trades, 49.4% WR, 1.56% return (5.0s)
+  Running C) RDT Filters...
+    55 trades, 47.3% WR, 0.79% return (12.7s)
+
+--- Window 3 (Q4 2024): days 261-345 (2025-02-20 to 2025-06-23) ---
+  Running A) Baseline...
+    37 trades, 40.5% WR, -0.60% return (4.9s)
+  Running B) Old Filters...
+    33 trades, 36.4% WR, -1.39% return (5.6s)
+  Running C) RDT Filters...
+    18 trades, 38.9% WR, -0.94% return (15.0s)
+
+--- Window 4 (Q1 2025): days 346-430 (2025-06-24 to 2025-10-22) ---
+  Running A) Baseline...
+    34 trades, 47.1% WR, 0.90% return (5.3s)
+  Running B) Old Filters...
+    95 trades, 41.1% WR, 0.23% return (5.9s)
+  Running C) RDT Filters...
+    54 trades, 48.1% WR, 2.98% return (12.9s)
+
+--- Window 5 (Q2 2025): days 431-505 (2025-10-23 to 2026-02-10) ---
+  Running A) Baseline...
+    32 trades, 65.6% WR, 4.09% return (4.4s)
+  Running B) Old Filters...
+    82 trades, 64.6% WR, 4.03% return (4.6s)
+  Running C) RDT Filters...
+    49 trades, 71.4% WR, 4.36% return (10.6s)
+
+--- Window 6 (Recent): days 506-600 (2026-02-11 to 2026-06-29) ---
+  Running A) Baseline...
+    37 trades, 56.8% WR, 3.03% return (5.1s)
+  Running B) Old Filters...
+    81 trades, 50.6% WR, 4.62% return (6.3s)
+  Running C) RDT Filters...
+    61 trades, 52.5% WR, 3.82% return (15.8s)
+
+
+========================================================================================================================
+                                  WALK-FORWARD BACKTEST V2: 3-WAY COMPARISON (2 YEARS)                                  
+                       Capital: $25,000 | Engine: Config C (Scaled Exits, 1.5x Stop, 2.0x Target)                       
+========================================================================================================================
+
+  A) Baseline     — No filters, static RRS 2.0
+  B) Old Filters  — VIX regime + Sector RS + Regime-adaptive params
+  C) RDT Filters  — Old Filters + SPY Hard Gate + 50/200 SMA + MTF Alignment
+
+  NOTE: VWAP + First-Hour filters cannot be simulated with daily bars. Omitted.
+
+------------------------------------------------------------------------------------------------------------------------
+                                       Window 1 (Q2 2024): 2024-06-14 to 2024-10-15                                     
+------------------------------------------------------------------------------------------------------------------------
+  Metric                              A) Baseline      B) Old Filter      C) RDT Filter      B-A Delta      C-A Delta
+  --------------------------------------------------------------------------------------------------------------------
+  Total Return ($)             $       -169.71 $        -84.64 $        -50.03 $    +85.08 $   +119.68
+  Total Return (%)                      -0.68%          -0.34%          -0.20%      +0.34%      +0.48%
+  Win Rate                              37.50%          38.30%          36.59%      +0.80%      -0.91%
+  Profit Factor                           0.82            0.91            0.94       +0.09       +0.12
+  Sharpe Ratio                           -0.06           -0.03           -0.02       +0.03       +0.04
+  Max Drawdown ($)             $        454.61 $        359.87 $        358.85 $    -94.74 $    -95.76
+  Total Trades                              40              47              41          +7          +1
+  Worst Single Day             $       -271.43 $       -208.24 $       -208.24 $    +63.19 $    +63.19
+
+  B) Old Filters: 2435 signals, 2388 filtered (98.1%) | VIX blocks: 0, Sector adj: 1708, Regime adj: 0
+  C) RDT Filters: 2452 signals, 2411 filtered (98.3%) | SPY gate: 0, SMA gate: 1088, MTF gate: 169, VIX blocks: 0, Sector adj: 832, Regime adj: 0
+
+------------------------------------------------------------------------------------------------------------------------
+                                       Window 2 (Q3 2024): 2024-10-16 to 2025-02-19                                     
+------------------------------------------------------------------------------------------------------------------------
+  Metric                              A) Baseline      B) Old Filter      C) RDT Filter      B-A Delta      C-A Delta
+  --------------------------------------------------------------------------------------------------------------------
+  Total Return ($)             $        194.90 $        389.61 $        197.26 $   +194.71 $     +2.36
+  Total Return (%)                       0.78%           1.56%           0.79%      +0.78%      +0.01%
+  Win Rate                              48.15%          49.43%          47.27%      +1.28%      -0.88%
+  Profit Factor                           1.14            1.19            1.11       +0.05       -0.03
+  Sharpe Ratio                            0.02            0.06            0.03       +0.05       +0.01
+  Max Drawdown ($)             $        350.87 $        552.77 $        689.86 $   +201.89 $   +338.99
+  Total Trades                              54              87              55         +33          +1
+  Worst Single Day             $       -153.64 $       -192.03 $       -226.37 $    -38.39 $    -72.73
+
+  B) Old Filters: 2274 signals, 2187 filtered (96.2%) | VIX blocks: 0, Sector adj: 1490, Regime adj: 64
+  C) RDT Filters: 2446 signals, 2391 filtered (97.8%) | SPY gate: 759, SMA gate: 679, MTF gate: 35, VIX blocks: 0, Sector adj: 632, Regime adj: 36
+
+------------------------------------------------------------------------------------------------------------------------
+                                       Window 3 (Q4 2024): 2025-02-20 to 2025-06-23                                     
+------------------------------------------------------------------------------------------------------------------------
+  Metric                              A) Baseline      B) Old Filter      C) RDT Filter      B-A Delta      C-A Delta
+  --------------------------------------------------------------------------------------------------------------------
+  Total Return ($)             $       -150.70 $       -346.81 $       -235.77 $   -196.11 $    -85.07
+  Total Return (%)                      -0.60%          -1.39%          -0.94%      -0.78%      -0.34%
+  Win Rate                              40.54%          36.36%          38.89%      -4.18%      -1.65%
+  Profit Factor                           0.89            0.68            0.62       -0.21       -0.27
+  Sharpe Ratio                           -0.05           -0.17           -0.16       -0.12       -0.11
+  Max Drawdown ($)             $        716.82 $        628.53 $        437.51 $    -88.30 $   -279.31
+  Total Trades                              37              33              18          -4         -19
+  Worst Single Day             $       -404.00 $       -377.68 $       -156.13 $    +26.32 $   +247.87
+
+  B) Old Filters: 2480 signals, 2447 filtered (98.7%) | VIX blocks: 0, Sector adj: 1705, Regime adj: 20
+  C) RDT Filters: 2503 signals, 2485 filtered (99.3%) | SPY gate: 1010, SMA gate: 388, MTF gate: 72, VIX blocks: 0, Sector adj: 686, Regime adj: 13
+
+------------------------------------------------------------------------------------------------------------------------
+                                       Window 4 (Q1 2025): 2025-06-24 to 2025-10-22                                     
+------------------------------------------------------------------------------------------------------------------------
+  Metric                              A) Baseline      B) Old Filter      C) RDT Filter      B-A Delta      C-A Delta
+  --------------------------------------------------------------------------------------------------------------------
+  Total Return ($)             $        224.82 $         57.20 $        744.04 $   -167.62 $   +519.23
+  Total Return (%)                       0.90%           0.23%           2.98%      -0.67%      +2.08%
+  Win Rate                              47.06%          41.05%          48.15%      -6.01%      +1.09%
+  Profit Factor                           1.24            1.02            1.56       -0.21       +0.32
+  Sharpe Ratio                            0.11           -0.02            0.18       -0.13       +0.07
+  Max Drawdown ($)             $        336.60 $        646.52 $        322.78 $   +309.92 $    -13.82
+  Total Trades                              34              95              54         +61         +20
+  Worst Single Day             $       -125.33 $       -254.95 $       -225.65 $   -129.62 $   -100.33
+
+  B) Old Filters: 2288 signals, 2193 filtered (95.8%) | VIX blocks: 0, Sector adj: 1414, Regime adj: 95
+  C) RDT Filters: 2430 signals, 2376 filtered (97.8%) | SPY gate: 1252, SMA gate: 395, MTF gate: 19, VIX blocks: 0, Sector adj: 504, Regime adj: 54
+
+------------------------------------------------------------------------------------------------------------------------
+                                       Window 5 (Q2 2025): 2025-10-23 to 2026-02-10                                     
+------------------------------------------------------------------------------------------------------------------------
+  Metric                              A) Baseline      B) Old Filter      C) RDT Filter      B-A Delta      C-A Delta
+  --------------------------------------------------------------------------------------------------------------------
+  Total Return ($)             $      1,021.56 $      1,008.54 $      1,089.12 $    -13.02 $    +67.56
+  Total Return (%)                       4.09%           4.03%           4.36%      -0.05%      +0.27%
+  Win Rate                              65.62%          64.63%          71.43%      -0.99%      +5.80%
+  Profit Factor                           2.97            1.71            2.31       -1.26       -0.66
+  Sharpe Ratio                            0.42            0.25            0.35       -0.18       -0.07
+  Max Drawdown ($)             $        262.71 $        240.15 $        200.86 $    -22.56 $    -61.85
+  Total Trades                              32              82              49         +50         +17
+  Worst Single Day             $       -262.71 $       -240.15 $       -193.83 $    +22.56 $    +68.88
+
+  B) Old Filters: 1903 signals, 1821 filtered (95.7%) | VIX blocks: 0, Sector adj: 1282, Regime adj: 82
+  C) RDT Filters: 2115 signals, 2066 filtered (97.7%) | SPY gate: 1016, SMA gate: 465, MTF gate: 19, VIX blocks: 0, Sector adj: 429, Regime adj: 49
+
+------------------------------------------------------------------------------------------------------------------------
+                                       Window 6 (Recent): 2026-02-11 to 2026-06-29                                      
+------------------------------------------------------------------------------------------------------------------------
+  Metric                              A) Baseline      B) Old Filter      C) RDT Filter      B-A Delta      C-A Delta
+  --------------------------------------------------------------------------------------------------------------------
+  Total Return ($)             $        756.89 $      1,156.04 $        954.74 $   +399.16 $   +197.85
+  Total Return (%)                       3.03%           4.62%           3.82%      +1.60%      +0.79%
+  Win Rate                              56.76%          50.62%          52.46%      -6.14%      -4.30%
+  Profit Factor                           1.74            1.59            1.55       -0.16       -0.20
+  Sharpe Ratio                            0.21            0.18            0.18       -0.04       -0.04
+  Max Drawdown ($)             $        496.43 $        815.63 $        674.67 $   +319.20 $   +178.24
+  Total Trades                              37              81              61         +44         +24
+  Worst Single Day             $       -286.41 $       -260.77 $       -293.76 $    +25.64 $     -7.35
+
+  B) Old Filters: 2573 signals, 2492 filtered (96.9%) | VIX blocks: 0, Sector adj: 1840, Regime adj: 80
+  C) RDT Filters: 2713 signals, 2652 filtered (97.8%) | SPY gate: 1089, SMA gate: 662, MTF gate: 57, VIX blocks: 0, Sector adj: 644, Regime adj: 60
+
+========================================================================================================================
+                                        AGGREGATE RESULTS (All Windows Combined)                                        
+========================================================================================================================
+
+  Metric                              A) Baseline      B) Old Filter      C) RDT Filter      B-A Delta      C-A Delta
+  --------------------------------------------------------------------------------------------------------------------
+  Total Return ($)             $      1,877.76 $      2,179.95 $      2,699.36 $   +302.19 $   +821.60
+  Total Return (%)                       7.51%           8.72%          10.80%      +1.21%      +3.29%
+  Total Trades                             234             425             278        +191         +44
+  Win Rate                              48.72%          48.47%          50.72%      -0.25%      +2.00%
+  Profit Factor                           1.30            1.22            1.37       -0.08       +0.07
+  Max Drawdown ($)             $        716.82 $        815.63 $        689.86 $    +98.81 $    -26.96
+  Worst Day Loss ($)           $       -404.00 $       -377.68 $       -293.76 $    +26.32 $   +110.24
+
+  B) Old Filters: 13953 signals → 13528 filtered (97.0%)
+  C) RDT Filters: 14659 signals → 14381 filtered (98.1%)
+
+------------------------------------------------------------------------------------------------------------------------
+                                              ANNUALIZED RETURN ESTIMATES                                               
+------------------------------------------------------------------------------------------------------------------------
+
+  A) Baseline               3.7% annualized  (from 510 trading days)
+  B) Old Filters            4.3% annualized  (from 510 trading days)
+  C) RDT Filters            5.3% annualized  (from 510 trading days)
+
+========================================================================================================================
+                                                        VERDICT                                                         
+========================================================================================================================
+
+  Highest Total Return: C) RDT Filters ($2,699.36)
+
+  Risk-Adjusted (Return/MaxDD): A=2.62, B=2.67, C=3.91
+  Best Risk-Adjusted: C) RDT Filters
+
+  RDT filters (C) vs Old filters (B): $+519.41 (+23.8%)
+  RDT filters (C) vs Baseline (A):    $+821.60
+
+========================================================================================================================
+
+Traceback (most recent call last):
+  File "/home/user/rdt-trading-system/scripts/benchmark_spy.py", line 102, in <module>
+    main()
+  File "/home/user/rdt-trading-system/scripts/benchmark_spy.py", line 68, in main
+    sd, ed, sp, ep, ret, usd = spy_buy_and_hold(start, end, args.capital)
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/rdt-trading-system/scripts/benchmark_spy.py", line 32, in spy_buy_and_hold
+    df = yf.Ticker("SPY").history(start=start, end=end + timedelta(days=1), auto_adjust=True)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/dist-packages/yfinance/utils.py", line 92, in wrapper
+    result = func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/dist-packages/yfinance/base.py", line 132, in history
+    return self._lazy_load_price_history().history(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/dist-packages/yfinance/utils.py", line 92, in wrapper
+    result = func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/dist-packages/yfinance/scrapers/history.py", line 210, in history
+    data = get_fn(
+           ^^^^^^^
+  File "/usr/local/lib/python3.11/dist-packages/yfinance/utils.py", line 92, in wrapper
+    result = func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/dist-packages/yfinance/data.py", line 371, in get
+    response = self._make_request(url, request_method = self._session.get, params=params, timeout=timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/dist-packages/yfinance/utils.py", line 92, in wrapper
+    result = func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/dist-packages/yfinance/data.py", line 402, in _make_request
+    crumb, strategy = self._get_cookie_and_crumb()
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/dist-packages/yfinance/utils.py", line 92, in wrapper
+    result = func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/dist-packages/yfinance/data.py", line 361, in _get_cookie_and_crumb
+    crumb = self._get_cookie_and_crumb_basic(timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/dist-packages/yfinance/utils.py", line 92, in wrapper
+    result = func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/dist-packages/yfinance/data.py", line 242, in _get_cookie_and_crumb_basic
+    return self._get_crumb_basic(timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/dist-packages/yfinance/utils.py", line 92, in wrapper
+    result = func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/dist-packages/yfinance/data.py", line 229, in _get_crumb_basic
+    raise YFRateLimitError()
+yfinance.exceptions.YFRateLimitError: Too Many Requests. Rate limited. Try after a while.
