@@ -1,0 +1,42 @@
+{
+  "generated_utc": "2026-10-14",
+  "window": {
+    "start": "2024-12-06",
+    "end": "2026-10-13",
+    "years": 1.85
+  },
+  "cost_model": {
+    "commission_per_share": 0.005,
+    "min_commission": 1.0,
+    "slippage_bps_per_side": 5.0
+  },
+  "symbols_loaded": 30,
+  "baseline_net": {
+    "trades": 198,
+    "win_rate_pct": 52.02020202020202,
+    "gross_return": 1800.038035085894,
+    "gross_return_pct": 7.200152140343577,
+    "total_cost": 807.4249065634217,
+    "cost_per_trade": 4.07790356850213,
+    "net_return": 992.6131285224724,
+    "net_return_pct": 3.9704525140898896,
+    "max_drawdown": 849.0454312183829
+  },
+  "rdt_filtered_net": {
+    "trades": 270,
+    "win_rate_pct": 53.70370370370371,
+    "gross_return": 2529.0319440707426,
+    "gross_return_pct": 10.11612777628297,
+    "total_cost": 1091.6369174650074,
+    "cost_per_trade": 4.043099694314842,
+    "net_return": 1437.3950266057352,
+    "net_return_pct": 5.749580106422941,
+    "max_drawdown": 949.9105349334022
+  },
+  "spy_buy_hold": {
+    "start": 594.0997924804688,
+    "end": 778.010009765625,
+    "return_pct": 30.956115388847305,
+    "return_dollars": 7739.028847211826
+  }
+}
