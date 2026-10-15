@@ -839,10 +839,54 @@ def get_largest_daily_loss(result: EnhancedBacktestResult) -> float:
     return worst
 
 
+def spy_buy_and_hold(spy_data, start_date, end_date, initial_capital: float):
+    """Benchmark: buy-and-hold SPY over [start_date, end_date] on the same capital.
+
+    This is the mission's actual success bar. A long/short day-trading strategy
+    only earns its complexity, execution risk, and overnight gap exposure if it
+    beats a passive SPY purchase held over the same calendar span. Returns a dict
+    with dollar P&L, pct return, and annualized pct (price-only; real SPY total
+    return is ~1-1.5%/yr higher once dividends are included), or None if SPY data
+    is unavailable for the span.
+    """
+    if spy_data is None or len(spy_data) == 0:
+        return None
+    if 'Close' in spy_data.columns:
+        close_col = 'Close'
+    elif 'close' in spy_data.columns:
+        close_col = 'close'
+    else:
+        return None
+
+    idx_dates = list(spy_data.index.date)
+    mask = [start_date <= d <= end_date for d in idx_dates]
+    matched = [d for d, keep in zip(idx_dates, mask) if keep]
+    if len(matched) < 2:
+        return None
+
+    span = spy_data[mask]
+    first_close = float(span[close_col].iloc[0])
+    last_close = float(span[close_col].iloc[-1])
+    if first_close <= 0:
+        return None
+
+    ratio = last_close / first_close
+    cal_days = (matched[-1] - matched[0]).days
+    annualized = ((ratio ** (365.0 / cal_days) - 1.0) * 100) if cal_days > 0 else 0.0
+    return {
+        "dollar": initial_capital * (ratio - 1.0),
+        "pct": (ratio - 1.0) * 100,
+        "annualized": annualized,
+        "start": matched[0],
+        "end": matched[-1],
+    }
+
+
 def print_results(
     baseline_results: List[WindowResult],
     old_filtered_results: List[WindowResult],
     rdt_filtered_results: List[WindowResult],
+    spy_data=None,
 ):
     w = 120
 
@@ -1013,6 +1057,37 @@ def print_results(
     print(f"  Highest Total Return: {best_label} (${best_return:,.2f})")
     print()
 
+    # --- SPY BUY-AND-HOLD BENCHMARK (the mission's actual success bar) ---
+    # The strategy must beat a passive SPY purchase held over the same span,
+    # net of honest costs, to justify its complexity and risk.
+    if baseline_results:
+        span_start = min(r.start_date for r in baseline_results)
+        span_end = max(r.end_date for r in baseline_results)
+        spy_bh = spy_buy_and_hold(spy_data, span_start, span_end, INITIAL_CAPITAL)
+    else:
+        spy_bh = None
+
+    print("-" * w)
+    print("  BENCHMARK: SPY BUY-AND-HOLD (same capital, same calendar span)".center(w - 2))
+    print("-" * w)
+    if spy_bh is not None:
+        print(f"  SPY {spy_bh['start']} -> {spy_bh['end']}: "
+              f"${spy_bh['dollar']:+,.2f} ({spy_bh['pct']:+.1f}%, ~{spy_bh['annualized']:+.1f}% annualized, price-only)")
+        print(f"  Best strategy config ({best_label}): ${best_return:+,.2f} "
+              f"({best_return / INITIAL_CAPITAL * 100:+.1f}%)")
+        beats = best_return > spy_bh['dollar']
+        gap = best_return - spy_bh['dollar']
+        print(f"  >>> Strategy beats SPY buy-and-hold? {'YES' if beats else 'NO'}  (gap: ${gap:+,.2f})")
+        if not beats:
+            print(f"  >>> A passive SPY purchase returned ${-gap:,.2f} MORE with zero trading, "
+                  f"zero execution risk, and zero overnight gap exposure.")
+        print(f"  NOTE: strategy P&L above is COST-FREE (no commissions / slippage / spread / "
+              f"short-borrow). Net of honest costs the gap widens further.")
+    else:
+        print("  SPY buy-and-hold unavailable (no SPY data for the span).")
+    print("-" * w)
+    print()
+
     # Risk-adjusted (return / max drawdown)
     def risk_adj(a):
         if a["max_drawdown"] == 0:
@@ -1112,7 +1187,7 @@ def main():
         old_filtered_results.append(ol)
         rdt_filtered_results.append(rd)
 
-    print_results(baseline_results, old_filtered_results, rdt_filtered_results)
+    print_results(baseline_results, old_filtered_results, rdt_filtered_results, spy_data=spy_data)
 
 
 if __name__ == "__main__":
