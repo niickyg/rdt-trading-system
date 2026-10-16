@@ -37,9 +37,13 @@ class EnhancedTrade:
     # Exit tracking
     exit_date: Optional[date] = None
     exit_price: Optional[float] = None
-    pnl: float = 0
+    pnl: float = 0  # Net of transaction costs (entry + all exits)
     pnl_percent: float = 0
     exit_reason: str = ""
+
+    # Transaction costs (commission + slippage)
+    entry_cost: float = 0  # Cost incurred entering the position
+    total_costs: float = 0  # All execution costs: entry + every scale-out + final close
 
     # Metrics
     rrs_at_entry: float = 0
@@ -84,6 +88,7 @@ class EnhancedBacktestResult:
     scale_2_exits: int = 0
     avg_mfe: float = 0  # Average max favorable excursion
     avg_mae: float = 0  # Average max adverse excursion
+    total_costs: float = 0  # Total transaction costs (commission + slippage) across all trades
 
     trades: List[EnhancedTrade] = field(default_factory=list)
     equity_curve: List[Dict] = field(default_factory=list)
@@ -112,7 +117,8 @@ class EnhancedBacktestResult:
             "trades_trailing_stopped": self.trades_trailing_stopped,
             "breakeven_activations": self.breakeven_activations,
             "avg_mfe": self.avg_mfe,
-            "avg_mae": self.avg_mae
+            "avg_mae": self.avg_mae,
+            "total_costs": self.total_costs
         }
 
 
@@ -157,6 +163,13 @@ class EnhancedBacktestEngine:
         use_time_stop: bool = True,
         max_holding_days: int = 10,  # Close if not profitable after X days
         stale_trade_days: int = 5,  # Close if price hasn't moved after X days
+
+        # Transaction cost parameters (applied at entry and every exit execution).
+        # Defaults reflect a retail IBKR Pro account trading liquid US large-caps.
+        # These are ON by default so backtest P&L is reported NET of honest costs.
+        commission_per_share: float = 0.005,  # IBKR tiered ~$0.005/share
+        min_commission: float = 1.0,          # IBKR minimum ~$1.00 per order
+        slippage_bps: float = 5.0,            # 5 bps (0.05%) adverse fill per side
     ):
         self.initial_capital = initial_capital
         self.risk_limits = risk_limits or RiskLimits()
@@ -186,6 +199,11 @@ class EnhancedBacktestEngine:
         self.use_time_stop = use_time_stop
         self.max_holding_days = max_holding_days
         self.stale_trade_days = stale_trade_days
+
+        # Transaction costs
+        self.commission_per_share = commission_per_share
+        self.min_commission = min_commission
+        self.slippage_bps = slippage_bps
 
         self.rrs_calculator = RRSCalculator()
         self.position_sizer = PositionSizer(self.risk_limits)
@@ -401,6 +419,22 @@ class EnhancedBacktestEngine:
         else:
             return position.entry_price - target_distance
 
+    def _execution_cost(self, price: float, shares: int) -> float:
+        """
+        Transaction cost for a single execution of `shares` at `price`.
+
+        Models commission (per-share with a per-order minimum) plus slippage
+        (a fixed number of basis points of notional, representing the adverse
+        fill vs. the reference price). Applied identically on entry and exit,
+        so a round trip pays this twice. Returns 0 when costs are disabled.
+        """
+        shares = abs(int(shares))
+        if shares <= 0:
+            return 0.0
+        commission = max(self.min_commission, self.commission_per_share * shares)
+        slippage = abs(price) * shares * (self.slippage_bps / 10000.0)
+        return commission + slippage
+
     def _scale_out(
         self,
         position: EnhancedTrade,
@@ -424,12 +458,17 @@ class EnhancedBacktestEngine:
         else:
             pnl = (position.entry_price - exit_price) * shares_to_sell
 
-        # Return capital
-        self.capital += (position.entry_price * shares_to_sell) + pnl
+        # Transaction cost for this exit execution. Capital is reduced now;
+        # the cost is accumulated on the trade and deducted from pnl once, at close.
+        cost = self._execution_cost(exit_price, shares_to_sell)
+        position.total_costs += cost
+
+        # Return capital (net of this execution's cost)
+        self.capital += (position.entry_price * shares_to_sell) + pnl - cost
         position.remaining_shares -= shares_to_sell
         position.pnl += pnl
 
-        logger.debug(f"{position.symbol}: Scaled out {shares_to_sell} shares at ${exit_price:.2f} ({reason}), P&L: ${pnl:.2f}")
+        logger.debug(f"{position.symbol}: Scaled out {shares_to_sell} shares at ${exit_price:.2f} ({reason}), gross P&L: ${pnl:.2f}, cost: ${cost:.2f}")
 
     def _scan_for_signals(
         self,
@@ -541,10 +580,15 @@ class EnhancedBacktestEngine:
             atr_at_entry=atr
         )
 
-        self.positions[symbol] = trade
-        self.capital -= required
+        # Entry transaction cost (commission + slippage)
+        entry_cost = self._execution_cost(entry_price, sizing.shares)
+        trade.entry_cost = entry_cost
+        trade.total_costs = entry_cost
 
-        logger.debug(f"Entered {direction} {symbol} @ ${entry_price:.2f}, Stop: ${sizing.stop_price:.2f}, Target: ${sizing.target_price:.2f}")
+        self.positions[symbol] = trade
+        self.capital -= (required + entry_cost)
+
+        logger.debug(f"Entered {direction} {symbol} @ ${entry_price:.2f}, Stop: ${sizing.stop_price:.2f}, Target: ${sizing.target_price:.2f}, entry cost: ${entry_cost:.2f}")
 
     def _close_position(
         self,
@@ -569,6 +613,13 @@ class EnhancedBacktestEngine:
             remaining_pnl = (trade.entry_price - exit_price) * trade.remaining_shares
 
         trade.pnl += remaining_pnl
+
+        # Transaction cost for the final exit execution, then net ALL accumulated
+        # costs (entry + scale-outs + this close) out of the trade's P&L once.
+        exit_cost = self._execution_cost(exit_price, trade.remaining_shares)
+        trade.total_costs += exit_cost
+        trade.pnl -= trade.total_costs
+
         trade.pnl_percent = (trade.pnl / (trade.entry_price * trade.shares)) * 100
 
         if isinstance(trade.entry_date, datetime):
@@ -576,8 +627,8 @@ class EnhancedBacktestEngine:
         else:
             trade.holding_days = (exit_date - trade.entry_date).days
 
-        # Return capital
-        self.capital += (trade.entry_price * trade.remaining_shares) + remaining_pnl
+        # Return capital (net of this execution's cost)
+        self.capital += (trade.entry_price * trade.remaining_shares) + remaining_pnl - exit_cost
 
         self.trades.append(trade)
         del self.positions[symbol]
@@ -683,6 +734,7 @@ class EnhancedBacktestEngine:
             scale_2_exits=self.scale_2_exits,
             avg_mfe=avg_mfe,
             avg_mae=avg_mae,
+            total_costs=sum(t.total_costs for t in self.trades),
             trades=self.trades,
             equity_curve=self.equity_curve
         )

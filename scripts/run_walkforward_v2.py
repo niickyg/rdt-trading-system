@@ -91,6 +91,10 @@ BASE_ENGINE_CONFIG = {
     "use_time_stop": True,
     "max_holding_days": 12,
     "stale_trade_days": 6,
+    # Transaction costs — results reported NET of these (retail IBKR large-cap).
+    "commission_per_share": 0.005,
+    "min_commission": 1.0,
+    "slippage_bps": 5.0,
 }
 
 
@@ -525,8 +529,13 @@ class OldFilteredEngine(EnhancedBacktestEngine):
             stop_price=sizing.stop_price, original_stop=sizing.stop_price,
             target_price=sizing.target_price, rrs_at_entry=rrs, atr_at_entry=atr,
         )
+        # Entry transaction cost (commission + slippage); exits are costed by the
+        # inherited _scale_out / _close_position in EnhancedBacktestEngine.
+        entry_cost = self._execution_cost(entry_price, adjusted_shares)
+        trade.entry_cost = entry_cost
+        trade.total_costs = entry_cost
         self.positions[symbol] = trade
-        self.capital -= required
+        self.capital -= (required + entry_cost)
 
 
 # ============================================================================
@@ -780,6 +789,9 @@ def make_engine_kwargs(config: Dict) -> Dict:
         "use_time_stop": config["use_time_stop"],
         "max_holding_days": config["max_holding_days"],
         "stale_trade_days": config["stale_trade_days"],
+        "commission_per_share": config.get("commission_per_share", 0.005),
+        "min_commission": config.get("min_commission", 1.0),
+        "slippage_bps": config.get("slippage_bps", 5.0),
     }
 
 
@@ -857,6 +869,9 @@ def print_results(
     print("  C) RDT Filters  — Old Filters + SPY Hard Gate + 50/200 SMA + MTF Alignment")
     print()
     print("  NOTE: VWAP + First-Hour filters cannot be simulated with daily bars. Omitted.")
+    print(f"  COSTS: Results are NET of transaction costs — ${BASE_ENGINE_CONFIG.get('commission_per_share', 0.005)}/share "
+          f"commission (${BASE_ENGINE_CONFIG.get('min_commission', 1.0)} min/order) + "
+          f"{BASE_ENGINE_CONFIG.get('slippage_bps', 5.0)} bps slippage per side.")
     print()
 
     # Per-window
@@ -928,6 +943,7 @@ def print_results(
         max_dd = max((r.result.max_drawdown for r in results), default=0)
         worst_day = min((get_largest_daily_loss(r.result) for r in results), default=0)
         trading_days = sum(len(r.result.equity_curve) for r in results)
+        total_costs = sum(getattr(r.result, "total_costs", 0.0) for r in results)
         return {
             "total_return": total_ret,
             "total_return_pct": total_ret / INITIAL_CAPITAL * 100,
@@ -937,6 +953,7 @@ def print_results(
             "max_drawdown": max_dd,
             "worst_day": worst_day,
             "trading_days": trading_days,
+            "total_costs": total_costs,
         }
 
     ba = agg(baseline_results)
@@ -966,6 +983,7 @@ def print_results(
     print(agg_row("Profit Factor", ba["profit_factor"], oa["profit_factor"], ra["profit_factor"], "float"))
     print(agg_row("Max Drawdown ($)", ba["max_drawdown"], oa["max_drawdown"], ra["max_drawdown"], "dollar"))
     print(agg_row("Worst Day Loss ($)", ba["worst_day"], oa["worst_day"], ra["worst_day"], "dollar"))
+    print(agg_row("Txn Costs Paid ($)", ba["total_costs"], oa["total_costs"], ra["total_costs"], "dollar"))
     print()
 
     # Signal filtering summary
