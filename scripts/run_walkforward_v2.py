@@ -54,6 +54,14 @@ from scanner.sector_filter import SECTOR_ETF_MAP
 INITIAL_CAPITAL = 25000.0
 DATA_DAYS = 730  # 2 years
 
+# Honest execution cost assumption (round trip = entry + exit combined), as a
+# fraction of each trade's entry notional. This engine otherwise models ZERO
+# trading costs, which materially overstates a high-turnover intraday strategy.
+# 0.10% round trip is a conservative placeholder for liquid large caps traded
+# with limit orders (≈5 bps slippage per side; IBKR commission ≈ $0). Adjust to
+# match the real broker/universe before drawing conclusions. See POST_MORTEM_RRS.md.
+ROUND_TRIP_COST_PCT = 0.0010
+
 WATCHLIST = [
     'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA',
     'JPM', 'V', 'JNJ', 'UNH', 'HD', 'PG', 'MA', 'DIS',
@@ -839,10 +847,55 @@ def get_largest_daily_loss(result: EnhancedBacktestResult) -> float:
     return worst
 
 
+def round_trip_cost(results: List[WindowResult]) -> float:
+    """Estimate total round-trip execution cost across all trades in all windows.
+
+    Cost per trade = entry notional (entry_price * shares) * ROUND_TRIP_COST_PCT.
+    This is a conservative floor: scaled exits create extra partial round trips
+    that this does not separately charge. The base engine models no cost at all.
+    """
+    total = 0.0
+    for wr in results:
+        for t in wr.result.trades:
+            entry_price = getattr(t, "entry_price", 0.0) or 0.0
+            shares = getattr(t, "shares", 0) or 0
+            notional = abs(entry_price * shares)
+            total += notional * ROUND_TRIP_COST_PCT
+    return total
+
+
+def spy_buy_hold_return(spy_data, results: List[WindowResult]) -> float:
+    """SPY buy-and-hold dollar return over the SAME windows the strategy traded.
+
+    For each walk-forward window, deploy INITIAL_CAPITAL into SPY at the first
+    available close on/after the window start and liquidate at the last close
+    on/before the window end, then sum the per-window dollar P&L. This mirrors
+    how strategy returns are aggregated (per-window on reset capital) so the
+    comparison is apples-to-apples. Returns 0.0 if SPY data is unavailable.
+    """
+    if spy_data is None or len(spy_data) == 0:
+        return 0.0
+    close_col = "Close" if "Close" in spy_data.columns else "close"
+    total = 0.0
+    for wr in results:
+        window = spy_data[
+            (spy_data.index.date >= wr.start_date) & (spy_data.index.date <= wr.end_date)
+        ]
+        if len(window) < 2:
+            continue
+        first = float(window[close_col].iloc[0])
+        last = float(window[close_col].iloc[-1])
+        if first <= 0:
+            continue
+        total += INITIAL_CAPITAL * (last / first - 1.0)
+    return total
+
+
 def print_results(
     baseline_results: List[WindowResult],
     old_filtered_results: List[WindowResult],
     rdt_filtered_results: List[WindowResult],
+    spy_data=None,
 ):
     w = 120
 
@@ -995,6 +1048,55 @@ def print_results(
             print(f"  {label:<20} {annual:>8.1f}% annualized  (from {a['trading_days']} trading days)")
     print()
 
+    # ------------------------------------------------------------------
+    # HONEST COST + BENCHMARK ADJUSTMENT
+    # The engine above models ZERO trading costs and never compares against
+    # a buy-and-hold benchmark. The mission's actual success criterion is
+    # "positive P&L net of honest costs, beating SPY buy-and-hold." Measure it.
+    # ------------------------------------------------------------------
+    print("-" * w)
+    print("HONEST COST + BENCHMARK ADJUSTMENT".center(w))
+    print("-" * w)
+    print()
+    print(f"  Round-trip execution cost assumption: {ROUND_TRIP_COST_PCT * 100:.2f}% of entry notional per trade")
+    print()
+
+    cost_ba = round_trip_cost(baseline_results)
+    cost_oa = round_trip_cost(old_filtered_results)
+    cost_ra = round_trip_cost(rdt_filtered_results)
+
+    net_ba = ba["total_return"] - cost_ba
+    net_oa = oa["total_return"] - cost_oa
+    net_ra = ra["total_return"] - cost_ra
+
+    print(f"  {'Config':<16}{'Gross P&L':>16}{'Est. cost':>16}{'Net P&L':>16}{'Net return':>14}")
+    print("  " + "-" * 76)
+    for label, a, cost, net in [
+        ("A) Baseline", ba, cost_ba, net_ba),
+        ("B) Old Filters", oa, cost_oa, net_oa),
+        ("C) RDT Filters", ra, cost_ra, net_ra),
+    ]:
+        print(f"  {label:<16}{'${:>,.2f}'.format(a['total_return']):>16}"
+              f"{'-${:>,.2f}'.format(cost):>16}{'${:>,.2f}'.format(net):>16}"
+              f"{'{:>.2f}%'.format(net / INITIAL_CAPITAL * 100):>14}")
+    print()
+
+    # SPY buy-and-hold over the same traded windows
+    spy_bh = spy_buy_hold_return(spy_data, rdt_filtered_results)
+    if spy_bh != 0.0:
+        print(f"  SPY buy-and-hold over the same windows: ${spy_bh:,.2f}  "
+              f"({spy_bh / INITIAL_CAPITAL * 100:.2f}% on ${INITIAL_CAPITAL:,.0f})")
+        best_net = max(net_ba, net_oa, net_ra)
+        if best_net > spy_bh:
+            print(f"  >>> Best strategy net P&L (${best_net:,.2f}) BEATS SPY buy-and-hold (${spy_bh:,.2f}).")
+        else:
+            gap = spy_bh - best_net
+            print(f"  >>> SPY buy-and-hold BEATS every strategy. Best net is ${best_net:,.2f}; "
+                  f"buy-and-hold wins by ${gap:,.2f}.")
+    else:
+        print("  SPY buy-and-hold benchmark unavailable (no SPY data passed to print_results).")
+    print()
+
     # Final verdict
     print("=" * w)
     print("VERDICT".center(w))
@@ -1112,7 +1214,7 @@ def main():
         old_filtered_results.append(ol)
         rdt_filtered_results.append(rd)
 
-    print_results(baseline_results, old_filtered_results, rdt_filtered_results)
+    print_results(baseline_results, old_filtered_results, rdt_filtered_results, spy_data=spy_data)
 
 
 if __name__ == "__main__":
