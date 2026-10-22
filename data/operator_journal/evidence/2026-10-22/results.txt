@@ -1,0 +1,12 @@
+Downloading data...
+Loaded 30 stocks + SPY
+
+Window: 2024-02-01 -> 2025-10-21  (628 days, 1.72 yr)
+SPY buy-and-hold (div-adjusted): +40.2% total,  +21.7% annualized
+
+Scenario                           Trades   WinR     PF   TotRet     Final$  AnnRet
+Gross (no costs)                       97  49.5%   1.24    +9.7%     27,415   +5.5%
+Realistic ($0.005/sh + 2bps)           99  49.5%   1.22    +8.7%     27,172   +5.0%
+Higher ($0.01/sh + 5bps)               98  50.0%   1.18    +7.1%     26,776   +4.1%
+
+Benchmark to beat: SPY +21.7% annualized (+40.2% total)
