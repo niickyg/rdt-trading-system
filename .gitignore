@@ -67,3 +67,6 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# Regeneratable backtest data cache (parquet) — do not commit
+data/backtest_cache/
