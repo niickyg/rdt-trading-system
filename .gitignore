@@ -67,3 +67,6 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# Backtest data cache (generated, do not commit)
+data/backtest_cache/
