@@ -84,6 +84,7 @@ class EnhancedBacktestResult:
     scale_2_exits: int = 0
     avg_mfe: float = 0  # Average max favorable excursion
     avg_mae: float = 0  # Average max adverse excursion
+    total_costs: float = 0  # Total transaction costs charged (commission + slippage)
 
     trades: List[EnhancedTrade] = field(default_factory=list)
     equity_curve: List[Dict] = field(default_factory=list)
@@ -157,6 +158,12 @@ class EnhancedBacktestEngine:
         use_time_stop: bool = True,
         max_holding_days: int = 10,  # Close if not profitable after X days
         stale_trade_days: int = 5,  # Close if price hasn't moved after X days
+
+        # Transaction cost parameters (OPT-IN: defaults of 0.0 preserve the
+        # historical frictionless behaviour exactly. Set these to model honest
+        # costs — the mission requires P&L "net of honest costs").
+        commission_per_fill: float = 0.0,  # $ per fill (entry, each scale-out, final close)
+        slippage_bps: float = 0.0,  # one-way slippage/half-spread in basis points of fill notional
     ):
         self.initial_capital = initial_capital
         self.risk_limits = risk_limits or RiskLimits()
@@ -187,11 +194,17 @@ class EnhancedBacktestEngine:
         self.max_holding_days = max_holding_days
         self.stale_trade_days = stale_trade_days
 
+        # Transaction costs
+        self.commission_per_fill = commission_per_fill
+        self.slippage_bps = slippage_bps
+        self.total_costs = 0.0
+
         self.rrs_calculator = RRSCalculator()
         self.position_sizer = PositionSizer(self.risk_limits)
 
         # State
         self.capital = initial_capital
+        self.total_costs = 0.0
         self.positions: Dict[str, EnhancedTrade] = {}
         self.trades: List[EnhancedTrade] = []
         self.equity_curve: List[Dict] = []
@@ -212,6 +225,7 @@ class EnhancedBacktestEngine:
         """Run enhanced backtest"""
         # Reset state
         self.capital = self.initial_capital
+        self.total_costs = 0.0
         self.positions = {}
         self.trades = []
         self.equity_curve = []
@@ -424,12 +438,27 @@ class EnhancedBacktestEngine:
         else:
             pnl = (position.entry_price - exit_price) * shares_to_sell
 
+        # Exit transaction cost on the scaled portion
+        exit_cost = self._fill_cost(exit_price, shares_to_sell)
+        pnl -= exit_cost
+        self.total_costs += exit_cost
+
         # Return capital
         self.capital += (position.entry_price * shares_to_sell) + pnl
         position.remaining_shares -= shares_to_sell
         position.pnl += pnl
 
         logger.debug(f"{position.symbol}: Scaled out {shares_to_sell} shares at ${exit_price:.2f} ({reason}), P&L: ${pnl:.2f}")
+
+    def _fill_cost(self, price: float, shares: int) -> float:
+        """Honest transaction cost for a single fill (commission + one-way slippage).
+
+        Returns 0.0 when both cost parameters are left at their defaults, so the
+        frictionless behaviour is bit-for-bit preserved."""
+        if self.commission_per_fill == 0.0 and self.slippage_bps == 0.0:
+            return 0.0
+        slippage = abs(price) * abs(shares) * (self.slippage_bps / 10000.0)
+        return self.commission_per_fill + slippage
 
     def _scan_for_signals(
         self,
@@ -541,6 +570,12 @@ class EnhancedBacktestEngine:
             atr_at_entry=atr
         )
 
+        # Entry transaction cost (commission + slippage on the fill)
+        entry_cost = self._fill_cost(entry_price, sizing.shares)
+        trade.pnl -= entry_cost
+        self.capital -= entry_cost
+        self.total_costs += entry_cost
+
         self.positions[symbol] = trade
         self.capital -= required
 
@@ -567,6 +602,11 @@ class EnhancedBacktestEngine:
             remaining_pnl = (exit_price - trade.entry_price) * trade.remaining_shares
         else:
             remaining_pnl = (trade.entry_price - exit_price) * trade.remaining_shares
+
+        # Exit transaction cost on the remaining shares
+        exit_cost = self._fill_cost(exit_price, trade.remaining_shares)
+        remaining_pnl -= exit_cost
+        self.total_costs += exit_cost
 
         trade.pnl += remaining_pnl
         trade.pnl_percent = (trade.pnl / (trade.entry_price * trade.shares)) * 100
@@ -683,6 +723,7 @@ class EnhancedBacktestEngine:
             scale_2_exits=self.scale_2_exits,
             avg_mfe=avg_mfe,
             avg_mae=avg_mae,
+            total_costs=self.total_costs,
             trades=self.trades,
             equity_curve=self.equity_curve
         )
