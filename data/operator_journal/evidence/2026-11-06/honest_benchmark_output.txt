@@ -1,0 +1,30 @@
+========================================================================================
+SPY BUY-AND-HOLD BENCHMARK  (span 2024-07-12 -> 2026-07-24, 510 trading days, 2.02 yrs)
+========================================================================================
+  SPY continuous B&H:        +35.08%   ($+8,769 on $25,000)
+  SPY annualized:            +16.02%
+  SPY sum-of-6-windows:      +33.64%   (matches strategy's summed-window metric)
+  Per window:  +7.1%  -5.0%  +12.5%  +6.2%  +3.1%  +9.7%
+
+========================================================================================
+STRATEGY NET OF HONEST TRANSACTION COSTS  (cost applied per round-trip trade)
+========================================================================================
+  Gross figures are from the zero-cost walk-forward engine.
+  Round-trip cost = IBKR commission (~$1-2) + half-spread/slippage both sides.
+  NOTE: scaled exits add extra partial fills, so costs here are mildly understated.
+
+  Config             GrossRet   Trades | $2/rt $4/rt $6/rt $8/rt $10/rt
+  ---------------------------------------------------------------------
+  A) Baseline           7.43%      234 |  +5.55%  +3.68%  +1.81%  -0.06%  -1.93%
+  B) Old Filters        5.06%      427 |  +1.64%  -1.78%  -5.19%  -8.61% -12.02%
+  C) RDT Filters        7.68%      280 |  +5.44%  +3.20%  +0.96%  -1.28%  -3.52%
+
+  (Each cell = total net return %% over the full ~2yr span after that per-trade cost.)
+
+========================================================================================
+HEAD-TO-HEAD  (best strategy config C vs SPY, full span, net of cost)
+========================================================================================
+  @ $2/round-trip:  strategy +5.44% total / +2.65% ann   vs SPY +16.02% ann   -> gap -13.37 pts/yr
+  @ $4/round-trip:  strategy +3.20% total / +1.57% ann   vs SPY +16.02% ann   -> gap -14.45 pts/yr
+  @ $6/round-trip:  strategy +0.96% total / +0.47% ann   vs SPY +16.02% ann   -> gap -15.54 pts/yr
+  @ $8/round-trip:  strategy -1.28% total / -0.63% ann   vs SPY +16.02% ann   -> gap -16.65 pts/yr
