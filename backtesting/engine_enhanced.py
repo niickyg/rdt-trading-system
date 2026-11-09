@@ -47,6 +47,7 @@ class EnhancedTrade:
     holding_days: int = 0
     max_favorable_excursion: float = 0  # Max profit during trade
     max_adverse_excursion: float = 0  # Max drawdown during trade
+    total_cost: float = 0  # Commission + slippage paid across all fills (entry + exits)
 
     @property
     def is_winner(self) -> bool:
@@ -84,6 +85,7 @@ class EnhancedBacktestResult:
     scale_2_exits: int = 0
     avg_mfe: float = 0  # Average max favorable excursion
     avg_mae: float = 0  # Average max adverse excursion
+    total_costs: float = 0  # Total commission + slippage across all trades (dollars)
 
     trades: List[EnhancedTrade] = field(default_factory=list)
     equity_curve: List[Dict] = field(default_factory=list)
@@ -112,7 +114,8 @@ class EnhancedBacktestResult:
             "trades_trailing_stopped": self.trades_trailing_stopped,
             "breakeven_activations": self.breakeven_activations,
             "avg_mfe": self.avg_mfe,
-            "avg_mae": self.avg_mae
+            "avg_mae": self.avg_mae,
+            "total_costs": self.total_costs
         }
 
 
@@ -157,6 +160,15 @@ class EnhancedBacktestEngine:
         use_time_stop: bool = True,
         max_holding_days: int = 10,  # Close if not profitable after X days
         stale_trade_days: int = 5,  # Close if price hasn't moved after X days
+
+        # Transaction cost parameters (honest net-of-cost backtesting).
+        # Defaults are 0.0 to preserve historical (gross) reproducibility; callers
+        # that want realistic net results should pass broker-appropriate values.
+        # A realistic retail/IBKR-style default is commission_per_share=0.005,
+        # min_commission=1.0, slippage_bps=5.0 (0.05% half-spread+impact per fill).
+        commission_per_share: float = 0.0,
+        min_commission: float = 0.0,
+        slippage_bps: float = 0.0,
     ):
         self.initial_capital = initial_capital
         self.risk_limits = risk_limits or RiskLimits()
@@ -187,6 +199,11 @@ class EnhancedBacktestEngine:
         self.max_holding_days = max_holding_days
         self.stale_trade_days = stale_trade_days
 
+        # Transaction costs
+        self.commission_per_share = commission_per_share
+        self.min_commission = min_commission
+        self.slippage_bps = slippage_bps
+
         self.rrs_calculator = RRSCalculator()
         self.position_sizer = PositionSizer(self.risk_limits)
 
@@ -196,11 +213,29 @@ class EnhancedBacktestEngine:
         self.trades: List[EnhancedTrade] = []
         self.equity_curve: List[Dict] = []
         self.peak_capital = initial_capital
+        self.total_costs = 0.0
 
         # Metrics tracking
         self.breakeven_activations = 0
         self.scale_1_exits = 0
         self.scale_2_exits = 0
+
+    def _transaction_cost(self, shares: int, price: float) -> float:
+        """Dollar cost of one fill: commission + slippage.
+
+        - Commission: max(min_commission, shares * commission_per_share)
+        - Slippage: price * shares * (slippage_bps / 10000), modelling the
+          half-spread + market impact paid on each entry and each exit.
+        Returns 0.0 when all cost params are zero (default), so existing
+        callers get identical (gross) results.
+        """
+        if shares <= 0:
+            return 0.0
+        commission = 0.0
+        if self.commission_per_share > 0 or self.min_commission > 0:
+            commission = max(self.min_commission, shares * self.commission_per_share)
+        slippage = abs(price) * shares * (self.slippage_bps / 10000.0)
+        return commission + slippage
 
     def run(
         self,
@@ -219,6 +254,7 @@ class EnhancedBacktestEngine:
         self.breakeven_activations = 0
         self.scale_1_exits = 0
         self.scale_2_exits = 0
+        self.total_costs = 0.0
 
         # Get date range
         all_dates = list(spy_data.index.date)
@@ -424,12 +460,17 @@ class EnhancedBacktestEngine:
         else:
             pnl = (position.entry_price - exit_price) * shares_to_sell
 
-        # Return capital
-        self.capital += (position.entry_price * shares_to_sell) + pnl
-        position.remaining_shares -= shares_to_sell
-        position.pnl += pnl
+        # Transaction cost for this exit fill
+        cost = self._transaction_cost(shares_to_sell, exit_price)
+        self.total_costs += cost
+        position.total_cost += cost
 
-        logger.debug(f"{position.symbol}: Scaled out {shares_to_sell} shares at ${exit_price:.2f} ({reason}), P&L: ${pnl:.2f}")
+        # Return capital (net of exit cost)
+        self.capital += (position.entry_price * shares_to_sell) + pnl - cost
+        position.remaining_shares -= shares_to_sell
+        position.pnl += pnl  # gross; net is applied once at full close
+
+        logger.debug(f"{position.symbol}: Scaled out {shares_to_sell} shares at ${exit_price:.2f} ({reason}), P&L: ${pnl:.2f}, cost: ${cost:.2f}")
 
     def _scan_for_signals(
         self,
@@ -524,7 +565,8 @@ class EnhancedBacktestEngine:
             return
 
         required = sizing.shares * entry_price
-        if required > self.capital:
+        entry_cost = self._transaction_cost(sizing.shares, entry_price)
+        if required + entry_cost > self.capital:
             return
 
         trade = EnhancedTrade(
@@ -538,13 +580,15 @@ class EnhancedBacktestEngine:
             original_stop=sizing.stop_price,
             target_price=sizing.target_price,
             rrs_at_entry=rrs,
-            atr_at_entry=atr
+            atr_at_entry=atr,
+            total_cost=entry_cost
         )
 
         self.positions[symbol] = trade
-        self.capital -= required
+        self.capital -= (required + entry_cost)
+        self.total_costs += entry_cost
 
-        logger.debug(f"Entered {direction} {symbol} @ ${entry_price:.2f}, Stop: ${sizing.stop_price:.2f}, Target: ${sizing.target_price:.2f}")
+        logger.debug(f"Entered {direction} {symbol} @ ${entry_price:.2f}, Stop: ${sizing.stop_price:.2f}, Target: ${sizing.target_price:.2f}, entry cost: ${entry_cost:.2f}")
 
     def _close_position(
         self,
@@ -568,7 +612,18 @@ class EnhancedBacktestEngine:
         else:
             remaining_pnl = (trade.entry_price - exit_price) * trade.remaining_shares
 
+        # Transaction cost for this (final) exit fill
+        close_cost = self._transaction_cost(trade.remaining_shares, exit_price)
+        self.total_costs += close_cost
+        trade.total_cost += close_cost
+
+        # Return capital (net of this exit's cost)
+        self.capital += (trade.entry_price * trade.remaining_shares) + remaining_pnl - close_cost
+
+        # Net the full trade P&L: gross P&L across all fills minus all costs
+        # (entry + every scale-out + this close), applied exactly once here.
         trade.pnl += remaining_pnl
+        trade.pnl -= trade.total_cost
         trade.pnl_percent = (trade.pnl / (trade.entry_price * trade.shares)) * 100
 
         if isinstance(trade.entry_date, datetime):
@@ -576,13 +631,10 @@ class EnhancedBacktestEngine:
         else:
             trade.holding_days = (exit_date - trade.entry_date).days
 
-        # Return capital
-        self.capital += (trade.entry_price * trade.remaining_shares) + remaining_pnl
-
         self.trades.append(trade)
         del self.positions[symbol]
 
-        logger.debug(f"Closed {symbol} @ ${exit_price:.2f} ({reason}), Total P&L: ${trade.pnl:.2f}")
+        logger.debug(f"Closed {symbol} @ ${exit_price:.2f} ({reason}), Net P&L: ${trade.pnl:.2f}, costs: ${trade.total_cost:.2f}")
 
     def _get_price(self, data: pd.DataFrame, target_date: date, column: str) -> Optional[float]:
         """Get price for a specific date"""
@@ -683,6 +735,7 @@ class EnhancedBacktestEngine:
             scale_2_exits=self.scale_2_exits,
             avg_mfe=avg_mfe,
             avg_mae=avg_mae,
+            total_costs=self.total_costs,
             trades=self.trades,
             equity_curve=self.equity_curve
         )

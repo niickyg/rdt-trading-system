@@ -67,3 +67,6 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# Backtest data cache (regenerable yfinance downloads)
+data/backtest_cache/

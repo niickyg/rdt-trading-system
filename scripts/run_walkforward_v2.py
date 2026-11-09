@@ -780,6 +780,13 @@ def make_engine_kwargs(config: Dict) -> Dict:
         "use_time_stop": config["use_time_stop"],
         "max_holding_days": config["max_holding_days"],
         "stale_trade_days": config["stale_trade_days"],
+        # Transaction costs. Set BACKTEST_COSTS=1 to produce honest net-of-cost
+        # results (default off preserves historical gross reproducibility).
+        # Values model an IBKR-style retail account: $0.005/share commission with
+        # a $1 minimum per fill, plus 5 bps (0.05%) slippage per entry/exit fill.
+        "commission_per_share": float(os.environ.get("BACKTEST_COMMISSION_PER_SHARE", "0.005")) if os.environ.get("BACKTEST_COSTS") == "1" else 0.0,
+        "min_commission": float(os.environ.get("BACKTEST_MIN_COMMISSION", "1.0")) if os.environ.get("BACKTEST_COSTS") == "1" else 0.0,
+        "slippage_bps": float(os.environ.get("BACKTEST_SLIPPAGE_BPS", "5.0")) if os.environ.get("BACKTEST_COSTS") == "1" else 0.0,
     }
 
 
