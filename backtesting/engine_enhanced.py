@@ -15,6 +15,7 @@ from shared.indicators.rrs import (
     check_daily_strength_relaxed,
     check_daily_weakness_relaxed
 )
+from backtesting.costs import CostModel
 
 
 @dataclass
@@ -47,6 +48,7 @@ class EnhancedTrade:
     holding_days: int = 0
     max_favorable_excursion: float = 0  # Max profit during trade
     max_adverse_excursion: float = 0  # Max drawdown during trade
+    total_costs: float = 0  # Commission + slippage across all legs (entry + exits)
 
     @property
     def is_winner(self) -> bool:
@@ -84,6 +86,7 @@ class EnhancedBacktestResult:
     scale_2_exits: int = 0
     avg_mfe: float = 0  # Average max favorable excursion
     avg_mae: float = 0  # Average max adverse excursion
+    total_costs: float = 0  # Sum of commission + slippage across all trades
 
     trades: List[EnhancedTrade] = field(default_factory=list)
     equity_curve: List[Dict] = field(default_factory=list)
@@ -112,7 +115,8 @@ class EnhancedBacktestResult:
             "trades_trailing_stopped": self.trades_trailing_stopped,
             "breakeven_activations": self.breakeven_activations,
             "avg_mfe": self.avg_mfe,
-            "avg_mae": self.avg_mae
+            "avg_mae": self.avg_mae,
+            "total_costs": self.total_costs
         }
 
 
@@ -157,9 +161,14 @@ class EnhancedBacktestEngine:
         use_time_stop: bool = True,
         max_holding_days: int = 10,  # Close if not profitable after X days
         stale_trade_days: int = 5,  # Close if price hasn't moved after X days
+
+        # Transaction costs (commission + slippage). Defaults to zero-cost,
+        # which reproduces the legacy (optimistic) behaviour.
+        cost_model: Optional[CostModel] = None,
     ):
         self.initial_capital = initial_capital
         self.risk_limits = risk_limits or RiskLimits()
+        self.cost_model = cost_model or CostModel.zero()
 
         # Entry params
         self.rrs_threshold = rrs_threshold
@@ -424,12 +433,17 @@ class EnhancedBacktestEngine:
         else:
             pnl = (position.entry_price - exit_price) * shares_to_sell
 
-        # Return capital
-        self.capital += (position.entry_price * shares_to_sell) + pnl
-        position.remaining_shares -= shares_to_sell
-        position.pnl += pnl
+        # Transaction cost for this exit leg
+        leg_cost = self.cost_model.leg_cost(exit_price, shares_to_sell)
+        net_pnl = pnl - leg_cost
 
-        logger.debug(f"{position.symbol}: Scaled out {shares_to_sell} shares at ${exit_price:.2f} ({reason}), P&L: ${pnl:.2f}")
+        # Return capital (net of this leg's cost)
+        self.capital += (position.entry_price * shares_to_sell) + net_pnl
+        position.remaining_shares -= shares_to_sell
+        position.pnl += net_pnl
+        position.total_costs += leg_cost
+
+        logger.debug(f"{position.symbol}: Scaled out {shares_to_sell} shares at ${exit_price:.2f} ({reason}), P&L: ${net_pnl:.2f} (cost ${leg_cost:.2f})")
 
     def _scan_for_signals(
         self,
@@ -543,8 +557,24 @@ class EnhancedBacktestEngine:
 
         self.positions[symbol] = trade
         self.capital -= required
+        self._charge_entry_cost(trade)
 
         logger.debug(f"Entered {direction} {symbol} @ ${entry_price:.2f}, Stop: ${sizing.stop_price:.2f}, Target: ${sizing.target_price:.2f}")
+
+    def _charge_entry_cost(self, trade: EnhancedTrade) -> float:
+        """Apply commission + slippage for the entry fill.
+
+        Reduces both cash (immediate outflow to the broker) and the trade's
+        running P&L so that win rate, profit factor and total return are all
+        reported net of costs. Called by every entry path (including subclass
+        overrides such as the walk-forward filtered engines).
+        """
+        cost = self.cost_model.leg_cost(trade.entry_price, trade.shares)
+        if cost:
+            trade.total_costs += cost
+            trade.pnl -= cost
+            self.capital -= cost
+        return cost
 
     def _close_position(
         self,
@@ -568,7 +598,12 @@ class EnhancedBacktestEngine:
         else:
             remaining_pnl = (trade.entry_price - exit_price) * trade.remaining_shares
 
-        trade.pnl += remaining_pnl
+        # Transaction cost for the closing exit leg
+        exit_cost = self.cost_model.leg_cost(exit_price, trade.remaining_shares)
+        net_remaining_pnl = remaining_pnl - exit_cost
+
+        trade.pnl += net_remaining_pnl
+        trade.total_costs += exit_cost
         trade.pnl_percent = (trade.pnl / (trade.entry_price * trade.shares)) * 100
 
         if isinstance(trade.entry_date, datetime):
@@ -576,8 +611,8 @@ class EnhancedBacktestEngine:
         else:
             trade.holding_days = (exit_date - trade.entry_date).days
 
-        # Return capital
-        self.capital += (trade.entry_price * trade.remaining_shares) + remaining_pnl
+        # Return capital (net of this leg's cost)
+        self.capital += (trade.entry_price * trade.remaining_shares) + net_remaining_pnl
 
         self.trades.append(trade)
         del self.positions[symbol]
@@ -640,6 +675,9 @@ class EnhancedBacktestEngine:
         avg_mfe = sum(t.max_favorable_excursion for t in self.trades) / total_trades
         avg_mae = sum(t.max_adverse_excursion for t in self.trades) / total_trades
 
+        # Total transaction costs (commission + slippage) across all trades
+        total_costs = sum(t.total_costs for t in self.trades)
+
         # Max drawdown
         max_dd = 0
         peak = self.initial_capital
@@ -683,6 +721,7 @@ class EnhancedBacktestEngine:
             scale_2_exits=self.scale_2_exits,
             avg_mfe=avg_mfe,
             avg_mae=avg_mae,
+            total_costs=total_costs,
             trades=self.trades,
             equity_curve=self.equity_curve
         )

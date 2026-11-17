@@ -41,6 +41,7 @@ logger.remove()
 logger.add(sys.stderr, level="WARNING")
 
 from backtesting.engine_enhanced import EnhancedBacktestEngine, EnhancedBacktestResult
+from backtesting.costs import CostModel
 from backtesting.data_loader import DataLoader
 from risk.models import RiskLimits
 from risk.risk_manager import SECTOR_MAP
@@ -53,6 +54,12 @@ from scanner.sector_filter import SECTOR_ETF_MAP
 
 INITIAL_CAPITAL = 25000.0
 DATA_DAYS = 730  # 2 years
+
+# Transaction cost model applied to ALL three configs so comparisons are
+# apples-to-apples AND net of honest costs. ibkr_retail() is deliberately
+# conservative (low): $0.0035/share, $0.35 order min, 5 bps slippage/leg.
+# Set to CostModel.zero() to reproduce the legacy (optimistic) numbers.
+COST_MODEL = CostModel.ibkr_retail()
 
 WATCHLIST = [
     'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA',
@@ -527,6 +534,7 @@ class OldFilteredEngine(EnhancedBacktestEngine):
         )
         self.positions[symbol] = trade
         self.capital -= required
+        self._charge_entry_cost(trade)
 
 
 # ============================================================================
@@ -780,6 +788,7 @@ def make_engine_kwargs(config: Dict) -> Dict:
         "use_time_stop": config["use_time_stop"],
         "max_holding_days": config["max_holding_days"],
         "stale_trade_days": config["stale_trade_days"],
+        "cost_model": COST_MODEL,
     }
 
 
@@ -839,10 +848,30 @@ def get_largest_daily_loss(result: EnhancedBacktestResult) -> float:
     return worst
 
 
+def spy_buy_hold_pct(spy_data: pd.DataFrame, start_date: date, end_date: date) -> Optional[float]:
+    """SPY buy-and-hold return (%) over [start_date, end_date].
+
+    This is THE benchmark the operator mandate measures against: would the same
+    capital have done better simply sitting in SPY over the identical window?
+    Price-only (dividends omitted), which slightly understates SPY — i.e. it is
+    conservative in the strategy's favour.
+    """
+    close_col = 'Close' if 'Close' in spy_data.columns else 'close'
+    window = spy_data[(spy_data.index.date >= start_date) & (spy_data.index.date <= end_date)]
+    if len(window) < 2:
+        return None
+    start_price = float(window[close_col].iloc[0])
+    end_price = float(window[close_col].iloc[-1])
+    if start_price <= 0:
+        return None
+    return (end_price / start_price - 1.0) * 100.0
+
+
 def print_results(
     baseline_results: List[WindowResult],
     old_filtered_results: List[WindowResult],
     rdt_filtered_results: List[WindowResult],
+    spy_data: pd.DataFrame,
 ):
     w = 120
 
@@ -855,6 +884,14 @@ def print_results(
     print("  A) Baseline     — No filters, static RRS 2.0")
     print("  B) Old Filters  — VIX regime + Sector RS + Regime-adaptive params")
     print("  C) RDT Filters  — Old Filters + SPY Hard Gate + 50/200 SMA + MTF Alignment")
+    print()
+    cm = COST_MODEL
+    if cm.is_zero():
+        print("  COSTS: NONE (gross/optimistic — commission=0, slippage=0)")
+    else:
+        print(f"  COSTS: ${cm.commission_per_share:.4f}/share (min ${cm.min_commission_per_order:.2f}/order) "
+              f"+ {cm.slippage_bps:.1f} bps slippage per leg — results are NET of costs")
+    print("  BENCHMARK: SPY buy-and-hold over each identical window (price-only, dividends omitted)")
     print()
     print("  NOTE: VWAP + First-Hour filters cannot be simulated with daily bars. Omitted.")
     print()
@@ -928,6 +965,7 @@ def print_results(
         max_dd = max((r.result.max_drawdown for r in results), default=0)
         worst_day = min((get_largest_daily_loss(r.result) for r in results), default=0)
         trading_days = sum(len(r.result.equity_curve) for r in results)
+        total_costs = sum(getattr(r.result, "total_costs", 0.0) for r in results)
         return {
             "total_return": total_ret,
             "total_return_pct": total_ret / INITIAL_CAPITAL * 100,
@@ -937,7 +975,18 @@ def print_results(
             "max_drawdown": max_dd,
             "worst_day": worst_day,
             "trading_days": trading_days,
+            "total_costs": total_costs,
         }
+
+    # SPY buy-and-hold benchmark: summed per-window dollar return on $25K each,
+    # matching how the strategy aggregate sums independent per-window returns.
+    spy_total_dollar = 0.0
+    spy_pct_parts = []
+    for r in baseline_results:
+        pct = spy_buy_hold_pct(spy_data, r.result.start_date, r.result.end_date)
+        if pct is not None:
+            spy_pct_parts.append(pct)
+            spy_total_dollar += INITIAL_CAPITAL * (pct / 100.0)
 
     ba = agg(baseline_results)
     oa = agg(old_filtered_results)
@@ -966,6 +1015,25 @@ def print_results(
     print(agg_row("Profit Factor", ba["profit_factor"], oa["profit_factor"], ra["profit_factor"], "float"))
     print(agg_row("Max Drawdown ($)", ba["max_drawdown"], oa["max_drawdown"], ra["max_drawdown"], "dollar"))
     print(agg_row("Worst Day Loss ($)", ba["worst_day"], oa["worst_day"], ra["worst_day"], "dollar"))
+    print(agg_row("Transaction Costs ($)", ba["total_costs"], oa["total_costs"], ra["total_costs"], "dollar"))
+    print()
+
+    # --- SPY BUY-AND-HOLD BENCHMARK (the mandate's bar) ---
+    print("-" * w)
+    print("SPY BUY-AND-HOLD BENCHMARK (same windows, same $25K/window)".center(w))
+    print("-" * w)
+    print()
+    spy_pct_sum = sum(spy_pct_parts)
+    print(f"  SPY buy-and-hold total return:  ${spy_total_dollar:>12,.2f}  ({spy_pct_sum:>6.2f}% summed across windows, price-only)")
+    print(f"  A) Baseline     net return:     ${ba['total_return']:>12,.2f}  -> excess vs SPY: ${ba['total_return'] - spy_total_dollar:>+12,.2f}")
+    print(f"  B) Old Filters  net return:     ${oa['total_return']:>12,.2f}  -> excess vs SPY: ${oa['total_return'] - spy_total_dollar:>+12,.2f}")
+    print(f"  C) RDT Filters  net return:     ${ra['total_return']:>12,.2f}  -> excess vs SPY: ${ra['total_return'] - spy_total_dollar:>+12,.2f}")
+    print()
+    beats_spy = [lbl for lbl, a in [("A", ba), ("B", oa), ("C", ra)] if a["total_return"] > spy_total_dollar]
+    if beats_spy:
+        print(f"  Configs beating SPY buy-and-hold: {', '.join(beats_spy)}")
+    else:
+        print("  >>> NO configuration beats SPY buy-and-hold net of costs. <<<")
     print()
 
     # Signal filtering summary
@@ -1112,7 +1180,7 @@ def main():
         old_filtered_results.append(ol)
         rdt_filtered_results.append(rd)
 
-    print_results(baseline_results, old_filtered_results, rdt_filtered_results)
+    print_results(baseline_results, old_filtered_results, rdt_filtered_results, spy_data)
 
 
 if __name__ == "__main__":
