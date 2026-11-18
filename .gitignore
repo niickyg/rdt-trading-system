@@ -15,6 +15,7 @@ oauth_token.json
 data/logs/
 data/trades/
 data/historical/
+data/backtest_cache/
 *.csv
 
 # Database
