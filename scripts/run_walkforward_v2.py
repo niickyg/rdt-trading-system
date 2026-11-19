@@ -528,6 +528,12 @@ class OldFilteredEngine(EnhancedBacktestEngine):
         self.positions[symbol] = trade
         self.capital -= required
 
+        # Entry transaction cost (commission + slippage), matching base engine accounting
+        entry_cost = self._fill_cost(adjusted_shares, entry_price)
+        self.capital -= entry_cost
+        self.total_costs += entry_cost
+        trade.pnl -= entry_cost
+
 
 # ============================================================================
 # NEW: RDT-Aligned Filtered Engine (Old + SPY Gate + SMA + MTF)
