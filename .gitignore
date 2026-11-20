@@ -67,3 +67,6 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# Backtest data cache (derived parquet, regenerated on demand)
+data/backtest_cache/

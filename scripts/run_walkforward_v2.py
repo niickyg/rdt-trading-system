@@ -687,7 +687,14 @@ def load_all_data() -> Tuple[Dict[str, pd.DataFrame], pd.DataFrame, Optional[pd.
     cache_dir = str(PROJECT_ROOT / "data" / "backtest_cache")
     loader = DataLoader(cache_dir=cache_dir)
 
+    # Anchor the window. Defaults to "ending today", but WF_END_DATE=YYYY-MM-DD
+    # lets us place the same 2-year walk-forward over any historical period
+    # (e.g. a bear market) to test regime-dependence of the strategy's edge.
     end_date = date.today()
+    _end_override = os.environ.get("WF_END_DATE")
+    if _end_override:
+        end_date = date.fromisoformat(_end_override)
+        print(f"  [WF_END_DATE override active: window anchored to end on {end_date}]")
     start_date = end_date - timedelta(days=DATA_DAYS + 250)  # extra 250 days for 200 SMA warmup
 
     print(f"Loading data for {len(WATCHLIST)} stocks + SPY + {len(SECTOR_ETFS)} sector ETFs + VIX...")
@@ -845,10 +852,77 @@ def get_largest_daily_loss(result: EnhancedBacktestResult) -> float:
     return worst
 
 
+def _spy_close_on_or_after(spy_data: pd.DataFrame, d: date) -> Optional[float]:
+    close_col = 'Close' if 'Close' in spy_data.columns else 'close'
+    sub = spy_data[spy_data.index.date >= d]
+    return float(sub.iloc[0][close_col]) if len(sub) else None
+
+
+def _spy_close_on_or_before(spy_data: pd.DataFrame, d: date) -> Optional[float]:
+    close_col = 'Close' if 'Close' in spy_data.columns else 'close'
+    sub = spy_data[spy_data.index.date <= d]
+    return float(sub.iloc[-1][close_col]) if len(sub) else None
+
+
+def compute_spy_benchmark(
+    spy_data: pd.DataFrame,
+    window_spans: List[Tuple[date, date]],
+    initial_capital: float = INITIAL_CAPITAL,
+    commission_per_share: float = 0.005,
+    slippage_bps: float = 5.0,
+) -> Dict:
+    """SPY buy-and-hold benchmark — the mission's 'do nothing' alternative.
+
+    Two honest framings, both net of a single round-trip of the same transaction
+    costs the strategy pays (negligible for one SPY trade, but applied for fairness):
+
+      * per_window_sum: deploy `initial_capital` into SPY at each walk-forward
+        window's first trading day and liquidate at its last, then SUM the dollar
+        P&L. This mirrors the strategy aggregate EXACTLY — the strategy also
+        re-deploys a fresh $25k each window and sums — so it is the true
+        apples-to-apples benchmark for the aggregate table.
+
+      * full_span: a single $25k buy at the first window's open, held to the last
+        window's close. The intuitive 'parked it in the index the whole time' number.
+
+    Prices come from yfinance auto_adjust=True (dividends reinvested), so these are
+    SPY TOTAL returns — deliberately the harder benchmark to beat.
+    """
+    def hold_pnl(d_start: date, d_end: date) -> Optional[float]:
+        p_in = _spy_close_on_or_after(spy_data, d_start)
+        p_out = _spy_close_on_or_before(spy_data, d_end)
+        if p_in is None or p_out is None or p_in <= 0:
+            return None
+        shares = initial_capital / p_in
+        entry_cost = shares * commission_per_share + shares * p_in * (slippage_bps / 10000.0)
+        exit_cost = shares * commission_per_share + shares * p_out * (slippage_bps / 10000.0)
+        return shares * (p_out - p_in) - entry_cost - exit_cost
+
+    per_window = []
+    for (s, e) in window_spans:
+        per_window.append(hold_pnl(s, e))
+    per_window_sum = sum(p for p in per_window if p is not None)
+
+    full_start = window_spans[0][0]
+    full_end = window_spans[-1][1]
+    full_span_pnl = hold_pnl(full_start, full_end)
+
+    return {
+        "per_window": per_window,
+        "per_window_sum": per_window_sum,
+        "per_window_sum_pct": per_window_sum / initial_capital * 100,
+        "full_span_pnl": full_span_pnl,
+        "full_span_pct": (full_span_pnl / initial_capital * 100) if full_span_pnl is not None else None,
+        "full_start": full_start,
+        "full_end": full_end,
+    }
+
+
 def print_results(
     baseline_results: List[WindowResult],
     old_filtered_results: List[WindowResult],
     rdt_filtered_results: List[WindowResult],
+    spy_data: Optional[pd.DataFrame] = None,
 ):
     w = 120
 
@@ -922,6 +996,7 @@ def print_results(
 
     def agg(results):
         total_ret = sum(r.result.total_return for r in results)
+        total_cost = sum(getattr(r.result, "total_costs", 0.0) for r in results)
         total_trades = sum(r.result.total_trades for r in results)
         all_trades = []
         for r in results:
@@ -937,6 +1012,7 @@ def print_results(
         return {
             "total_return": total_ret,
             "total_return_pct": total_ret / INITIAL_CAPITAL * 100,
+            "total_costs": total_cost,
             "total_trades": total_trades,
             "win_rate": wr,
             "profit_factor": pf,
@@ -965,8 +1041,9 @@ def print_results(
         elif fmt == "int":
             return f"  {label:<28} {'{:>15d}'.format(int(bv))} {'{:>15d}'.format(int(ov))} {'{:>15d}'.format(int(rv))} {'{:>+11d}'.format(int(d_ba))} {'{:>+11d}'.format(int(d_ca))}"
 
-    print(agg_row("Total Return ($)", ba["total_return"], oa["total_return"], ra["total_return"], "dollar"))
-    print(agg_row("Total Return (%)", ba["total_return_pct"], oa["total_return_pct"], ra["total_return_pct"], "pct"))
+    print(agg_row("Total Return ($) [NET]", ba["total_return"], oa["total_return"], ra["total_return"], "dollar"))
+    print(agg_row("Total Return (%) [NET]", ba["total_return_pct"], oa["total_return_pct"], ra["total_return_pct"], "pct"))
+    print(agg_row("Txn Costs Paid ($)", ba["total_costs"], oa["total_costs"], ra["total_costs"], "dollar"))
     print(agg_row("Total Trades", ba["total_trades"], oa["total_trades"], ra["total_trades"], "int"))
     print(agg_row("Win Rate", ba["win_rate"], oa["win_rate"], ra["win_rate"], "pct"))
     print(agg_row("Profit Factor", ba["profit_factor"], oa["profit_factor"], ra["profit_factor"], "float"))
@@ -1001,6 +1078,42 @@ def print_results(
             print(f"  {label:<20} {annual:>8.1f}% annualized  (from {a['trading_days']} trading days)")
     print()
 
+    # ------------------------------------------------------------------
+    # BENCHMARK: SPY buy-and-hold over the same window(s)
+    # ------------------------------------------------------------------
+    bench = None
+    if spy_data is not None and len(baseline_results) > 0:
+        window_spans = [(r.start_date, r.end_date) for r in baseline_results]
+        bench = compute_spy_benchmark(spy_data, window_spans, INITIAL_CAPITAL)
+
+        print("-" * w)
+        print("BENCHMARK: SPY BUY-AND-HOLD (the 'do nothing' alternative)".center(w))
+        print("-" * w)
+        print()
+        print("  Prices: yfinance auto_adjust=True (dividends reinvested) => SPY TOTAL return.")
+        print("  Net of one round-trip of the same honest txn costs the strategy pays.")
+        print()
+        print(f"  {'Benchmark framing':<52} {'Return ($)':>16} {'Return (%)':>14}")
+        print("  " + "-" * (w - 4))
+        print(f"  {'SPY B&H, per-window ($25k each, summed) [apples-to-apples]':<52} "
+              f"{'${:>14,.2f}'.format(bench['per_window_sum'])} {'{:>13.2f}%'.format(bench['per_window_sum_pct'])}")
+        if bench["full_span_pnl"] is not None:
+            print(f"  {('SPY B&H, single $25k held %s to %s' % (bench['full_start'], bench['full_end'])):<52} "
+                  f"{'${:>14,.2f}'.format(bench['full_span_pnl'])} {'{:>13.2f}%'.format(bench['full_span_pct'])}")
+        print()
+        # Head-to-head against the strategy's best NET aggregate (apples-to-apples = per-window sum)
+        strat_best_label = max(
+            [("A) Baseline", ba), ("B) Old Filters", oa), ("C) RDT Filters", ra)],
+            key=lambda kv: kv[1]["total_return"],
+        )
+        sb_label, sb = strat_best_label
+        gap = sb["total_return"] - bench["per_window_sum"]
+        print(f"  Best strategy NET aggregate: {sb_label} = ${sb['total_return']:,.2f} ({sb['total_return_pct']:.2f}%)")
+        print(f"  SPY B&H (apples-to-apples):  ${bench['per_window_sum']:,.2f} ({bench['per_window_sum_pct']:.2f}%)")
+        print(f"  >>> Strategy minus SPY B&H:  ${gap:+,.2f}  "
+              f"({'STRATEGY WINS' if gap > 0 else 'SPY BUY-AND-HOLD WINS'})")
+        print()
+
     # Final verdict
     print("=" * w)
     print("VERDICT".center(w))
@@ -1017,6 +1130,15 @@ def print_results(
         best_return = ra["total_return"]
 
     print(f"  Highest Total Return: {best_label} (${best_return:,.2f})")
+    if bench is not None:
+        gap = best_return - bench["per_window_sum"]
+        if gap > 0:
+            print(f"  vs SPY buy-and-hold:  BEATS by ${gap:,.2f} "
+                  f"({best_return/INITIAL_CAPITAL*100 - bench['per_window_sum_pct']:+.2f} pts)")
+        else:
+            print(f"  vs SPY buy-and-hold:  LOSES by ${-gap:,.2f} "
+                  f"({best_return/INITIAL_CAPITAL*100 - bench['per_window_sum_pct']:+.2f} pts) "
+                  f"— the mission benchmark is NOT cleared.")
     print()
 
     # Risk-adjusted (return / max drawdown)
@@ -1118,7 +1240,7 @@ def main():
         old_filtered_results.append(ol)
         rdt_filtered_results.append(rd)
 
-    print_results(baseline_results, old_filtered_results, rdt_filtered_results)
+    print_results(baseline_results, old_filtered_results, rdt_filtered_results, spy_data=spy_data)
 
 
 if __name__ == "__main__":

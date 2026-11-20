@@ -85,6 +85,10 @@ class EnhancedBacktestResult:
     avg_mfe: float = 0  # Average max favorable excursion
     avg_mae: float = 0  # Average max adverse excursion
 
+    # Honest transaction costs (commission + slippage) deducted across all fills.
+    # If 0.0 with trades present, the run was gross/frictionless.
+    total_costs: float = 0.0
+
     trades: List[EnhancedTrade] = field(default_factory=list)
     equity_curve: List[Dict] = field(default_factory=list)
 
@@ -662,6 +666,7 @@ class EnhancedBacktestEngine:
                 max_drawdown_pct=0,
                 sharpe_ratio=0,
                 avg_holding_days=0,
+                total_costs=self.total_costs,
                 trades=self.trades,
                 equity_curve=self.equity_curve
             )
@@ -727,6 +732,7 @@ class EnhancedBacktestEngine:
             scale_2_exits=self.scale_2_exits,
             avg_mfe=avg_mfe,
             avg_mae=avg_mae,
+            total_costs=self.total_costs,
             trades=self.trades,
             equity_curve=self.equity_curve
         )
