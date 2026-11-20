@@ -187,7 +187,19 @@ Additional filters (applied after gates during signal processing):
 
 ### Walk-Forward Backtest Results (2 Years, $25K Capital)
 
-3-way comparison across 6 quarterly windows (Feb 2024 - Nov 2025):
+> **⚠️ OPERATOR CORRECTION (2026-11-20) — this table is GROSS and UNBENCHMARKED; do not
+> trust it as evidence of profitability.** The numbers below were produced with a backtest
+> that applied **zero transaction costs** and **never compared to SPY buy-and-hold**. When
+> the operator actually ran the walk-forward with honest costs on (~0.115% round trip) AND
+> a SPY benchmark, the real picture was: best config **+8.93% net vs SPY buy-and-hold
+> +37.80%** over a 2024–2026 bull window (loses by ~29 points), and in a 2021–2023
+> bear/flat window the raw baseline merely **tied** SPY while the "RDT Filters" config
+> **lost money** (profit factor 0.87). **No config beat SPY buy-and-hold in either regime.**
+> See `POST_MORTEM_RRS.md` and `data/operator_journal/entries/2026-11-20-session-01.md`.
+> Re-measure any time with `python3 scripts/run_walkforward_v2.py` (now prints txn costs +
+> SPY benchmark).
+
+3-way comparison across 6 quarterly windows (Feb 2024 - Nov 2025) — **GROSS, no benchmark:**
 
 | Metric | A) Baseline | B) Old Filters | C) RDT Filters |
 |--------|------------|----------------|-----------------|
@@ -198,7 +210,10 @@ Additional filters (applied after gates during signal processing):
 | Worst Day | -$404 | -$378 | **-$257** |
 | Annualized | 1.6% | 2.5% | **3.4%** |
 
-RDT filters take fewer but higher-quality trades. 98% of raw signals are filtered out.
+The claim that "RDT filters take fewer but higher-quality trades" is **falsified out of the
+bull sample**: in the 2022 bear/flat window the filters turned a profitable +5.72% / PF-1.41
+baseline into a −1.95% / PF-0.87 loss. 98% of raw signals are filtered out — and in a
+non-trending market, filtering makes results worse, not better.
 
 ### Agent Architecture
 Agents communicate via EventBus (pub-sub):

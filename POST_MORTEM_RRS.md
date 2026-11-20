@@ -102,3 +102,35 @@ fills), so real net is likely at the bottom of this range or worse.
 - **Then re-test the hypothesis honestly.** If, net of costs and vs SPY, the strategy
   still cannot win across multiple regimes, **recommend wind-down of active trading**
   and escalate: the capital is better in the index.
+
+---
+
+## ADDENDUM — 2026-11-20: estimate → MEASUREMENT, and a second regime
+
+The body above was the first run's *reconstruction* (gross numbers + an estimated cost
+haircut). The 2026-11-20 run **actually executed** the walk-forward with the honest cost
+model on, with a SPY buy-and-hold benchmark built into the tool, over two regimes. The
+estimate held and sharpened. (Numbers are net of ~0.115% round-trip costs; SPY uses
+`auto_adjust=True` = total return. Windows differ from the body's Feb2024–Nov2025 span
+because the tool anchors to "today − 730d" unless `WF_END_DATE` overrides it.)
+
+**Bull window 2024-07-26 → 2026-08-07 (SPY total return +45%):** best config C) RDT Filters
+**+8.93% net**; SPY buy-and-hold **+37.80%** (apples-to-apples). Strategy loses by **29
+points** — it captured <¼ of the index.
+
+**Bear/flat window 2021-10-05 → 2023-10-13 (includes the 2022 crash; SPY +5.75%):** best
+config A) raw Baseline **+5.72% net** — a **dead-heat tie** with SPY (−$7.58). The *filtered*
+configs **lost money** (B −2.65%, C −1.95%, both profit factor < 1).
+
+**Two conclusions, now measured, not estimated:**
+1. **No configuration beats SPY buy-and-hold in either regime, net of costs.** Best case = tie.
+2. **The RDT filter stack is not an edge.** In a non-trending market it is a *liability*: it
+   turned a profitable, PF-1.41 baseline into a PF-0.87 loss. The CLAUDE.md claim that the
+   filters produce "fewer but higher-quality trades" is **falsified** out of the bull sample.
+
+The recommendation in the body stands and is strengthened: **do not add to this core;
+escalate the wind-down / pivot decision to the human.** The remaining open question — is
+there *any* raw signal with a profit factor high enough to survive costs? — should be
+answered with factor-level IC analysis (`research/factor_tester.py`) before any further
+effort. See `data/operator_journal/entries/2026-11-20-session-01.md` for full tables,
+steelman, and caveats.
